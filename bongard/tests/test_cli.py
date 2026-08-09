@@ -240,7 +240,7 @@ def test_run_parser_exposes_python_prototype_profile() -> None:
     assert args.prototype_calibration == "calibration.json"
 
 
-def test_stage_b_parser_requires_external_authority_and_uses_live_defaults() -> None:
+def test_stage_b_parser_preserves_record_arguments_but_is_retired() -> None:
     parser = cli.build_parser()
     args = parser.parse_args(
         [
@@ -266,14 +266,18 @@ def test_stage_b_parser_requires_external_authority_and_uses_live_defaults() -> 
         ]
     )
 
-    assert args.handler is cli._validate_semantic_stage_b
+    assert args.handler is cli._retired_pipeline_command
+    assert (
+        args.retired_pipeline_id
+        == "legacy-visual-semantic-calibration-cli-v1"
+    )
     assert args.expected_stage_a_command_receipt_digest == "a" * 64
     assert args.selection_seed == "b" * 64
     assert args.task_count == 24
     assert args.workers == 4
 
 
-def test_stage_a_parser_exposes_preregistered_bin_population() -> None:
+def test_stage_a_parser_preserves_preregistered_arguments_but_is_retired() -> None:
     parser = cli.build_parser()
     args = parser.parse_args(
         [
@@ -305,7 +309,11 @@ def test_stage_a_parser_exposes_preregistered_bin_population() -> None:
         ]
     )
 
-    assert args.handler is cli._calibrate_semantic_stage_a
+    assert args.handler is cli._retired_pipeline_command
+    assert (
+        args.retired_pipeline_id
+        == "legacy-visual-semantic-calibration-cli-v1"
+    )
     assert args.candidate_count == 28
     assert args.minimum_clusters_per_bin == 8
 

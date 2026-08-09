@@ -66,6 +66,7 @@ from bongard.panel_feature_task_runner import (
     derive_panel_feature_support,
 )
 from bongard.panel_owner_inventory import PANEL_OWNER_NEUTRAL_IMAGE_NAME
+from bongard.pipeline_registry import require_new_pipeline_execution
 from bongard.panel_soft_ontology import NativeOrientation
 from bongard.panel_typed_codex_observer import (
     HeadlessCodexPanelFeatureReceiptedCall,
@@ -715,6 +716,7 @@ def _metadata_only(source_archive: Path) -> dict[str, Any]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    require_new_pipeline_execution("panel-feature-exposed-support-smoke-v1")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-archive", type=Path, default=DEFAULT_SOURCE_ARCHIVE)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)

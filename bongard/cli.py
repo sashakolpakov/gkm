@@ -38,6 +38,10 @@ from bongard.exposure import (
 )
 from bongard.historical_exposure import load_historical_exposure
 from bongard.proposer import HeadlessCodexEpisode
+from bongard.pipeline_registry import (
+    pipeline_registry_data,
+    require_new_pipeline_execution,
+)
 from bongard.prototype_calibration import (
     PrototypeCalibrationIntegrityError,
     PrototypeCalibrationRecord,
@@ -255,6 +259,18 @@ def _write_once(path: Path, payload: bytes) -> None:
             handle.write(payload)
     except FileExistsError as exc:
         raise CliError(f"refusing to overwrite existing run artifact: {path}") from exc
+
+
+def _retired_pipeline_command(args: argparse.Namespace) -> int:
+    """Fail before corpus, archive, pixel, transport, or output access."""
+
+    require_new_pipeline_execution(args.retired_pipeline_id)
+    raise AssertionError("retired pipeline unexpectedly authorized")
+
+
+def _pipeline_status(_args: argparse.Namespace) -> int:
+    sys.stdout.buffer.write(canonical_json(pipeline_registry_data()) + b"\n")
+    return 0
 
 
 def _strict_json_bytes(
@@ -2553,6 +2569,12 @@ def build_parser() -> argparse.ArgumentParser:
     cohorts.add_argument("--out")
     cohorts.set_defaults(handler=_cohorts)
 
+    pipelines = commands.add_parser(
+        "pipeline-status",
+        help="show active, retained, audit-only, and retired Bongard paths",
+    )
+    pipelines.set_defaults(handler=_pipeline_status)
+
     stage_a = commands.add_parser(
         "calibrate-semantic-stage-a",
         help=(
@@ -2595,7 +2617,10 @@ def build_parser() -> argparse.ArgumentParser:
     stage_a.add_argument("--scorer-minutes", type=int, default=10)
     stage_a.add_argument("--workers", type=int, default=4)
     stage_a.add_argument("--verbose", action="store_true")
-    stage_a.set_defaults(handler=_calibrate_semantic_stage_a)
+    stage_a.set_defaults(
+        handler=_retired_pipeline_command,
+        retired_pipeline_id="legacy-visual-semantic-calibration-cli-v1",
+    )
 
     stage_b = commands.add_parser(
         "validate-semantic-stage-b",
@@ -2624,9 +2649,15 @@ def build_parser() -> argparse.ArgumentParser:
     stage_b.add_argument("--task-count", type=int, default=24)
     stage_b.add_argument("--workers", type=int, default=4)
     stage_b.add_argument("--verbose", action="store_true")
-    stage_b.set_defaults(handler=_validate_semantic_stage_b)
+    stage_b.set_defaults(
+        handler=_retired_pipeline_command,
+        retired_pipeline_id="legacy-visual-semantic-calibration-cli-v1",
+    )
 
-    run = commands.add_parser("run", help="run one frozen two-query episode")
+    run = commands.add_parser(
+        "run",
+        help="retired legacy two-query launcher; use verify for old records",
+    )
     run.add_argument("--corpus", required=True)
     run.add_argument("--split-file")
     run.add_argument("--task-id", required=True)
@@ -2687,7 +2718,10 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     run.add_argument("--verbose", action="store_true")
-    run.set_defaults(handler=_run)
+    run.set_defaults(
+        handler=_retired_pipeline_command,
+        retired_pipeline_id="legacy-two-query-episode-cli-v1",
+    )
 
     verify = commands.add_parser("verify", help="cold-verify one saved run")
     verify.add_argument("--run", required=True)
