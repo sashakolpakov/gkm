@@ -16,6 +16,7 @@ from bongard.panel_action_count_calibration import (
     RawActionCountObservation,
     apply_action_count_calibration,
     cold_replay_action_count_calibration,
+    verify_calibrated_action_count_observation,
 )
 
 
@@ -87,6 +88,14 @@ def test_task_max_zero_omission_grant_is_conservative_and_cold_replays() -> None
 
     calibrated = apply_action_count_calibration(
         artifact, RawActionCountObservation(4, 4, 2, 2)
+    )
+    assert (
+        verify_calibrated_action_count_observation(
+            calibrated,
+            artifact=artifact,
+            raw_observation=RawActionCountObservation(4, 4, 2, 2),
+        )
+        == calibrated
     )
     assert calibrated.interval(ActionCountAxis.STRAIGHT) == (0, 9)
     assert calibrated.interval(ActionCountAxis.ARC) == (0, 5)
@@ -167,4 +176,25 @@ def test_round_trip_and_tamper_checks_bind_exact_policy_and_inputs() -> None:
     with pytest.raises(ActionCountCalibrationError):
         cold_replay_action_count_calibration(
             artifact, expected_artifact_address=_address("f")
+        )
+
+    raw = RawActionCountObservation(4, 4, 2, 2)
+    calibrated = apply_action_count_calibration(artifact, raw)
+    changed = copy.deepcopy(calibrated.to_data())
+    changed["straight_action_count_upper"] = 5
+    with pytest.raises(ActionCountCalibrationError):
+        type(calibrated).from_data(changed)
+
+    forged = type(calibrated)(
+        calibrated.calibration_artifact_address,
+        calibrated.raw_observation_digest,
+        0,
+        9,
+        calibrated.arc_lower,
+        calibrated.arc_upper,
+        calibrated.error_code,
+    )
+    with pytest.raises(ActionCountCalibrationError):
+        verify_calibrated_action_count_observation(
+            forged, artifact=artifact, raw_observation=raw
         )

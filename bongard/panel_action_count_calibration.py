@@ -698,7 +698,11 @@ class CalibratedActionCountObservation:
             return Disposition.CERTIFIED_ABSENT
         return Disposition.INDETERMINATE
 
-    def to_data(self) -> dict[str, object]:
+    @property
+    def calibrated_observation_digest(self) -> str:
+        return canonical_digest(self.content_data())
+
+    def content_data(self) -> dict[str, object]:
         return {
             "schema": CALIBRATED_OBSERVATION_SCHEMA,
             "calibration_artifact_address": self.calibration_artifact_address,
@@ -709,7 +713,67 @@ class CalibratedActionCountObservation:
             "arc_action_count_upper": self.arc_upper,
             "error_code": self.error_code,
             "failed_fit_counts_as_absence": False,
+            "model_calls_for_projection_or_replay": 0,
+            "python_is_canonical_authority": True,
+            "lean_present": False,
+            "lean_required": False,
         }
+
+    def to_data(self) -> dict[str, object]:
+        return {
+            **self.content_data(),
+            "calibrated_observation_digest": self.calibrated_observation_digest,
+        }
+
+    @classmethod
+    def from_data(cls, value: object) -> "CalibratedActionCountObservation":
+        raw = _fields(
+            value,
+            {
+                "schema",
+                "calibration_artifact_address",
+                "raw_observation_digest",
+                "straight_action_count_lower",
+                "straight_action_count_upper",
+                "arc_action_count_lower",
+                "arc_action_count_upper",
+                "error_code",
+                "failed_fit_counts_as_absence",
+                "model_calls_for_projection_or_replay",
+                "python_is_canonical_authority",
+                "lean_present",
+                "lean_required",
+                "calibrated_observation_digest",
+            },
+            "calibrated action-count observation",
+        )
+        if (
+            raw["schema"] != CALIBRATED_OBSERVATION_SCHEMA
+            or raw["failed_fit_counts_as_absence"] is not False
+            or raw["model_calls_for_projection_or_replay"] != 0
+            or raw["python_is_canonical_authority"] is not True
+            or raw["lean_present"] is not False
+            or raw["lean_required"] is not False
+        ):
+            raise ActionCountCalibrationError("calibrated observation policy differs")
+        result = cls(
+            raw["calibration_artifact_address"],
+            raw["raw_observation_digest"],
+            raw["straight_action_count_lower"],
+            raw["straight_action_count_upper"],
+            raw["arc_action_count_lower"],
+            raw["arc_action_count_upper"],
+            raw["error_code"],
+        )
+        if (
+            raw["calibrated_observation_digest"]
+            != result.calibrated_observation_digest
+            or result.to_data() != dict(raw)
+        ):
+            raise ActionCountCalibrationError(
+                "calibrated observation is not canonical"
+            )
+        return result
 
 
 def apply_action_count_calibration(
@@ -754,6 +818,25 @@ def cold_replay_action_count_calibration(
     return restored
 
 
+def verify_calibrated_action_count_observation(
+    value: CalibratedActionCountObservation,
+    *,
+    artifact: ActionCountCalibrationArtifact,
+    raw_observation: RawActionCountObservation,
+) -> CalibratedActionCountObservation:
+    """Recompute exact projection; an address token alone is never authority."""
+
+    if type(value) is not CalibratedActionCountObservation:
+        raise TypeError("calibrated observation verification needs exact value")
+    restored = CalibratedActionCountObservation.from_data(value.to_data())
+    expected = apply_action_count_calibration(artifact, raw_observation)
+    if restored != expected:
+        raise ActionCountCalibrationError(
+            "calibrated observation differs from exact artifact and raw evidence"
+        )
+    return restored
+
+
 __all__ = (
     "ActionCountAxis",
     "ActionCountCalibrationArtifact",
@@ -767,4 +850,5 @@ __all__ = (
     "apply_action_count_calibration",
     "cold_replay_action_count_calibration",
     "panel_action_count_calibration_source_digest",
+    "verify_calibrated_action_count_observation",
 )
