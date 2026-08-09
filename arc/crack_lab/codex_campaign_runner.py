@@ -21,6 +21,7 @@ import fcntl
 import glob
 import hashlib
 import json
+import math
 import os
 import re
 import shlex
@@ -30,7 +31,7 @@ import stat
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -345,6 +346,8 @@ MAX_CANONICAL_ROLLBACK_ENTRIES = 100_000
 MAX_CANONICAL_ROLLBACK_BYTES = 512 * 1024 * 1024
 LIVE_BOUNDARY_POLL_SECONDS = 0.25
 LIVE_TRANSCRIPT_SCAN_ATTEMPTS = 3
+EXACT_CHILD_LIFECYCLE_SCHEMA = "scheduler_exact_child_lifecycle_v1"
+EXACT_CHILD_MAX_DRAIN_SECONDS = 300.0
 EXACT_CHILD_TERMINATE_SECONDS = 30.0
 UNQUIESCED_BOUNDARY_CODES = RebootRecovery.BOUNDARY_FINDING_COUNT_CODES
 
@@ -371,6 +374,16 @@ class ContainedNormalExitResidualError(CampaignPlanError):
     """A residual was contained, but is forbidden from clean acceptance."""
 
 
+class ExactChildHardDeadlineExceeded(CampaignPlanError):
+    """The exact child reached the outer hard lifecycle deadline."""
+
+    def __init__(
+        self, message: str, *, telemetry: "ExactChildLifecycleTelemetry"
+    ) -> None:
+        super().__init__(message)
+        self.telemetry = telemetry
+
+
 class ConfirmedGenerationTaint(CampaignPlanError):
     """Terminal authentication independently confirmed current-policy taint."""
 
@@ -388,6 +401,75 @@ class IncompleteDispatchReleaseAuthority(CampaignPlanError):
 
 
 @dataclass(frozen=True)
+class ExactChildLifecycleTelemetry:
+    soft_allocation_seconds: float
+    drain_limit_seconds: float
+    shutdown_limit_seconds: float
+    proposer_active_seconds: float
+    drain_seconds: float
+    deadline_overshoot_seconds: float
+    settlement_seconds: float
+    shutdown_seconds: float
+    elapsed_seconds: float
+    hard_deadline_exceeded: bool
+    schema: str = EXACT_CHILD_LIFECYCLE_SCHEMA
+
+    def __post_init__(self) -> None:
+        values = (
+            self.soft_allocation_seconds,
+            self.drain_limit_seconds,
+            self.shutdown_limit_seconds,
+            self.proposer_active_seconds,
+            self.drain_seconds,
+            self.deadline_overshoot_seconds,
+            self.settlement_seconds,
+            self.shutdown_seconds,
+            self.elapsed_seconds,
+        )
+        if (
+            self.schema != EXACT_CHILD_LIFECYCLE_SCHEMA
+            or not isinstance(self.hard_deadline_exceeded, bool)
+            or any(
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value < 0
+                for value in values
+            )
+        ):
+            raise ValueError(
+                "exact-child lifecycle telemetry violates its phase schema"
+            )
+        (soft, drain_limit, shutdown_limit, active, drain, overshoot,
+         settlement, shutdown, elapsed) = values
+        epsilon = 1e-6
+        if any((
+            soft <= 0,
+            drain_limit != EXACT_CHILD_MAX_DRAIN_SECONDS,
+            shutdown_limit != EXACT_CHILD_TERMINATE_SECONDS,
+            active > soft + epsilon,
+            drain > drain_limit + epsilon,
+            max(settlement, shutdown) > shutdown_limit + epsilon,
+            min(settlement, shutdown) > epsilon,
+            not math.isclose(
+                sum((active, drain, overshoot, settlement, shutdown)),
+                elapsed,
+                rel_tol=0.0,
+                abs_tol=epsilon,
+            ),
+            self.hard_deadline_exceeded
+            and (active + epsilon < soft or drain + epsilon < drain_limit),
+            not self.hard_deadline_exceeded and overshoot > epsilon,
+        )):
+            raise ValueError(
+                "exact-child lifecycle telemetry violates its phase schema"
+            )
+
+    def as_record(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class GuardedChildResult:
     returncode: int
     taint_reason: str | None = None
@@ -400,6 +482,7 @@ class GuardedChildResult:
     detached_processes_proven_absent: bool = False
     normal_exit_left_captured_descendants: bool = False
     boundary_finding_counts: tuple[tuple[str, int], ...] = ()
+    lifecycle: ExactChildLifecycleTelemetry | None = None
 
 
 @dataclass(frozen=True)
@@ -20532,6 +20615,98 @@ def _scan_live_transcript(
     return findings
 
 
+def _exact_child_soft_allocation_seconds(item: dict[str, Any]) -> float:
+    minutes = item.get("minutes")
+    if (
+        not isinstance(minutes, int)
+        or isinstance(minutes, bool)
+        or minutes <= 0
+    ):
+        raise CampaignPlanError(
+            "exact child lifecycle requires positive integer minutes"
+        )
+    return float(minutes * 60)
+
+
+def _exact_child_lifecycle_telemetry(
+    item: dict[str, Any],
+    *,
+    started_at: float,
+    direct_exit_observed_at: float | None,
+    stop_requested_at: float | None,
+    sealed_at: float,
+) -> ExactChildLifecycleTelemetry:
+    soft_seconds = _exact_child_soft_allocation_seconds(item)
+    soft_deadline_at = started_at + soft_seconds
+    hard_deadline_at = soft_deadline_at + EXACT_CHILD_MAX_DRAIN_SECONDS
+    if stop_requested_at is not None and direct_exit_observed_at is not None:
+        raise CampaignPlanError(
+            "exact child lifecycle has two terminal phase boundaries"
+        )
+    phase_ended_at = (
+        stop_requested_at
+        if stop_requested_at is not None
+        else direct_exit_observed_at
+    )
+    if phase_ended_at is None:
+        raise CampaignPlanError(
+            "exact child lifecycle lacks a terminal phase boundary"
+        )
+    if phase_ended_at < started_at or sealed_at < phase_ended_at:
+        raise CampaignPlanError(
+            "exact child lifecycle timestamps are not monotonic"
+        )
+    proposer_active_seconds = max(
+        0.0, min(phase_ended_at, soft_deadline_at) - started_at
+    )
+    drain_seconds = max(
+        0.0,
+        min(phase_ended_at, hard_deadline_at) - soft_deadline_at,
+    )
+    deadline_overshoot_seconds = max(
+        0.0, phase_ended_at - hard_deadline_at
+    )
+    settlement_seconds = (
+        sealed_at - direct_exit_observed_at
+        if direct_exit_observed_at is not None
+        else 0.0
+    )
+    shutdown_seconds = (
+        sealed_at - stop_requested_at
+        if stop_requested_at is not None
+        else 0.0
+    )
+    return ExactChildLifecycleTelemetry(
+        soft_allocation_seconds=soft_seconds,
+        drain_limit_seconds=EXACT_CHILD_MAX_DRAIN_SECONDS,
+        shutdown_limit_seconds=EXACT_CHILD_TERMINATE_SECONDS,
+        proposer_active_seconds=proposer_active_seconds,
+        drain_seconds=drain_seconds,
+        deadline_overshoot_seconds=deadline_overshoot_seconds,
+        settlement_seconds=settlement_seconds,
+        shutdown_seconds=shutdown_seconds,
+        elapsed_seconds=sealed_at - started_at,
+        hard_deadline_exceeded=phase_ended_at >= hard_deadline_at,
+    )
+
+
+def _reject_untainted_hard_lifecycle_expiry(
+    child: GuardedChildResult,
+) -> None:
+    lifecycle = child.lifecycle
+    if (
+        lifecycle is None
+        or not lifecycle.hard_deadline_exceeded
+        or child.taint_reason is not None
+    ):
+        return
+    raise ExactChildHardDeadlineExceeded(
+        "exact child exceeded its soft proposer allocation plus the bounded "
+        "outer drain window",
+        telemetry=lifecycle,
+    )
+
+
 def _launch_exact_child(
     argv: list[str],
     *,
@@ -20579,10 +20754,14 @@ def _run_guarded_child(
     terminal_returncode: int | None = None
     detached_processes_proven_absent = False
     normal_exit_left_captured_descendants = False
+    direct_exit_observed_at: float | None = None
+    stop_requested_at: float | None = None
+    sealed_at: float | None = None
 
     def stop_for_quarantine() -> int:
         nonlocal terminal_returncode, detached_processes_proven_absent
         nonlocal normal_exit_left_captured_descendants
+        nonlocal stop_requested_at, sealed_at
         if process_tree is None:
             raise CampaignPlanError(
                 "exact child custody handoff was lost before quarantine"
@@ -20594,6 +20773,7 @@ def _run_guarded_child(
                 )
             return terminal_returncode
         try:
+            stop_requested_at = time.monotonic()
             terminal = process_tree.seal(
                 stop_requested=True,
                 grace_seconds=EXACT_CHILD_TERMINATE_SECONDS,
@@ -20610,6 +20790,14 @@ def _run_guarded_child(
             raise CampaignPlanError(
                 f"exact child process-tree stop failed: {exc}"
             ) from exc
+        sealed_at = time.monotonic()
+        if (
+            sealed_at - stop_requested_at
+            > EXACT_CHILD_TERMINATE_SECONDS + 1e-6
+        ):
+            raise UnquiescedChildError(
+                "exact child stop exceeded its bounded shutdown window"
+            )
         terminal_returncode = terminal.returncode
         detached_processes_proven_absent = bool(
             getattr(
@@ -20624,6 +20812,7 @@ def _run_guarded_child(
     def finish_normal_exit() -> int:
         nonlocal terminal_returncode, detached_processes_proven_absent
         nonlocal normal_exit_left_captured_descendants
+        nonlocal sealed_at
         if process_tree is None:
             raise CampaignPlanError(
                 "exact child custody handoff was lost before finalization"
@@ -20651,6 +20840,18 @@ def _run_guarded_child(
             raise CampaignPlanError(
                 f"exact child process-tree finalization failed: {exc}"
             ) from exc
+        sealed_at = time.monotonic()
+        if direct_exit_observed_at is None:
+            raise CampaignPlanError(
+                "exact child finalization lacks its observed-exit timestamp"
+            )
+        if (
+            sealed_at - direct_exit_observed_at
+            > EXACT_CHILD_TERMINATE_SECONDS + 1e-6
+        ):
+            raise UnquiescedChildError(
+                "exact child finalization exceeded its bounded settlement window"
+            )
         terminal_returncode = terminal.returncode
         detached_processes_proven_absent = bool(
             getattr(
@@ -20685,6 +20886,204 @@ def _run_guarded_child(
         )
         return tuple(sorted(counts.items()))
 
+    class HardDeadlineDue(Exception):
+        pass
+
+    def deadline_checkpoint(*, final: bool) -> None:
+        if (
+            not final
+            and taint_reason is None
+            and time.monotonic() >= hard_deadline_at
+        ):
+            raise HardDeadlineDue
+
+    def observe_generation(*, final: bool) -> None:
+        nonlocal workspace, protected, monitor, transcript, transcript_seen
+        nonlocal workspace_identity, protected_identity, taint_reason
+        nonlocal descendant_quiescence_unproven
+        nonlocal workspace_boundary_findings, transcript_boundary_findings
+
+        deadline_checkpoint(final=final)
+        current_workspaces = _physical_directory_names(scratch, prefix)
+        deadline_checkpoint(final=final)
+        new_workspaces = set(current_workspaces) - set(workspaces_before)
+        if len(new_workspaces) > 1:
+            if not final:
+                stop_for_quarantine()
+            raise CampaignPlanError(
+                "one dispatch created multiple candidate workspaces"
+            )
+        current_protected = _physical_directory_names(protected_root, prefix)
+        deadline_checkpoint(final=final)
+        new_protected = set(current_protected) - set(protected_before)
+        if len(new_protected) > 1:
+            if not final:
+                stop_for_quarantine()
+            raise CampaignPlanError(
+                "one dispatch created multiple protected evidence roots"
+            )
+        if new_workspaces:
+            name = next(iter(new_workspaces))
+            if new_protected and new_protected != {name}:
+                if not final:
+                    stop_for_quarantine()
+                raise CampaignPlanError(
+                    "live workspace and protected evidence identities diverged"
+                )
+            candidate = scratch / name
+            if workspace is not None and candidate != workspace:
+                if not final:
+                    stop_for_quarantine()
+                raise CampaignPlanError("live workspace identity changed")
+            workspace = candidate
+            protected = protected_root / name
+            observed_workspace_identity = current_workspaces[name]
+            if (
+                workspace_identity is not None
+                and observed_workspace_identity != workspace_identity
+            ):
+                if not final:
+                    stop_for_quarantine()
+                raise CampaignPlanError(
+                    "live workspace directory identity changed"
+                )
+            workspace_identity = observed_workspace_identity
+            if name in current_protected:
+                observed_protected_identity = current_protected[name]
+                if (
+                    protected_identity is not None
+                    and observed_protected_identity != protected_identity
+                ):
+                    if not final:
+                        stop_for_quarantine()
+                    raise CampaignPlanError(
+                        "live protected directory identity changed"
+                    )
+                protected_identity = observed_protected_identity
+            # Workspace creation precedes the legacy lock and host scaffold
+            # writes.  Do not scan a partially written host template; model
+            # authority begins only after the exact runner lock is active.
+            lock_active = _workspace_lock_is_active(workspace)
+            deadline_checkpoint(final=final)
+            if monitor is None and (lock_active or final):
+                trusted = _historical_tester_scaffolds(item, workspace)
+                deadline_checkpoint(final=final)
+                module_root = (
+                    Path(item["historical_runner"]["worktree"])
+                    / "arc"
+                    / "crack_lab"
+                    if isinstance(item.get("historical_runner"), dict)
+                    else HERE
+                )
+                monitor = Boundary.LiveBoundaryMonitor(
+                    workspace,
+                    arena_module_root=module_root,
+                    trusted_host_scaffolds=trusted,
+                    allow_historical_transport_banner=historical,
+                )
+                deadline_checkpoint(final=final)
+            if monitor is not None:
+                findings = monitor.scan_workspace()
+                findings = Legs._filter_trusted_scaffold_root_literal(
+                    workspace,
+                    findings,
+                    trusted=monitor.trusted_host_scaffolds,
+                )
+                workspace_boundary_findings = tuple(findings)
+                if any(
+                    finding.code in UNQUIESCED_BOUNDARY_CODES
+                    for finding in findings
+                ):
+                    descendant_quiescence_unproven = True
+                if findings and taint_reason is None:
+                    taint_reason = findings[0].describe()
+                deadline_checkpoint(final=final)
+                assert protected is not None
+                selected, inventory_reason = _live_transcript_inventory(
+                    item, protected
+                )
+                if inventory_reason is not None and taint_reason is None:
+                    taint_reason = inventory_reason
+                deadline_checkpoint(final=final)
+                if selected is not None:
+                    if transcript is not None and selected != transcript:
+                        taint_reason = taint_reason or (
+                            "live transcript identity changed"
+                        )
+                    transcript = selected
+                    transcript_seen = True
+                    transcript_findings = _scan_live_transcript(
+                        monitor,
+                        selected, final=final
+                    )
+                    transcript_boundary_findings = tuple(
+                        transcript_findings
+                    )
+                    if any(
+                        finding.code in UNQUIESCED_BOUNDARY_CODES
+                        for finding in transcript_findings
+                    ):
+                        descendant_quiescence_unproven = True
+                    if transcript_findings and taint_reason is None:
+                        taint_reason = transcript_findings[0].describe()
+                    deadline_checkpoint(final=final)
+                elif final and transcript_seen and taint_reason is None:
+                    taint_reason = "live transcript disappeared before sealing"
+        elif new_protected:
+            if not final:
+                stop_for_quarantine()
+            raise CampaignPlanError(
+                "protected evidence appeared without its exact workspace"
+            )
+        if workspace is not None and workspace.name not in current_workspaces:
+            if not final:
+                stop_for_quarantine()
+            raise CampaignPlanError("live workspace directory disappeared")
+        if (
+            protected_identity is not None
+            and protected is not None
+            and protected.name not in current_protected
+        ):
+            if not final:
+                stop_for_quarantine()
+            raise CampaignPlanError("live protected directory disappeared")
+        deadline_checkpoint(final=final)
+
+    def guarded_result(returncode: int) -> GuardedChildResult:
+        if sealed_at is None:
+            raise CampaignPlanError(
+                "exact child result lacks its sealed lifecycle timestamp"
+            )
+        return GuardedChildResult(
+            int(returncode),
+            taint_reason,
+            workspace.name if workspace is not None else None,
+            transcript.name if transcript is not None else None,
+            workspace_identity,
+            protected_identity,
+            (
+                descendant_quiescence_unproven
+                and not detached_processes_proven_absent
+            ),
+            True,
+            detached_processes_proven_absent,
+            normal_exit_left_captured_descendants,
+            boundary_finding_counts(),
+            lifecycle=_exact_child_lifecycle_telemetry(
+                item,
+                started_at=lifecycle_started_at,
+                direct_exit_observed_at=direct_exit_observed_at,
+                stop_requested_at=stop_requested_at,
+                sealed_at=sealed_at,
+            ),
+        )
+
+    lifecycle_started_at = time.monotonic()
+    hard_deadline_at = (
+        lifecycle_started_at
+        + _exact_child_soft_allocation_seconds(item)
+        + EXACT_CHILD_MAX_DRAIN_SECONDS
+    )
     try:
         process_tree = _launch_exact_child(
             argv,
@@ -20698,194 +21097,38 @@ def _run_guarded_child(
             process_tree_owner[0] = process_tree
         while True:
             try:
-                final = process_tree.observe_exit()
-            except Contiguous.ScopedProcessContainmentError as exc:
-                raise UnquiescedChildError(
-                    "live exact child observation lost process containment"
-                ) from exc
-            except Contiguous.SupervisorContractError as exc:
-                raise CampaignPlanError(
-                    f"live exact child observation failed: {exc}"
-                ) from exc
-            if final:
-                # Direct-child exit is not transcript finality: a captured
-                # descendant may still hold and append to the JSONL stream.
-                # Seal the complete process tree before any terminal boundary
-                # scan so ``final=True`` means that no writer can remain.
-                finish_normal_exit()
-            current_workspaces = _physical_directory_names(scratch, prefix)
-            new_workspaces = set(current_workspaces) - set(workspaces_before)
-            if len(new_workspaces) > 1:
-                if not final:
-                    stop_for_quarantine()
-                raise CampaignPlanError(
-                    "one dispatch created multiple candidate workspaces"
-                )
-            current_protected = _physical_directory_names(protected_root, prefix)
-            new_protected = set(current_protected) - set(protected_before)
-            if len(new_protected) > 1:
-                if not final:
-                    stop_for_quarantine()
-                raise CampaignPlanError(
-                    "one dispatch created multiple protected evidence roots"
-                )
-            if new_workspaces:
-                name = next(iter(new_workspaces))
-                if new_protected and new_protected != {name}:
-                    if not final:
-                        stop_for_quarantine()
+                deadline_checkpoint(final=False)
+                try:
+                    final = process_tree.observe_exit()
+                except Contiguous.ScopedProcessContainmentError as exc:
+                    raise UnquiescedChildError(
+                        "live exact child observation lost process containment"
+                    ) from exc
+                except Contiguous.SupervisorContractError as exc:
                     raise CampaignPlanError(
-                        "live workspace and protected evidence identities diverged"
-                    )
-                candidate = scratch / name
-                if workspace is not None and candidate != workspace:
-                    if not final:
-                        stop_for_quarantine()
-                    raise CampaignPlanError("live workspace identity changed")
-                workspace = candidate
-                protected = protected_root / name
-                observed_workspace_identity = current_workspaces[name]
-                if (
-                    workspace_identity is not None
-                    and observed_workspace_identity != workspace_identity
-                ):
-                    if not final:
-                        stop_for_quarantine()
-                    raise CampaignPlanError(
-                        "live workspace directory identity changed"
-                    )
-                workspace_identity = observed_workspace_identity
-                if name in current_protected:
-                    observed_protected_identity = current_protected[name]
-                    if (
-                        protected_identity is not None
-                        and observed_protected_identity != protected_identity
-                    ):
-                        if not final:
-                            stop_for_quarantine()
-                        raise CampaignPlanError(
-                            "live protected directory identity changed"
-                        )
-                    protected_identity = observed_protected_identity
-                # Workspace creation precedes the legacy lock and host scaffold
-                # writes.  Do not scan a partially written host template; model
-                # authority begins only after the exact runner lock is active.
-                if monitor is None and (
-                    _workspace_lock_is_active(workspace) or final
-                ):
-                    trusted = _historical_tester_scaffolds(item, workspace)
-                    module_root = (
-                        Path(item["historical_runner"]["worktree"])
-                        / "arc"
-                        / "crack_lab"
-                        if isinstance(item.get("historical_runner"), dict)
-                        else HERE
-                    )
-                    monitor = Boundary.LiveBoundaryMonitor(
-                        workspace,
-                        arena_module_root=module_root,
-                        trusted_host_scaffolds=trusted,
-                        allow_historical_transport_banner=historical,
-                    )
-                if monitor is not None:
-                    findings = monitor.scan_workspace()
-                    findings = Legs._filter_trusted_scaffold_root_literal(
-                        workspace,
-                        findings,
-                        trusted=monitor.trusted_host_scaffolds,
-                    )
-                    workspace_boundary_findings = tuple(findings)
-                    if any(
-                        finding.code in UNQUIESCED_BOUNDARY_CODES
-                        for finding in findings
-                    ):
-                        descendant_quiescence_unproven = True
-                    if findings and taint_reason is None:
-                        taint_reason = findings[0].describe()
-                    assert protected is not None
-                    selected, inventory_reason = _live_transcript_inventory(
-                        item, protected
-                    )
-                    if inventory_reason is not None and taint_reason is None:
-                        taint_reason = inventory_reason
-                    if selected is not None:
-                        if transcript is not None and selected != transcript:
-                            taint_reason = taint_reason or (
-                                "live transcript identity changed"
-                            )
-                        transcript = selected
-                        transcript_seen = True
-                        transcript_findings = _scan_live_transcript(
-                            monitor,
-                            selected, final=final
-                        )
-                        transcript_boundary_findings = tuple(
-                            transcript_findings
-                        )
-                        if any(
-                            finding.code in UNQUIESCED_BOUNDARY_CODES
-                            for finding in transcript_findings
-                        ):
-                            descendant_quiescence_unproven = True
-                        if transcript_findings and taint_reason is None:
-                            taint_reason = transcript_findings[0].describe()
-                    elif final and transcript_seen and taint_reason is None:
-                        taint_reason = "live transcript disappeared before sealing"
-            elif new_protected:
-                if not final:
-                    stop_for_quarantine()
-                raise CampaignPlanError(
-                    "protected evidence appeared without its exact workspace"
-                )
-            if (
-                workspace is not None
-                and workspace.name not in current_workspaces
-            ):
-                if not final:
-                    stop_for_quarantine()
-                raise CampaignPlanError("live workspace directory disappeared")
-            if (
-                protected_identity is not None
-                and protected is not None
-                and protected.name not in current_protected
-            ):
-                if not final:
-                    stop_for_quarantine()
-                raise CampaignPlanError(
-                    "live protected directory disappeared"
-                )
+                        f"live exact child observation failed: {exc}"
+                    ) from exc
+                observed_at = time.monotonic()
+                if final:
+                    if direct_exit_observed_at is None:
+                        direct_exit_observed_at = observed_at
+                    # Direct-child exit is not transcript finality: seal the
+                    # complete process tree before the terminal boundary scan.
+                    finish_normal_exit()
+                else:
+                    deadline_checkpoint(final=False)
+                observe_generation(final=final)
+            except HardDeadlineDue:
+                returncode = stop_for_quarantine()
+                observe_generation(final=True)
+                _revalidate_historical_control(item)
+                return guarded_result(returncode)
             if taint_reason is not None:
                 returncode = stop_for_quarantine()
-                # The legacy runner seals its ledger/WIP receipt while handling
-                # SIGTERM.  Re-poll the final append-only state after it exits.
-                if monitor is not None and transcript is not None:
-                    terminal_findings = monitor.scan_transcript(
-                        transcript, final=True
-                    )
-                    transcript_boundary_findings = tuple(terminal_findings)
-                    if any(
-                        finding.code in UNQUIESCED_BOUNDARY_CODES
-                        for finding in terminal_findings
-                    ):
-                        descendant_quiescence_unproven = True
-                    if terminal_findings and taint_reason is None:
-                        taint_reason = terminal_findings[0].describe()
-                return GuardedChildResult(
-                    int(returncode),
-                    taint_reason,
-                    workspace.name if workspace is not None else None,
-                    transcript.name if transcript is not None else None,
-                    workspace_identity,
-                    protected_identity,
-                    (
-                        descendant_quiescence_unproven
-                        and not detached_processes_proven_absent
-                    ),
-                    True,
-                    detached_processes_proven_absent,
-                    normal_exit_left_captured_descendants,
-                    boundary_finding_counts(),
-                )
+                # SIGTERM may create or mutate any generation boundary.  Repeat
+                # the complete inventory and both terminal scans after sealing.
+                observe_generation(final=True)
+                return guarded_result(returncode)
             if final:
                 returncode = finish_normal_exit()
                 _revalidate_historical_control(item)
@@ -20904,23 +21147,11 @@ def _run_guarded_child(
                         "successful dispatch lacks one complete live generation "
                         "and sealed transcript inventory"
                     )
-                return GuardedChildResult(
-                    int(returncode),
-                    None,
-                    workspace.name if workspace is not None else None,
-                    transcript.name if transcript is not None else None,
-                    workspace_identity,
-                    protected_identity,
-                    (
-                        descendant_quiescence_unproven
-                        and not detached_processes_proven_absent
-                    ),
-                    True,
-                    detached_processes_proven_absent,
-                    normal_exit_left_captured_descendants,
-                    boundary_finding_counts(),
-                )
-            time.sleep(LIVE_BOUNDARY_POLL_SECONDS)
+                return guarded_result(returncode)
+            remaining = hard_deadline_at - time.monotonic()
+            if remaining <= 0:
+                continue
+            time.sleep(min(LIVE_BOUNDARY_POLL_SECONDS, remaining))
     except BaseException as failure:
         process_tree = process_tree_owner[0] or process_tree
         details = {
@@ -22433,6 +22664,7 @@ def _run_item_locked(
                     "protected_identity": child.protected_identity,
                 },
             )
+        _reject_untainted_hard_lifecycle_expiry(child)
         if _zero_ledger_suffix_is_exact(ledger_before):
             if (
                 child.normal_exit_left_captured_descendants

@@ -2460,6 +2460,103 @@ def test_nonzero_confirmed_taint_is_noncounting_and_exactly_cleaned(
     assert rows[0]["observed_tokens"] == 123
 
 
+def _hard_deadline_telemetry(item, *, shutdown_seconds=7.0):
+    soft_seconds = float(item["minutes"] * 60)
+    stop_requested_at = soft_seconds + R.EXACT_CHILD_MAX_DRAIN_SECONDS
+    return R._exact_child_lifecycle_telemetry(
+        item,
+        started_at=0.0,
+        direct_exit_observed_at=None,
+        stop_requested_at=stop_requested_at,
+        sealed_at=stop_requested_at + shutdown_seconds,
+    )
+
+
+def test_run_item_locked_quarantines_untainted_hard_deadline(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    lifecycle = _hard_deadline_telemetry(fixture["item"])
+    rollback_calls = []
+    real_rollback = R._rollback_control_failure_canonical
+
+    def deadline_child(*_args, **_kwargs):
+        return R.GuardedChildResult(
+            returncode=-signal.SIGTERM,
+            process_tree_quiesced=True,
+            detached_processes_proven_absent=True,
+            lifecycle=lifecycle,
+        )
+
+    def observed_rollback(*args, **kwargs):
+        rollback_calls.append(True)
+        return real_rollback(*args, **kwargs)
+
+    monkeypatch.setattr(R, "_run_guarded_child", deadline_child)
+    monkeypatch.setattr(
+        R, "_rollback_control_failure_canonical", observed_rollback
+    )
+
+    with pytest.raises(R.ExactChildHardDeadlineExceeded) as raised:
+        R._run_item_locked(
+            fixture["plan"],
+            fixture["item"],
+            allowance=fixture["allowance"],
+        )
+
+    assert raised.value.telemetry is lifecycle
+    assert rollback_calls == [True]
+    assert R.Guard.read_ledger(fixture["ledger"]) == []
+    assert fixture["workspace"].is_dir()
+    assert fixture["protected"].is_dir()
+    marker = (
+        tmp_path
+        / "agent_solutions"
+        / ".campaign_quarantine"
+        / "ar25.jsonl"
+    )
+    record = json.loads(marker.read_text().splitlines()[-1])
+    assert record["exception_type"] == "ExactChildHardDeadlineExceeded"
+    assert record["event"] == "dispatch_failed"
+
+
+def test_run_item_locked_deadline_taint_uses_taint_recovery(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    lifecycle = _hard_deadline_telemetry(fixture["item"])
+
+    def deadline_taint_child(*_args, **_kwargs):
+        R.Guard.append_ledger(fixture["record"], fixture["ledger"])
+        return R.GuardedChildResult(
+            returncode=1,
+            taint_reason="authenticated boundary finding",
+            process_tree_quiesced=True,
+            detached_processes_proven_absent=True,
+            lifecycle=lifecycle,
+        )
+
+    monkeypatch.setattr(R, "_run_guarded_child", deadline_taint_child)
+
+    result = R._run_item_locked(
+        fixture["plan"],
+        fixture["item"],
+        allowance=fixture["allowance"],
+    )
+
+    assert result["result"] == "tainted_noncounting"
+    assert not fixture["workspace"].exists()
+    assert not fixture["protected"].exists()
+    assert [
+        row["event"] for row in R.Guard.read_ledger(fixture["ledger"])
+    ] == [
+        "codex_exec",
+        "codex_exec_classification_correction",
+        "codex_taint_cleanup_completed",
+        "codex_dispatch_release_authorized",
+    ]
+
+
 def test_confirmed_taint_without_scoped_tree_proof_preserves_quarantine(
     tmp_path, monkeypatch
 ):
@@ -5483,6 +5580,332 @@ def test_incomplete_prior_taint_cleanup_blocks_new_dispatch(
     assert len(R.Guard.read_ledger(fixture["ledger"])) == 1
 
 
+def _control_only_guarded_child(
+    tmp_path,
+    monkeypatch,
+    *,
+    exits_immediately,
+    seal_seconds,
+    on_seal=None,
+    inventory_advance_on_call=None,
+    inventory_advance_seconds=0.0,
+    sleep_overshoot_seconds=0.0,
+    monotonic_advance_on_call=None,
+    monotonic_advance_seconds=0.0,
+):
+    class Clock:
+        now = 0.0
+        monotonic_calls = 0
+
+        def monotonic(self):
+            self.monotonic_calls += 1
+            if self.monotonic_calls == monotonic_advance_on_call:
+                self.now += monotonic_advance_seconds
+            return self.now
+
+        def sleep(self, seconds):
+            self.now += seconds + sleep_overshoot_seconds
+
+    clock = Clock()
+    seal_calls = []
+
+    class Tree:
+        pid = 123
+        sealed = False
+
+        def observe_exit(self):
+            return exits_immediately
+
+        def seal(self, *, stop_requested, grace_seconds):
+            seal_calls.append((stop_requested, grace_seconds))
+            if on_seal is not None:
+                on_seal(stop_requested)
+            clock.now += seal_seconds
+            self.sealed = True
+            return SimpleNamespace(
+                returncode=-signal.SIGTERM if stop_requested else 1,
+                detached_processes_proven_absent=True,
+                normal_exit_left_captured_descendants=False,
+            )
+
+    tree = Tree()
+    opaque_invocation = []
+    protected = tmp_path / ".proposer_transcripts"
+    protected.mkdir()
+    physical_directory_names = R._physical_directory_names
+    inventory_calls = {"count": 0}
+
+    def timed_inventory(*args, **kwargs):
+        inventory_calls["count"] += 1
+        result = physical_directory_names(*args, **kwargs)
+        if inventory_calls["count"] == inventory_advance_on_call:
+            clock.now += inventory_advance_seconds
+        return result
+
+    def launch(received, *, cwd, env, ownership):
+        assert received is opaque_invocation
+        ownership[0] = tree
+        return tree
+
+    monkeypatch.setattr(R.Legs, "SCRATCH", str(tmp_path))
+    monkeypatch.setattr(R, "_dispatch_workspace_prefix", lambda item: "unit-")
+    monkeypatch.setattr(
+        R, "_evidence_schema", lambda item: "sealed_transcript_only_v1"
+    )
+    monkeypatch.setattr(R, "_revalidate_historical_control", lambda item: None)
+    monkeypatch.setattr(R, "_launch_exact_child", launch)
+    monkeypatch.setattr(R, "_physical_directory_names", timed_inventory)
+    monkeypatch.setattr(
+        R,
+        "time",
+        SimpleNamespace(monotonic=clock.monotonic, sleep=clock.sleep),
+    )
+    result = R._run_guarded_child(
+        {"minutes": 1}, opaque_invocation, cwd=tmp_path, env=None
+    )
+    return result, seal_calls
+
+
+def test_guarded_child_reports_normal_lifecycle_phases(tmp_path, monkeypatch):
+    result, seal_calls = _control_only_guarded_child(
+        tmp_path,
+        monkeypatch,
+        exits_immediately=True,
+        seal_seconds=12.0,
+    )
+
+    assert seal_calls == [(False, R.EXACT_CHILD_TERMINATE_SECONDS)]
+    assert result.lifecycle is not None
+    assert result.lifecycle.as_record() == {
+        "schema": R.EXACT_CHILD_LIFECYCLE_SCHEMA,
+        "soft_allocation_seconds": 60.0,
+        "drain_limit_seconds": R.EXACT_CHILD_MAX_DRAIN_SECONDS,
+        "shutdown_limit_seconds": R.EXACT_CHILD_TERMINATE_SECONDS,
+        "proposer_active_seconds": 0.0,
+        "drain_seconds": 0.0,
+        "deadline_overshoot_seconds": 0.0,
+        "settlement_seconds": 12.0,
+        "shutdown_seconds": 0.0,
+        "elapsed_seconds": 12.0,
+        "hard_deadline_exceeded": False,
+    }
+
+
+def test_guarded_child_hard_deadline_has_bounded_drain_and_shutdown(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(R, "LIVE_BOUNDARY_POLL_SECONDS", 60.0)
+    result, seal_calls = _control_only_guarded_child(
+        tmp_path,
+        monkeypatch,
+        exits_immediately=False,
+        seal_seconds=7.0,
+    )
+
+    assert seal_calls == [(True, R.EXACT_CHILD_TERMINATE_SECONDS)]
+    assert result.lifecycle is not None
+    assert result.lifecycle.proposer_active_seconds == 60.0
+    assert result.lifecycle.drain_seconds == R.EXACT_CHILD_MAX_DRAIN_SECONDS
+    assert result.lifecycle.deadline_overshoot_seconds == 0.0
+    assert result.lifecycle.settlement_seconds == 0.0
+    assert result.lifecycle.shutdown_seconds == 7.0
+    assert result.lifecycle.elapsed_seconds == 367.0
+    assert result.lifecycle.hard_deadline_exceeded is True
+    with pytest.raises(R.ExactChildHardDeadlineExceeded) as raised:
+        R._reject_untainted_hard_lifecycle_expiry(result)
+    assert raised.value.telemetry is result.lifecycle
+
+
+def test_guarded_child_taint_keeps_precedence_over_hard_deadline(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(R, "LIVE_BOUNDARY_POLL_SECONDS", 60.0)
+    workspace = tmp_path / "unit-terminal"
+    protected = tmp_path / ".proposer_transcripts" / workspace.name
+    transcript = protected / "terminal.jsonl"
+    terminal_scans = []
+
+    class Finding:
+        code = "synthetic_shutdown_taint"
+
+        @staticmethod
+        def describe():
+            return "authenticated shutdown boundary finding"
+
+    class Monitor:
+        trusted_host_scaffolds = ()
+
+        @staticmethod
+        def scan_workspace():
+            return []
+
+        @staticmethod
+        def scan_transcript(selected, *, final):
+            terminal_scans.append((selected, final))
+            return [Finding()]
+
+    def create_shutdown_taint(stop_requested):
+        assert stop_requested is True
+        workspace.mkdir()
+        protected.mkdir()
+        transcript.touch()
+
+    monkeypatch.setattr(R, "_historical_tester_scaffolds", lambda *_args: ())
+    monkeypatch.setattr(
+        R.Boundary, "LiveBoundaryMonitor", lambda *_args, **_kwargs: Monitor()
+    )
+    monkeypatch.setattr(
+        R.Legs,
+        "_filter_trusted_scaffold_root_literal",
+        lambda _workspace, findings, *, trusted: findings,
+    )
+    monkeypatch.setattr(
+        R,
+        "_live_transcript_inventory",
+        lambda *_args: (transcript, None),
+    )
+    result, seal_calls = _control_only_guarded_child(
+        tmp_path,
+        monkeypatch,
+        exits_immediately=False,
+        seal_seconds=7.0,
+        on_seal=create_shutdown_taint,
+    )
+
+    assert seal_calls == [(True, R.EXACT_CHILD_TERMINATE_SECONDS)]
+    assert result.workspace == workspace.name
+    assert result.transcript == transcript.name
+    assert result.taint_reason == "authenticated shutdown boundary finding"
+    assert terminal_scans == [(transcript, True)]
+    assert result.lifecycle is not None
+    assert result.lifecycle.hard_deadline_exceeded is True
+    assert R._reject_untainted_hard_lifecycle_expiry(result) is None
+
+
+def test_guarded_child_terminal_scan_exception_fails_closed(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(R, "LIVE_BOUNDARY_POLL_SECONDS", 60.0)
+    workspace = tmp_path / "unit-terminal"
+    protected = tmp_path / ".proposer_transcripts" / workspace.name
+    transcript = protected / "terminal.jsonl"
+
+    class Monitor:
+        trusted_host_scaffolds = ()
+
+        @staticmethod
+        def scan_workspace():
+            return []
+
+        @staticmethod
+        def scan_transcript(_selected, *, final):
+            assert final is True
+            raise RuntimeError("synthetic terminal scan failure")
+
+    def create_shutdown_evidence(stop_requested):
+        assert stop_requested is True
+        workspace.mkdir()
+        protected.mkdir()
+        transcript.touch()
+
+    monkeypatch.setattr(R, "_historical_tester_scaffolds", lambda *_args: ())
+    monkeypatch.setattr(
+        R.Boundary, "LiveBoundaryMonitor", lambda *_args, **_kwargs: Monitor()
+    )
+    monkeypatch.setattr(
+        R.Legs,
+        "_filter_trusted_scaffold_root_literal",
+        lambda _workspace, findings, *, trusted: findings,
+    )
+    monkeypatch.setattr(
+        R,
+        "_live_transcript_inventory",
+        lambda *_args: (transcript, None),
+    )
+
+    with pytest.raises(RuntimeError, match="synthetic terminal scan failure"):
+        _control_only_guarded_child(
+            tmp_path,
+            monkeypatch,
+            exits_immediately=False,
+            seal_seconds=7.0,
+            on_seal=create_shutdown_evidence,
+        )
+
+
+def test_guarded_child_scan_overshoot_is_not_counted_as_drain(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(R, "LIVE_BOUNDARY_POLL_SECONDS", 350.0)
+    result, seal_calls = _control_only_guarded_child(
+        tmp_path,
+        monkeypatch,
+        exits_immediately=False,
+        seal_seconds=7.0,
+        inventory_advance_on_call=5,
+        inventory_advance_seconds=15.0,
+    )
+
+    assert seal_calls == [(True, R.EXACT_CHILD_TERMINATE_SECONDS)]
+    assert result.lifecycle is not None
+    assert result.lifecycle.drain_seconds == R.EXACT_CHILD_MAX_DRAIN_SECONDS
+    assert result.lifecycle.deadline_overshoot_seconds == 5.0
+    assert result.lifecycle.shutdown_seconds == 7.0
+    assert result.lifecycle.elapsed_seconds == 372.0
+
+
+def test_guarded_child_poll_overshoot_is_not_counted_as_drain(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(R, "LIVE_BOUNDARY_POLL_SECONDS", 360.0)
+    result, seal_calls = _control_only_guarded_child(
+        tmp_path,
+        monkeypatch,
+        exits_immediately=False,
+        seal_seconds=7.0,
+        sleep_overshoot_seconds=4.0,
+    )
+
+    assert seal_calls == [(True, R.EXACT_CHILD_TERMINATE_SECONDS)]
+    assert result.lifecycle is not None
+    assert result.lifecycle.drain_seconds == R.EXACT_CHILD_MAX_DRAIN_SECONDS
+    assert result.lifecycle.deadline_overshoot_seconds == 4.0
+    assert result.lifecycle.shutdown_seconds == 7.0
+
+
+def test_guarded_child_clock_crossing_after_scan_uses_deadline_path(
+    tmp_path, monkeypatch
+):
+    result, seal_calls = _control_only_guarded_child(
+        tmp_path,
+        monkeypatch,
+        exits_immediately=False,
+        seal_seconds=7.0,
+        monotonic_advance_on_call=9,
+        monotonic_advance_seconds=365.0,
+    )
+
+    assert seal_calls == [(True, R.EXACT_CHILD_TERMINATE_SECONDS)]
+    assert result.lifecycle is not None
+    assert result.lifecycle.hard_deadline_exceeded is True
+    assert result.lifecycle.deadline_overshoot_seconds == 5.0
+
+
+def test_guarded_child_rejects_shutdown_bound_overrun(tmp_path, monkeypatch):
+    monkeypatch.setattr(R, "LIVE_BOUNDARY_POLL_SECONDS", 60.0)
+
+    with pytest.raises(
+        R.UnquiescedChildError,
+        match="exceeded its bounded shutdown window",
+    ):
+        _control_only_guarded_child(
+            tmp_path,
+            monkeypatch,
+            exits_immediately=False,
+            seal_seconds=R.EXACT_CHILD_TERMINATE_SECONDS + 1.0,
+        )
+
+
 def _historical_watchdog_fixture(tmp_path, monkeypatch):
     scratch = tmp_path / "scratch"
     protected_root = scratch / ".proposer_transcripts"
@@ -5809,7 +6232,10 @@ def test_guarded_child_accepts_legacy_banner_and_split_clean_json_growth(
         workspace_identity=(workspace.stat().st_dev, workspace.stat().st_ino),
         protected_identity=(protected.stat().st_dev, protected.stat().st_ino),
         process_tree_quiesced=True,
+        lifecycle=result.lifecycle,
     )
+    assert result.lifecycle is not None
+    assert result.lifecycle.schema == R.EXACT_CHILD_LIFECYCLE_SCHEMA
     assert phase["sleeps"] == 2
     assert len(spawned) == 1
     assert spawned[0].seal_calls == [
