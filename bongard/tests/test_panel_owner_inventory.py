@@ -219,6 +219,10 @@ def test_artifact_roundtrip_tamper_custody_and_ontology_adapter() -> None:
     assert generic.panel_digest == artifact.panel_png_digest
     assert generic.owners == artifact.owners
     assert generic.enumeration_complete is True
+    assert generic.enumeration_receipt_digest == artifact.receipt.receipt_digest
+    assert generic.enumeration_receipt_digest != (
+        artifact.receipt.transport_receipt_digest
+    )
 
     for mutation in ("prompt_digest", "output_schema_digest"):
         data = deepcopy(artifact.to_data())

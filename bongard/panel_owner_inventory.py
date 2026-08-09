@@ -1022,7 +1022,12 @@ class PanelOwnerInventoryArtifact:
             self.panel_png_digest,
             protocol_binding,
             EnumerationResolution.GRID16_FULL_PANEL,
-            self.receipt.transport_receipt_digest,
+            # Retain the response-bound inventory receipt, not merely the
+            # underlying transport receipt.  The former commits the exact
+            # request, panel identity, parsed response, and transport receipt;
+            # keeping only the latter loses the response-to-owner chain when
+            # this artifact is projected into the generic ontology type.
+            self.receipt.receipt_digest,
             True,
             self.owners,
         )
