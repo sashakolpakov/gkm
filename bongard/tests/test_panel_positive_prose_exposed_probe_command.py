@@ -15,8 +15,10 @@ from bongard.panel_positive_prose_exposed_probe_command import (
     _interval,
     _load_componentwise_semantic_cue,
     _load_frozen_semantic_cue,
+    _strict_component_observer_schema,
     run_positive_prose_exposed_probe,
 )
+from bongard.transport import validate_codex_strict_output_schema
 
 
 def test_positive_cue_and_fixed_interval_projection() -> None:
@@ -116,6 +118,7 @@ def test_preregistered_known_cue_skips_proposer_and_cannot_authorize_target() ->
 
 
 def test_componentwise_cue_scores_atoms_before_python_conjunction() -> None:
+    validate_codex_strict_output_schema(_strict_component_observer_schema())
     cue_path = (
         Path(__file__).parents[1]
         / "data"

@@ -155,7 +155,7 @@ def _strict_observer_schema() -> dict[str, object]:
 
 def _strict_component_observer_schema() -> dict[str, object]:
     properties = {
-        name: {"type": "integer", "minimum": 0, "maximum": 4}
+        name: {"type": "integer"}
         for name in (
             "component_1_lower",
             "component_1_upper",
