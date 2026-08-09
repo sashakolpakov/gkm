@@ -5,6 +5,8 @@ import inspect
 
 import pytest
 
+import bongard.panel_feature_closed_catalog_inventory as closed_catalog_module
+import bongard.panel_feature_predicate as predicate_module
 from bongard.canonical import canonical_digest
 from bongard.panel_batched_typed_codex_observer import (
     complete_whole_panel_feature_axes,
@@ -27,7 +29,12 @@ from bongard.panel_feature_observation import (
     eligible_axis_bindings,
 )
 from bongard.panel_feature_observer_protocol import all_axis_variants
-from bongard.panel_feature_predicate import EngineeringDisposition
+from bongard.panel_feature_predicate import (
+    AllOf,
+    EngineeringDisposition,
+    enumerate_all_of,
+    panel_feature_predicate_algorithm_digest,
+)
 from bongard.panel_feature_proposer import PanelFeatureProposerResult
 from bongard.panel_soft_ontology import (
     FeatureFamily,
@@ -200,6 +207,36 @@ def test_complete_catalog_emits_typed_primary_gap_and_cold_replays() -> None:
     )
     assert replayed == artifact
     assert ClosedCatalogSupportInventory.from_data(artifact.to_data()) == artifact
+
+
+def test_every_optimized_formula_round_trips_through_public_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exhaust the finite catalog, not a sampled formula witness.
+
+    The public implementation deliberately verifies its source on every
+    constructor/serializer call.  Pinning that already-verified no-argument
+    result inside this regression preserves the exact public semantics while
+    avoiding thousands of redundant reads of the same sealed source bytes.
+    """
+
+    algorithm_digest = panel_feature_predicate_algorithm_digest()
+    monkeypatch.setattr(
+        predicate_module,
+        "panel_feature_predicate_algorithm_digest",
+        lambda: algorithm_digest,
+    )
+    vocabulary = complete_whole_panel_feature_vocabulary()
+    for orientation in NativeOrientation:
+        optimized = closed_catalog_module._complete_formula_inventory(orientation)
+        authoritative = enumerate_all_of(vocabulary, orientation)
+
+        assert len(optimized) == 3_081
+        assert optimized == authoritative
+        assert all(type(item) is AllOf for item in optimized)
+        assert tuple(AllOf.from_data(item.to_data()) for item in optimized) == (
+            optimized
+        )
 
 
 def test_composite_is_admitted_even_when_each_atom_fails_contrast_rule() -> None:

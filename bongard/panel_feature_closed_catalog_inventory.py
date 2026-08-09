@@ -579,15 +579,116 @@ def _all_of_data_fast(
     }
 
 
+def _all_of_static_data(value: Mapping[str, object]) -> dict[str, object]:
+    """Return the public serialization fields that cannot vary by formula."""
+
+    return {
+        key: item
+        for key, item in value.items()
+        if key not in {"spec_digests", "formula_digest"}
+    }
+
+
+def _public_all_of_templates(
+    *,
+    vocabulary: FeatureVocabulary,
+    native_orientation: NativeOrientation,
+    atom_rows: tuple[tuple[str, ...], ...],
+    algorithm_digest: str,
+) -> dict[int, dict[str, object]]:
+    """Seal the public constructor/serializer branch for each atom count.
+
+    The predicate authority has one structural branch per permitted atom
+    count.  Calling it once for every branch establishes the exact constant
+    serialization fields.  Formula-specific fields are checked exhaustively
+    by :func:`_validate_optimized_all_of` below.
+    """
+
+    templates: dict[int, dict[str, object]] = {}
+    for size in range(1, PANEL_FEATURE_MAX_CONJUNCTION + 1):
+        try:
+            row = next(item for item in atom_rows if len(item) == size)
+        except StopIteration as exc:  # pragma: no cover - closed catalog guard
+            raise ClosedCatalogSupportInventoryError(
+                "closed catalog lacks an AllOf authority branch witness"
+            ) from exc
+        witness = AllOf.create(vocabulary, native_orientation, row)
+        public_data = witness.to_data()
+        fast_data = _all_of_data_fast(
+            witness, algorithm_digest=algorithm_digest
+        )
+        if public_data != fast_data:
+            raise ClosedCatalogSupportInventoryError(
+                "optimized AllOf encoding differs from the predicate authority"
+            )
+        templates[size] = _all_of_static_data(public_data)
+    return templates
+
+
+def _validate_optimized_all_of(
+    formula: AllOf,
+    *,
+    vocabulary: FeatureVocabulary,
+    native_orientation: NativeOrientation,
+    native_spec_digests: frozenset[str],
+    expected_spec_digests: tuple[str, ...],
+    expected_content: Mapping[str, object],
+    expected_formula_digest: str,
+    algorithm_digest: str,
+    public_static_data: Mapping[str, object],
+) -> None:
+    """Exhaustively validate one fast value against the public ``AllOf`` seal.
+
+    This is the batched equivalent of the public dataclass invariant and
+    serializer checks.  The public authority supplies every constant field;
+    this function checks every formula-specific field, vocabulary membership,
+    and content digest.  No formula is admitted on the strength of a sample.
+    """
+
+    if (
+        type(formula) is not AllOf
+        or formula.vocabulary_digest != vocabulary.vocabulary_digest
+        or formula.native_orientation is not native_orientation
+        or type(formula.spec_digests) is not tuple
+        or formula.spec_digests != expected_spec_digests
+        or not 1 <= len(formula.spec_digests) <= PANEL_FEATURE_MAX_CONJUNCTION
+        or formula.spec_digests != tuple(sorted(formula.spec_digests))
+        or len(formula.spec_digests) != len(set(formula.spec_digests))
+        or any(
+            type(item) is not str or _DIGEST.fullmatch(item) is None
+            for item in formula.spec_digests
+        )
+        or not set(formula.spec_digests) <= native_spec_digests
+        or type(formula.formula_digest) is not str
+        or _DIGEST.fullmatch(formula.formula_digest) is None
+    ):
+        raise ClosedCatalogSupportInventoryError(
+            "optimized AllOf value violates the predicate invariants"
+        )
+    data = _all_of_data_fast(formula, algorithm_digest=algorithm_digest)
+    content = dict(data)
+    content.pop("formula_digest")
+    if (
+        _all_of_static_data(data) != dict(public_static_data)
+        or data["spec_digests"] != list(expected_spec_digests)
+        or content != dict(expected_content)
+        or formula.formula_digest != expected_formula_digest
+    ):
+        raise ClosedCatalogSupportInventoryError(
+            "optimized AllOf value differs from public serialization"
+        )
+
+
 @cache
 def _complete_formula_inventory(
     native_orientation: NativeOrientation,
 ) -> tuple[AllOf, ...]:
-    """Build the exact public formula values while hashing source only once."""
+    """Build exact public values with constant source checks and a full seal."""
 
     orientation = _orientation(native_orientation)
     vocabulary = complete_whole_panel_feature_vocabulary()
     atoms = vocabulary.native_spec_digests(orientation)
+    native_atoms = frozenset(atoms)
     algorithm = panel_feature_predicate_algorithm_digest()
     atom_rows = tuple(
         row
@@ -595,6 +696,12 @@ def _complete_formula_inventory(
             1, min(PANEL_FEATURE_MAX_CONJUNCTION, len(atoms)) + 1
         )
         for row in combinations(atoms, size)
+    )
+    public_templates = _public_all_of_templates(
+        vocabulary=vocabulary,
+        native_orientation=orientation,
+        atom_rows=atom_rows,
+        algorithm_digest=algorithm,
     )
     formulas: list[AllOf] = []
     for row in atom_rows:
@@ -604,26 +711,28 @@ def _complete_formula_inventory(
             spec_digests=row,
             algorithm_digest=algorithm,
         )
+        formula_digest = canonical_digest(content)
         formula = object.__new__(AllOf)
         object.__setattr__(formula, "vocabulary_digest", vocabulary.vocabulary_digest)
         object.__setattr__(formula, "native_orientation", orientation)
         object.__setattr__(formula, "spec_digests", row)
-        object.__setattr__(formula, "formula_digest", canonical_digest(content))
+        object.__setattr__(formula, "formula_digest", formula_digest)
+        _validate_optimized_all_of(
+            formula,
+            vocabulary=vocabulary,
+            native_orientation=orientation,
+            native_spec_digests=native_atoms,
+            expected_spec_digests=row,
+            expected_content=content,
+            expected_formula_digest=formula_digest,
+            algorithm_digest=algorithm,
+            public_static_data=public_templates[len(row)],
+        )
         formulas.append(formula)
     result = tuple(formulas)
     if not result:
         raise ClosedCatalogSupportInventoryError(
             "closed catalog formula inventory is empty"
-        )
-    # One ordinary constructor/serializer proves the optimized encoding still
-    # matches the public predicate type.  Remaining formulas differ only in
-    # their already-validated atom tuples.
-    witness = AllOf.create(vocabulary, orientation, result[0].spec_digests)
-    if witness != result[0] or witness.to_data() != _all_of_data_fast(
-        result[0], algorithm_digest=algorithm
-    ):
-        raise ClosedCatalogSupportInventoryError(
-            "optimized AllOf encoding differs from the predicate authority"
         )
     return result
 
