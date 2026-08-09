@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+import bongard.prototype_scene_observer as _scene_runtime
+import bongard.transport as transport_runtime
 from bongard.canonical import canonical_digest
 from bongard.object_bongard_batch import ObjectBongardTaskPlan
 from bongard.object_bongard_release_gate import (
@@ -15,6 +17,11 @@ from bongard.object_bongard_release_gate import (
     _precommit_content,
     persist_object_bongard_task_commit,
     persist_object_bongard_task_freeze,
+)
+from bongard.object_bongard_turn_journal import (
+    ObjectBongardTextTurnJournalTransport,
+    ObjectBongardTurnRuntime,
+    _write_once as _write_turn_record,
 )
 from bongard.official_extracted_panel_archive import (
     OfficialExtractedPanelReceipt,
@@ -51,6 +58,13 @@ from bongard.panel_feature_primary_task_runner import (
     verify_primary_formula_task_commit,
     verify_primary_formula_task_freeze,
 )
+from bongard.panel_positive_formula_ranker import (
+    PositiveFormulaRankArtifact,
+    PositiveFormulaRankInput,
+    PositiveFormulaRankTransportProvenance,
+    positive_formula_ranker_output_schema,
+    positive_formula_ranker_prompt,
+)
 from bongard.panel_feature_predicate import (
     EngineeringDisposition,
     EngineeringQueryOutcome,
@@ -76,6 +90,13 @@ from bongard.tests.test_prototype_scene_observer import (
     NO_TOOLS_KWARGS,
     _png,
 )
+from bongard.tests.test_panel_positive_formula_ranker import (
+    MODEL_CATALOG,
+    NO_TOOLS_ATTESTATION,
+    POLICY,
+    _text_receipt,
+)
+from bongard.transport import CodexStructuredResult
 
 
 def _task() -> ObjectBongardTaskPlan:
@@ -627,3 +648,96 @@ def test_multiple_primary_survivors_require_rank_artifact_and_exact_journal() ->
             support_phase=phase,
             execution_precommit=_precommit(task),
         )
+
+
+def test_multiple_survivor_freeze_embeds_full_successful_journal_lineage(
+    tmp_path: Path,
+) -> None:
+    task, bundle, _calls = _bundle_and_calls(negative_mode="both_absent")
+    inventory = ClosedCatalogSupportInventory.create(
+        bundle.proposer_result,
+        bundle.observation_sets_for_phase(PanelFeatureEvidencePhase.SUPPORT),
+        primary_orientation=NativeOrientation.SIDE0_POSITIVE,
+    )
+    bound = TaskBoundClosedCatalogInventory.bind(task, bundle, inventory)
+    phase = PrimaryFormulaSupportPhase.create(bound)
+    assert phase.status is PrimaryFormulaSupportStatus.RANK_REQUIRED
+    precommit = _precommit(task)
+
+    rank_input = PositiveFormulaRankInput.freeze(
+        inventory.primary_version_space,
+        source_survivor_inventory_address=bound.artifact_address,
+    )
+    prompt = positive_formula_ranker_prompt(rank_input)
+    schema = positive_formula_ranker_output_schema(rank_input)
+    payload = {"ordered_aliases": list(reversed(rank_input.candidate_aliases))}
+    receipt = _text_receipt(prompt, schema, payload)
+    provenance = PositiveFormulaRankTransportProvenance.create(
+        "production_exactly_once_journal"
+    )
+    artifact = PositiveFormulaRankArtifact.seal(
+        rank_input=rank_input,
+        model_payload=payload,
+        model=MODEL,
+        reasoning_effort=EFFORT,
+        expected_launcher_digest=LAUNCHER_DIGEST,
+        cloud_policy_cache_binding=POLICY.binding,
+        model_catalog_digest=MODEL_CATALOG.raw_digest,
+        no_tools_attestation_digest=NO_TOOLS_ATTESTATION.attestation_digest,
+        transport_provenance=provenance,
+        receipt=receipt,
+    )
+    runtime = ObjectBongardTurnRuntime(
+        model=MODEL,
+        reasoning_effort=EFFORT,
+        minutes=15,
+        verbose=False,
+        executable="codex",
+        cloud_policy_cache_snapshot=POLICY,
+        model_catalog_snapshot=MODEL_CATALOG,
+        expected_launcher_digest=LAUNCHER_DIGEST,
+        no_tools_attestation=NO_TOOLS_ATTESTATION,
+        transport_source_digest=(
+            _scene_runtime.prototype_scene_transport_source_digest()
+        ),
+    )
+    journal = ObjectBongardTextTurnJournalTransport(
+        tmp_path / "rank-journal",
+        authorization_digest=_address({"authorization": task.task_id}),
+        execution_precommit_digest=precommit.record_digest,
+        task_id=task.task_id,
+        turn_kind="positive-formula-rank",
+        expected_prompt=prompt,
+        expected_output_schema=schema,
+        runtime=runtime,
+        underlying_transport=transport_runtime.run_codex_text_structured,
+    )
+    claim = journal._expected_claim()
+    _write_turn_record(journal.claim_path, claim)
+    result = journal._success_record(
+        claim=claim,
+        raw_result=CodexStructuredResult(payload=payload, receipt=receipt),
+        validate_envelope=journal._validator(),
+    )
+    journal._finish(claim=claim, result=result)
+
+    freeze = PrimaryFormulaTaskFreeze.seal(
+        support_phase=phase,
+        execution_precommit=precommit,
+        rank_artifact=artifact,
+        rank_journal=journal,
+    )
+    terminal = freeze.rank_journal_terminal
+    assert terminal is not None
+    assert terminal.rank_artifact == artifact
+    assert terminal.journal_result["receipt_digest"] == receipt.receipt_digest
+    assert terminal.journal_outcome["result_digest"] == (
+        terminal.journal_result["record_digest"]
+    )
+    assert terminal.to_data()["complete_canonical_journal_records_embedded"] is True
+    assert PrimaryFormulaTaskFreeze.from_data(freeze.to_data()) == freeze
+
+    tampered = deepcopy(freeze.to_data())
+    tampered["rank_journal_terminal"]["journal_result"]["receipt_digest"] = "0" * 64
+    with pytest.raises(PrimaryFormulaTaskRunnerError):
+        PrimaryFormulaTaskFreeze.from_data(tampered)
