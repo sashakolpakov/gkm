@@ -1,9 +1,10 @@
 """Canonical lifecycle registry for Bongard execution paths.
 
-The repository contains source that must remain importable to cold-verify old
-artifacts.  Importability is not permission to spend more pixels or model
-calls.  This module makes that distinction explicit and gives retired command
-line entry points one shared fail-closed guard.
+Some historical executors remain importable for cold verification; physically
+retired probes survive only as authenticated, non-executable source snapshots.
+Neither case is permission to spend more pixels or model calls.  This module
+makes that distinction explicit and gives retained retired entry points one
+shared fail-closed guard.
 
 Python is the executable authority for the active successor.  Lean is neither
 an execution dependency nor part of any registered predicate identity.
@@ -110,8 +111,14 @@ _REGISTRATIONS = (
             "typed-observer FIT/calibration and support-only development; "
             "query release remains gated by calibrated support consistency"
         ),
-        entrypoints=("bongard.panel_action_count_phase_command",),
+        entrypoints=(
+            "bongard.panel_action_count_phase_command",
+            "bongard.panel_action_count_multiview_fit_command",
+        ),
         source_modules=(
+            "bongard.panel_action_count_phase_command",
+            "bongard.panel_action_count_multiview_adapter",
+            "bongard.panel_action_count_multiview_fit_command",
             "bongard.panel_feature_observation",
             "bongard.panel_feature_empirical_calibration",
             "bongard.panel_feature_closed_catalog_inventory",
@@ -138,6 +145,8 @@ _REGISTRATIONS = (
             "bongard.official_extracted_panel_archive",
             "bongard.panel_feature_evidence_bundle",
             "bongard.panel_positive_prose_evidence_bundle",
+            "bongard.panel_probe_custody",
+            "bongard.panel_probe_transport",
         ),
         retained_for=(
             "exactly-once custody",
@@ -219,17 +228,17 @@ _REGISTRATIONS = (
         "panel-feature-exposed-support-smoke-v1",
         PipelineLifecycle.RETIRED,
         new_execution_authorized=False,
-        authorized_scope="library helpers and historical support diagnostic replay only",
+        authorized_scope="authenticated non-executable historical inspection only",
         entrypoints=(
             "python -m bongard.panel_feature_exposed_support_smoke_command",
         ),
-        source_modules=("bongard.panel_feature_exposed_support_smoke_command",),
-        retained_for=(
-            "shared bounded source loader/runtime helper",
-            "historical support diagnostic evidence",
+        source_modules=(),
+        removed_source_modules=(
+            "bongard.panel_feature_exposed_support_smoke_command",
         ),
-        removal_blockers=(
-            "active atom-slate, contextual, prose, and action-count probes import its bounded source/runtime helpers",
+        retained_for=(
+            "authenticated inert source preimage",
+            "historical support diagnostic evidence",
         ),
         successor_pipeline_id=ACTIVE_SUCCESSOR_PIPELINE_ID,
     ),
@@ -237,21 +246,17 @@ _REGISTRATIONS = (
         "panel-positive-prose-exposed-probe-v1",
         PipelineLifecycle.RETIRED,
         new_execution_authorized=False,
-        authorized_scope="historical support diagnostic replay only",
+        authorized_scope="authenticated non-executable historical inspection only",
         entrypoints=(
             "python -m bongard.panel_positive_prose_exposed_probe_command",
         ),
-        source_modules=(
+        source_modules=(),
+        removed_source_modules=(
             "bongard.panel_positive_prose_exposed_probe_command",
         ),
         retained_for=(
-            "source-bound prose and typed-count diagnostic receipts",
-            "temporary transport and deterministic-transform helpers",
-        ),
-        removal_blockers=(
-            "panel_action_count_phase_command imports _call",
-            "panel_positive_contextual_typed_count_probe_command imports _call, _component_conjunction_disposition, _count_four_interval, _count_interval, _deterministic_ink_zoom, _interval, _load_ink_zoom_policy, _load_typed_count_policy, and positive_prose_exposed_probe_source_digest",
-            "checked diagnostic completions bind the exact module bytes",
+            "authenticated source-bound prose and typed-count diagnostic receipts",
+            "eight inert historical source preimages",
         ),
         successor_pipeline_id=ACTIVE_SUCCESSOR_PIPELINE_ID,
     ),
@@ -259,16 +264,17 @@ _REGISTRATIONS = (
         "panel-positive-contextual-typed-count-probe-v1",
         PipelineLifecycle.RETIRED,
         new_execution_authorized=False,
-        authorized_scope="historical contextual support diagnostic replay only",
+        authorized_scope="authenticated non-executable historical inspection only",
         entrypoints=(
             "python -m bongard.panel_positive_contextual_typed_count_probe_command",
         ),
-        source_modules=(
+        source_modules=(),
+        removed_source_modules=(
             "bongard.panel_positive_contextual_typed_count_probe_command",
         ),
-        retained_for=("source-bound contextual support-gap evidence",),
-        removal_blockers=(
-            "compact audit summary has not yet replaced source-bound replay",
+        retained_for=(
+            "authenticated contextual support-gap evidence",
+            "inert historical source preimage",
         ),
         successor_pipeline_id=ACTIVE_SUCCESSOR_PIPELINE_ID,
     ),
@@ -276,16 +282,17 @@ _REGISTRATIONS = (
         "panel-positive-atom-slate-exposed-probe-v1",
         PipelineLifecycle.RETIRED,
         new_execution_authorized=False,
-        authorized_scope="historical atom-slate support diagnostic replay only",
+        authorized_scope="authenticated non-executable historical inspection only",
         entrypoints=(
             "python -m bongard.panel_positive_atom_slate_exposed_probe_command",
         ),
-        source_modules=(
+        source_modules=(),
+        removed_source_modules=(
             "bongard.panel_positive_atom_slate_exposed_probe_command",
         ),
-        retained_for=("source-bound atom-slate zero-survivor evidence",),
-        removal_blockers=(
-            "compact audit summary has not yet replaced source-bound replay",
+        retained_for=(
+            "authenticated atom-slate zero-survivor evidence",
+            "inert historical source preimage",
         ),
         successor_pipeline_id=ACTIVE_SUCCESSOR_PIPELINE_ID,
     ),
@@ -313,11 +320,12 @@ _REGISTRATIONS = (
         new_execution_authorized=False,
         authorized_scope="immutable data inspection and model-free replay only",
         entrypoints=(),
-        source_modules=(),
+        source_modules=("bongard.panel_retired_probe_source_archive",),
         retained_for=(
             "exposure accounting",
             "failure provenance",
             "reproducible comparison with the successor",
+            "exact non-executable source preimages for retired authorization checks",
         ),
     ),
 )
@@ -371,73 +379,26 @@ def pipeline_registry_data() -> dict[str, object]:
                 "bongard/panel_hierarchical_exposed_support_smoke_command.py",
                 "bongard/tests/test_panel_hierarchical_exposed_support_smoke_command.py",
             ],
-            "phase_2_extract_shared_helpers_then_remove": {
-                "helper_imports_from_panel_feature_exposed_support_smoke_command": {
-                    "bongard.panel_action_count_phase_command": [
-                        "DEFAULT_LAUNCHER_SHA256",
-                        "DEFAULT_MODEL",
-                        "DEFAULT_REASONING_EFFORT",
-                        "_read_record",
-                        "_record",
-                        "_runtime",
-                        "_write_once_or_verify",
-                    ],
-                    "bongard.panel_positive_atom_slate_exposed_probe_command": [
-                        "DEFAULT_LAUNCHER_SHA256",
-                        "DEFAULT_MODEL",
-                        "DEFAULT_REASONING_EFFORT",
-                        "DEFAULT_SOURCE_ARCHIVE",
-                        "_read_source",
-                        "_record",
-                        "_runtime",
-                        "_write_once_or_verify",
-                    ],
-                    "bongard.panel_positive_contextual_typed_count_probe_command": [
-                        "DEFAULT_LAUNCHER_SHA256",
-                        "DEFAULT_MODEL",
-                        "DEFAULT_REASONING_EFFORT",
-                        "DEFAULT_SOURCE_ARCHIVE",
-                        "_read_source",
-                        "_record",
-                        "_runtime",
-                        "_write_once_or_verify",
-                    ],
-                    "bongard.panel_positive_prose_exposed_probe_command": [
-                        "DEFAULT_LAUNCHER_SHA256",
-                        "DEFAULT_MODEL",
-                        "DEFAULT_REASONING_EFFORT",
-                        "DEFAULT_SOURCE_ARCHIVE",
-                        "PanelFeatureExposedSupportSmokeError",
-                        "_read_source",
-                        "_record",
-                        "_runtime",
-                        "_write_once_or_verify",
-                    ],
-                },
-                "helper_imports_from_panel_positive_prose_exposed_probe_command": {
-                    "bongard.panel_action_count_phase_command": ["_call"],
-                    "bongard.panel_positive_contextual_typed_count_probe_command": [
-                        "_call",
-                        "_component_conjunction_disposition",
-                        "_count_four_interval",
-                        "_count_interval",
-                        "_deterministic_ink_zoom",
-                        "_interval",
-                        "_load_ink_zoom_policy",
-                        "_load_typed_count_policy",
-                        "positive_prose_exposed_probe_source_digest",
-                    ],
-                },
-                "remove_source_and_exclusive_tests": [
-                    "bongard/panel_feature_exposed_support_smoke_command.py",
-                    "bongard/tests/test_panel_feature_exposed_support_smoke_command.py",
-                    "bongard/panel_positive_prose_exposed_probe_command.py",
-                    "bongard/tests/test_panel_positive_prose_exposed_probe_command.py",
-                    "bongard/panel_positive_contextual_typed_count_probe_command.py",
-                    "bongard/tests/test_panel_positive_contextual_typed_count_probe_command.py",
-                    "bongard/panel_positive_atom_slate_exposed_probe_command.py",
-                    "bongard/tests/test_panel_positive_atom_slate_exposed_probe_command.py",
-                ],
+            "phase_2_removed_source": [
+                "bongard/panel_feature_exposed_support_smoke_command.py",
+                "bongard/tests/test_panel_feature_exposed_support_smoke_command.py",
+                "bongard/panel_positive_prose_exposed_probe_command.py",
+                "bongard/tests/test_panel_positive_prose_exposed_probe_command.py",
+                "bongard/panel_positive_contextual_typed_count_probe_command.py",
+                "bongard/tests/test_panel_positive_contextual_typed_count_probe_command.py",
+                "bongard/panel_positive_atom_slate_exposed_probe_command.py",
+                "bongard/tests/test_panel_positive_atom_slate_exposed_probe_command.py",
+            ],
+            "phase_2_neutral_successors": {
+                "bounded_custody": "bongard.panel_probe_custody",
+                "named_image_transport": "bongard.panel_probe_transport",
+                "retired_source_decoder": (
+                    "bongard.panel_retired_probe_source_archive"
+                ),
+                "retired_source_snapshot": (
+                    "bongard/data/"
+                    "panel_retired_probe_source_snapshot_20260810_v1.json"
+                ),
             },
             "audit_artifact_policy": {
                 "immutable_compact_records_to_retain": [
@@ -446,6 +407,7 @@ def pipeline_registry_data() -> dict[str, object]:
                     "bongard/data/panel_positive_live_support_diagnostic_summary_20260809_v1.json",
                     "bongard/data/panel_action_count_measurement_fit_outcome_20260809_v1.json",
                     "bongard/data/panel_convex_four_lines_same_family_train_drill_20260809_v1.json",
+                    "bongard/data/panel_retired_probe_source_snapshot_20260810_v1.json",
                 ],
                 "raw_evidence_trees_pending_compaction": [
                     "downloads/ShapeBongard_V2_full/panel_soft_exact_unused_train_20260809_ranked_v1",
