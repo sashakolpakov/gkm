@@ -47,7 +47,7 @@ from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 ANCHOR_SALIENCE_SCHEMA = "gkm.object-scene-anchor-salience.v1"
 ANCHOR_SALIENCE_ALGORITHM_ID = (
-    "bongard.object-scene-anchor-salience/adaptive-unfilled-ink-envelope-v1"
+    "bongard.object-scene-anchor-salience/adaptive-unfilled-ink-envelope-v2"
 )
 ANCHOR_SALIENCE_Q_DEFINITION = (
     "nearest-rank-p90-of-exact-integer-chessboard-distance-to-infinite-false-"
@@ -59,6 +59,13 @@ ANCHOR_SALIENCE_RADIUS_RULE = (
 ANCHOR_SALIENCE_HARD_COMPLETE_CAP = 8
 ANCHOR_SALIENCE_HARD_MAX_RADIUS_PIXELS = 4096
 ANCHOR_SALIENCE_HARD_MAX_PADDED_PIXELS = 16_777_216
+# A morphology call may satisfy both independent extent caps while its
+# padded-pixel/footprint product is still impractically large.  This fixed
+# cumulative ceiling covers every scheduled attempt plus the mandatory audit.
+# It is the smallest tested power-of-two above every work bound in the frozen
+# 700-proposal support-only TRAIN telemetry cohort; larger cases remain a typed
+# resource abstention, and salience remains optional to the panel-primary lane.
+ANCHOR_SALIENCE_HARD_MAX_MORPHOLOGY_WORK = 536_870_912
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _ANCHOR_ID = re.compile(r"(?:part|compact)-[0-9]{8}\Z")
 _RAW_POINT_ID = re.compile(r"raw-point-[0-9]{8}\Z")
@@ -120,6 +127,13 @@ def object_scene_anchor_salience_extractor_digest() -> str:
             "q_definition": ANCHOR_SALIENCE_Q_DEFINITION,
             "radius_rule": ANCHOR_SALIENCE_RADIUS_RULE,
             "dilation_footprint": "exact-integer-euclidean-disk",
+            "morphology_work_upper_bound": (
+                "padded-pixels-times-sum-of-square-footprint-cells-for-all-"
+                "scheduled-attempts-plus-audit"
+            ),
+            "hard_max_morphology_work": (
+                ANCHOR_SALIENCE_HARD_MAX_MORPHOLOGY_WORK
+            ),
             "holes_filled": False,
             "selection": "first-acceptable-complete-whole-graph-never-top-k",
             "ownership_distance": "integer-chebyshev",
@@ -1079,6 +1093,20 @@ def _disk_footprint_digest(radius: int) -> str:
     return _mask_digest(_disk(radius), "euclidean-disk-footprint")
 
 
+def _morphology_work_upper_bound(crop_shape: tuple[int, int], q: int) -> int:
+    """Bound all scheduled dilation work without allocating native arrays."""
+
+    crop_height, crop_width = crop_shape
+    padding = 5 * q + 1
+    padded_pixels = (crop_height + 2 * padding) * (crop_width + 2 * padding)
+    radii = (*_radius_schedule(q), 5 * q)
+    # The exact Euclidean disk is a subset of its square bounding footprint.
+    # Count repeated schedule radii because the current extractor invokes each
+    # attempt independently, then always invokes the audit sentinel.
+    footprint_cells = sum((2 * radius + 1) ** 2 for radius in radii)
+    return padded_pixels * footprint_cells
+
+
 def _salience_resource_exceeded(
     crop_shape: tuple[int, int],
     q: int,
@@ -1091,6 +1119,8 @@ def _salience_resource_exceeded(
         5 * q > limits.max_radius_pixels
         or padded_height * padded_width > limits.max_padded_pixels
         or (10 * q + 1) * (10 * q + 1) > limits.max_padded_pixels
+        or _morphology_work_upper_bound(crop_shape, q)
+        > ANCHOR_SALIENCE_HARD_MAX_MORPHOLOGY_WORK
     )
 
 

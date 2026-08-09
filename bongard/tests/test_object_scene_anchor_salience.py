@@ -200,6 +200,49 @@ def test_caller_cannot_relax_the_fixed_complete_graph_cap() -> None:
         )
 
 
+def test_morphology_work_bound_is_pure_conservative_and_monotone() -> None:
+    # q=2 has padding 11, padded shape 25x27, scheduled radii 4,5,6,7,8,
+    # and audit radius 10.  The conservative square footprints sum to 1326.
+    assert salience._morphology_work_upper_bound((3, 5), 2) == 675 * 1_326
+    assert salience._morphology_work_upper_bound(
+        (4, 5), 2
+    ) > salience._morphology_work_upper_bound((3, 5), 2)
+    assert salience._morphology_work_upper_bound(
+        (3, 5), 3
+    ) > salience._morphology_work_upper_bound((3, 5), 2)
+
+
+def test_morphology_work_cap_is_bound_into_extractor_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert salience.ANCHOR_SALIENCE_HARD_MAX_MORPHOLOGY_WORK == 536_870_912
+    original = object_scene_anchor_salience_extractor_digest()
+    monkeypatch.setattr(
+        salience,
+        "ANCHOR_SALIENCE_HARD_MAX_MORPHOLOGY_WORK",
+        salience.ANCHOR_SALIENCE_HARD_MAX_MORPHOLOGY_WORK - 1,
+    )
+    assert object_scene_anchor_salience_extractor_digest() != original
+
+
+def test_morphology_work_cap_boundary_is_inclusive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    crop_shape = (3, 5)
+    q = 2
+    work = salience._morphology_work_upper_bound(crop_shape, q)
+    limits = AnchorSalienceLimits()
+
+    monkeypatch.setattr(
+        salience, "ANCHOR_SALIENCE_HARD_MAX_MORPHOLOGY_WORK", work
+    )
+    assert salience._salience_resource_exceeded(crop_shape, q, limits) is False
+    monkeypatch.setattr(
+        salience, "ANCHOR_SALIENCE_HARD_MAX_MORPHOLOGY_WORK", work - 1
+    )
+    assert salience._salience_resource_exceeded(crop_shape, q, limits) is True
+
+
 def test_compact_macro_anchor_is_not_subject_to_path_support_threshold() -> None:
     mask = np.ones((3, 3), dtype=bool)
     result = extract_object_scene_anchor_salience(mask, "compact-only")
@@ -224,7 +267,9 @@ def test_many_compact_components_cannot_bypass_the_macro_cap() -> None:
     assert result.selected_graph is None
 
 
-def test_native_resource_and_raw_graph_caps_are_typed_not_negative() -> None:
+def test_native_resource_and_raw_graph_caps_are_typed_not_negative(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     resource = extract_object_scene_anchor_salience(
         _line(),
         "resource-gap",
@@ -234,6 +279,61 @@ def test_native_resource_and_raw_graph_caps_are_typed_not_negative() -> None:
     assert resource.status.reason == "salience_resource_cap_exceeded"
     assert resource.attempts == ()
     assert resource.selected_graph is None
+    assert resource.audit_graph is None
+    assert resource.audit_disk_footprint_digest is None
+    assert resource.audit_envelope_mask_digest is None
+
+    # Force a q whose radius and padded extent each fit their independent caps,
+    # but whose cumulative padded-pixel/footprint product exceeds the fixed
+    # morphology-work cap.  No native morphology allocation may be reached.
+    monkeypatch.setattr(salience, "_q_from_raw_skeleton", lambda *_: 50)
+    assert 5 * 50 < salience.ANCHOR_SALIENCE_HARD_MAX_RADIUS_PIXELS
+    assert 503 * 521 < salience.ANCHOR_SALIENCE_HARD_MAX_PADDED_PIXELS
+    assert 501 * 501 < salience.ANCHOR_SALIENCE_HARD_MAX_PADDED_PIXELS
+    assert (
+        salience._morphology_work_upper_bound((1, 19), 50)
+        > salience.ANCHOR_SALIENCE_HARD_MAX_MORPHOLOGY_WORK
+    )
+
+    def forbidden_native(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("product-capped salience reached native morphology")
+
+    original_pad = salience.np.pad
+
+    def forbid_morphology_pad(
+        array: object, pad_width: object, *args: object, **kwargs: object
+    ) -> object:
+        # Raw skeletonization legitimately adds a one-pixel boundary.  The
+        # q-derived morphology pad is the allocation guarded by this cap.
+        if pad_width != 1:
+            return forbidden_native(array, pad_width, *args, **kwargs)
+        return original_pad(array, pad_width, *args, **kwargs)
+
+    monkeypatch.setattr(salience.np, "pad", forbid_morphology_pad)
+    monkeypatch.setattr(salience, "_disk", forbidden_native)
+    monkeypatch.setattr(salience.ndimage, "binary_dilation", forbidden_native)
+    product_resource = extract_object_scene_anchor_salience(
+        _line(), "product-resource-gap"
+    )
+    assert product_resource.q_pixels == 50
+    assert product_resource.status.state == "indeterminate"
+    assert product_resource.status.reason == "salience_resource_cap_exceeded"
+    assert product_resource.attempts == ()
+    assert product_resource.audit_graph is None
+    assert ObjectSceneAnchorSalience.from_data(
+        product_resource.to_data()
+    ) == product_resource
+
+    forged_product_resource = deepcopy(product_resource.to_data())
+    forged_product_resource["audit_graph"] = deepcopy(
+        forged_product_resource["raw_graph"]
+    )
+    forged_product_resource["audit_disk_footprint_digest"] = "0" * 64
+    forged_product_resource["audit_envelope_mask_digest"] = "0" * 64
+    with pytest.raises(ValueError, match="resource-gap salience exposes"):
+        ObjectSceneAnchorSalience.from_data(
+            _reseal_salience(forged_product_resource)
+        )
 
     raw = extract_object_scene_anchor_salience(
         _line(),
