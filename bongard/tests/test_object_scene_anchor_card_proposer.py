@@ -220,6 +220,10 @@ def test_prompt_has_full_layout_and_every_object_anchor_legend() -> None:
     assert "transport filenames only" in prompt
     assert "they do not express truth or logical polarity" in prompt
     assert "side1_positive must state an affirmative property visibly present" in prompt
+    assert "opposite orientation as visual contrast" in prompt
+    assert "unlikely to be visible on any opposite-orientation sheet" in prompt
+    assert "must all hold on one same cited binding" in prompt
+    assert "bird-like silhouette or strongly oblique edges" in prompt
     assert "it is never a negation, absence, failure, or complement" in prompt
     schema = object_scene_anchor_card_proposer_output_schema(frozen)
     assert set(schema["properties"]) == {"side0_positive", "side1_positive"}
