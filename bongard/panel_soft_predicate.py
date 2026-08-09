@@ -23,14 +23,20 @@ from typing import Any, Mapping, Sequence
 
 from bongard.canonical import canonical_digest
 from bongard.evidence import Disposition
-from bongard.object_bongard_soft_cues import ObjectBongardSoftCue
+from bongard.object_bongard_soft_cues import (
+    ObjectBongardSoftCue,
+    object_bongard_soft_cue_grammar_digest,
+)
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 from bongard.runtime_source_snapshot import capture_loaded_source, verify_loaded_source
 
 
 _LOADED_SOURCE_SHA256 = capture_loaded_source(__name__, __file__)
 
-PANEL_SOFT_ATOM_SCHEMA = "gkm.bongard-panel-soft-atom.v1"
+PANEL_SOFT_ATOM_SCHEMA = "gkm.bongard-panel-soft-atom.v2"
+PANEL_SOFT_ATOM_TEXT_GRAMMAR_ID = (
+    "bongard.panel-soft-atom/lexically-filtered-visible-text-v1"
+)
 PANEL_SOFT_VOCABULARY_SCHEMA = "gkm.bongard-panel-soft-vocabulary.v1"
 PANEL_SOFT_OBSERVER_CONTRACT_SCHEMA = (
     "gkm.bongard-panel-soft-observer-contract.v1"
@@ -69,10 +75,42 @@ PANEL_SOFT_SUPPORTS_PER_SIDE = 6
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _ATOM_ID = re.compile(r"atom_[0-9]{4}\Z")
 _PANEL_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,511}\Z")
+_PANEL_SOFT_TEXT_SHAPE = re.compile(r"[A-Za-z][A-Za-z ,.'-]{7,239}\Z")
+_PANEL_SOFT_PROMPT_CONTROL = re.compile(
+    r"\b(?:"
+    r"ignore|disregard|forget|override|bypass|obey|follow|pretend|assume|"
+    r"inspect|evaluate|consider|read|return|output|answer|respond|response|"
+    r"emit|write|say|choose|select|classify|rate|score|assign|"
+    r"instruction|prompt|system|developer|assistant|user|model|tool|code|"
+    r"python|lean|schema|json|alias|criterion|verdict|"
+    r"present|mismatch|indeterminate|error|previous|always"
+    r")s?\b",
+    re.IGNORECASE,
+)
+_PANEL_SOFT_COVERT_NEGATION = re.compile(
+    r"(?:"
+    r"\b(?:avoid|avoids|avoided|avoiding|devoid|empty|blank|bare|"
+    r"unmarked|undecorated|unfilled|unable|incapable|"
+    r"fail|fails|failed|failing|instead|rather|only|solely|merely|zero)\b|"
+    r"\b[A-Za-z]+(?:-?less)\b|"
+    r"\b[A-Za-z]+(?:[- ]free)\b|"
+    r"\bfree[ ]+of\b|"
+    r"\b(?:non|un|dis)-?(?:"
+    r"connected|closed|filled|decorated|marked|curved|rounded|straight|"
+    r"symmetric|regular|touching|overlapping|intersecting|broken"
+    r")\b|"
+    r"\b[A-Za-z]+n't\b"
+    r")",
+    re.IGNORECASE,
+)
 
 
 class PanelSoftPredicateError(ValueError):
     """A panel atom, observation, formula, or version space is not canonical."""
+
+
+class PanelSoftAtomTextRejected(PanelSoftPredicateError):
+    """One prose row failed the closed panel-specific lexical filter."""
 
 
 class _EngineeringOnlyEnum:
@@ -134,6 +172,7 @@ def _authority_data() -> dict[str, object]:
         "prose_is_observed_not_executed": True,
         "arbitrary_code_allowed": False,
         "negation_allowed": False,
+        "formula_negation_operator_allowed": False,
         "polarity_flip_allowed": False,
         "lean_present": False,
         "lean_required": False,
@@ -158,6 +197,47 @@ def _engineering_only_data() -> dict[str, object]:
 
 def panel_soft_predicate_source_digest() -> str:
     return verify_loaded_source(__name__, expected_source_sha256=_LOADED_SOURCE_SHA256)
+
+
+def panel_soft_atom_text_grammar_digest() -> str:
+    """Identity of the panel-specific syntactic prose filter."""
+
+    return canonical_digest(
+        {
+            "schema": "gkm.bongard-panel-soft-atom-text-grammar.v1",
+            "grammar_id": PANEL_SOFT_ATOM_TEXT_GRAMMAR_ID,
+            "predicate_source_digest": panel_soft_predicate_source_digest(),
+            "upstream_soft_cue_grammar_digest": (
+                object_bongard_soft_cue_grammar_digest()
+            ),
+            "allowed_text_pattern": _PANEL_SOFT_TEXT_SHAPE.pattern,
+            "prompt_control_pattern": _PANEL_SOFT_PROMPT_CONTROL.pattern,
+            "covert_negation_pattern": _PANEL_SOFT_COVERT_NEGATION.pattern,
+            "lexical_prompt_control_filter_applied": True,
+            "forbidden_negative_construction_filter_applied": True,
+            "open_prose_instruction_safety_proved": False,
+            "open_prose_semantic_positivity_proved": False,
+            "observer_requires_inert_structured_rendering": True,
+            **_authority_data(),
+        }
+    )
+
+
+def validate_panel_soft_atom_text(value: object) -> str:
+    """Apply exact lexical controls; this does not prove open-prose semantics."""
+
+    if (
+        not isinstance(value, str)
+        or value != value.strip()
+        or _PANEL_SOFT_TEXT_SHAPE.fullmatch(value) is None
+        or "  " in value
+        or _PANEL_SOFT_PROMPT_CONTROL.search(value) is not None
+        or _PANEL_SOFT_COVERT_NEGATION.search(value) is not None
+    ):
+        raise PanelSoftAtomTextRejected(
+            "panel atom text violates the panel-specific lexical filter"
+        )
+    return value
 
 
 def _fields(value: object, expected: set[str], label: str) -> Mapping[str, Any]:
@@ -254,12 +334,19 @@ def _and_dispositions(values: Sequence[Disposition]) -> Disposition:
 def _atom_content(value: "PanelSoftAtom") -> dict[str, object]:
     return {
         "schema": PANEL_SOFT_ATOM_SCHEMA,
+        "text_grammar_id": PANEL_SOFT_ATOM_TEXT_GRAMMAR_ID,
+        "text_grammar_digest": panel_soft_atom_text_grammar_digest(),
         "atom_id": value.atom_id,
         "orientation": value.orientation,
         "phrase": value.phrase.to_data(),
         "witnesses": [item.to_data() for item in value.witnesses],
+        "witness_order": "cue-digest-ascending",
         "proposer_artifact_digest": value.proposer_artifact_digest,
         "scope": "complete_panel",
+        "lexical_prompt_control_filter_applied": True,
+        "forbidden_negative_construction_filter_applied": True,
+        "open_prose_instruction_safety_proved": False,
+        "open_prose_semantic_positivity_proved": False,
         **_authority_data(),
     }
 
@@ -282,14 +369,19 @@ class PanelSoftAtom:
             raise PanelSoftPredicateError("panel atom orientation differs")
         if not isinstance(self.phrase, ObjectBongardSoftCue):
             raise TypeError("panel atom phrase has the wrong type")
+        validate_panel_soft_atom_text(self.phrase.text)
         if (
             type(self.witnesses) is not tuple
             or not 1 <= len(self.witnesses) <= PANEL_SOFT_MAX_WITNESSES
             or any(not isinstance(item, ObjectBongardSoftCue) for item in self.witnesses)
             or len({item.cue_digest for item in self.witnesses}) != len(self.witnesses)
+            or tuple(item.cue_digest for item in self.witnesses)
+            != tuple(sorted(item.cue_digest for item in self.witnesses))
             or self.phrase.cue_digest in {item.cue_digest for item in self.witnesses}
         ):
             raise PanelSoftPredicateError("panel atom witness bundle differs")
+        for item in self.witnesses:
+            validate_panel_soft_atom_text(item.text)
         _digest(self.proposer_artifact_digest, "proposer artifact digest")
         _digest(self.atom_digest, "panel atom digest")
         if self.atom_digest != canonical_digest(_atom_content(self)):
@@ -307,8 +399,15 @@ class PanelSoftAtom:
     ) -> "PanelSoftAtom":
         cue = phrase if isinstance(phrase, ObjectBongardSoftCue) else ObjectBongardSoftCue.create(phrase)
         witness_row = tuple(
-            item if isinstance(item, ObjectBongardSoftCue) else ObjectBongardSoftCue.create(item)
-            for item in witnesses
+            sorted(
+                (
+                    item
+                    if isinstance(item, ObjectBongardSoftCue)
+                    else ObjectBongardSoftCue.create(item)
+                    for item in witnesses
+                ),
+                key=lambda item: item.cue_digest,
+            )
         )
         values = {
             "atom_id": atom_id,
@@ -330,15 +429,27 @@ class PanelSoftAtom:
         raw = _fields(
             value,
             {
-                "schema", "atom_id", "orientation", "phrase", "witnesses",
-                "proposer_artifact_digest", "scope", *_authority_data(),
+                "schema", "text_grammar_id", "text_grammar_digest", "atom_id",
+                "orientation", "phrase", "witnesses", "witness_order",
+                "proposer_artifact_digest",
+                "scope", "lexical_prompt_control_filter_applied",
+                "forbidden_negative_construction_filter_applied",
+                "open_prose_instruction_safety_proved",
+                "open_prose_semantic_positivity_proved", *_authority_data(),
                 "atom_digest",
             },
             "panel atom",
         )
         if (
             raw["schema"] != PANEL_SOFT_ATOM_SCHEMA
+            or raw["text_grammar_id"] != PANEL_SOFT_ATOM_TEXT_GRAMMAR_ID
+            or raw["text_grammar_digest"] != panel_soft_atom_text_grammar_digest()
             or raw["scope"] != "complete_panel"
+            or raw["witness_order"] != "cue-digest-ascending"
+            or raw["lexical_prompt_control_filter_applied"] is not True
+            or raw["forbidden_negative_construction_filter_applied"] is not True
+            or raw["open_prose_instruction_safety_proved"] is not False
+            or raw["open_prose_semantic_positivity_proved"] is not False
             or any(raw[key] != item for key, item in _authority_data().items())
             or not isinstance(raw["witnesses"], list)
         ):
@@ -1801,11 +1912,13 @@ class PanelSoftEngineeringQueryDecision:
 
 __all__ = (
     "PANEL_SOFT_ALGORITHM_ID",
+    "PANEL_SOFT_ATOM_TEXT_GRAMMAR_ID",
     "PANEL_SOFT_ENGINEERING_ALGORITHM_ID",
     "PANEL_SOFT_MAX_ATOMS",
     "PANEL_SOFT_MAX_CONJUNCTION",
     "PANEL_SOFT_ORIENTATIONS",
     "PanelSoftAtom",
+    "PanelSoftAtomTextRejected",
     "PanelSoftEngineeringPredicatePair",
     "PanelSoftEngineeringQueryDecision",
     "PanelSoftEngineeringQueryOutcome",
@@ -1822,5 +1935,7 @@ __all__ = (
     "enumerate_panel_soft_formulas",
     "evaluate_panel_soft_formula",
     "evaluate_panel_soft_formula_operationally",
+    "panel_soft_atom_text_grammar_digest",
     "panel_soft_predicate_source_digest",
+    "validate_panel_soft_atom_text",
 )
