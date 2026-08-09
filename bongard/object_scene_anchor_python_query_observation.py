@@ -36,6 +36,7 @@ from bongard.object_scene_anchor_python_predicate import (
     ObjectSceneAnchorPythonPredicate,
     object_scene_anchor_python_predicate_algorithm_digest,
 )
+from bongard.object_scene_anchor_version_space import ANCHOR_MAX_CONJUNCTS
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 
@@ -194,7 +195,7 @@ class ObjectSceneAnchorPythonQueryVocabulary:
             )
         if (
             type(self.entries) is not tuple
-            or not 1 <= len(self.entries) <= 3
+            or not 1 <= len(self.entries) <= ANCHOR_MAX_CONJUNCTS
             or any(
                 type(item) is not ObjectSceneAnchorObserverVocabularyEntry
                 for item in self.entries

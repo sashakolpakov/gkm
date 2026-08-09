@@ -72,7 +72,7 @@ ANCHOR_SUPPORT_VERSION_SPACE_SCHEMA = (
 ANCHOR_VERSION_SPACE_ALGORITHM_ID = (
     "bongard.object-scene-anchor-version-space/positive-same-binding-v1"
 )
-ANCHOR_MAX_CONJUNCTS = 3
+ANCHOR_MAX_CONJUNCTS = 4
 ANCHOR_SUPPORT_PANELS_PER_SIDE = 6
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -1365,7 +1365,13 @@ def enumerate_object_scene_anchor_candidates(
     language: ObjectSceneAnchorPredicateLanguage,
     orientation: ObjectSceneAnchorOrientation,
 ) -> tuple[ObjectSceneAnchorPredicateCandidate, ...]:
-    """Enumerate every positive atom and same-spec conjunction through size three."""
+    """Enumerate every positive atom and same-spec conjunction through size four.
+
+    Four is not an independent search heuristic: it is the exact maximum
+    number of affirmative witnesses admitted by one frozen predicate card.
+    Keeping the bounds equal prevents an accepted four-witness concept from
+    being silently omitted from the deterministic version space.
+    """
 
     language = ObjectSceneAnchorPredicateLanguage.from_data(language.to_data())
     if not isinstance(orientation, ObjectSceneAnchorOrientation):

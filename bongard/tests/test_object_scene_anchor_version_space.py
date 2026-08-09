@@ -123,6 +123,7 @@ def _language(
         "the bound form has a rounded upper contour",
         "the bound form carries a centered circular mark",
         "the bound form contains one continuous outer path",
+        "the bound form has four evenly spaced oblique arms",
     )
     witnesses = tuple(
         ObjectSceneAnchorCardWitness.create(
@@ -239,6 +240,24 @@ def test_complete_witness_atom_and_conjunction_inventory(setup) -> None:
     assert not any("entry_digest" in key for key in keys)
     assert not any("salience_artifact" in key for key in keys)
     assert not any("lean" in key.casefold() for key in keys)
+
+
+def test_four_witness_card_conjunction_is_not_silently_omitted(setup) -> None:
+    manifests, target_ids, _, _, _ = setup
+    language = _language(
+        {panel_id: manifests[panel_id] for panel_id in target_ids},
+        witness_count=4,
+    )
+    candidates = enumerate_object_scene_anchor_candidates(
+        language, ObjectSceneAnchorOrientation.SIDE0_POSITIVE
+    )
+
+    assert len(candidates) == 15
+    four = tuple(item for item in candidates if len(item.witness_digests) == 4)
+    assert len(four) == 1
+    assert four[0].witness_digests == tuple(
+        sorted(item.witness_digest for item in language.vocabulary.entries)
+    )
 
 
 def test_target_uses_exact_citation_while_contrast_exhausts_all_objects(setup) -> None:

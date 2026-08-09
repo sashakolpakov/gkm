@@ -118,12 +118,15 @@ def _catalogs_digest(manifest, spec, catalogs) -> str:
 
 def _language(
     target_manifests: dict[str, ObjectSceneAnchorPanelDecisionManifest],
+    *,
+    witness_count: int = 3,
 ) -> ObjectSceneAnchorPredicateLanguage:
     spec = ObjectSceneAnchorBindingSpec.entity()
     statements = (
         "the bound form has a rounded upper contour",
         "the bound form carries a centered circular mark",
         "the bound form contains one continuous outer path",
+        "the bound form has four evenly spaced oblique arms",
     )
     witnesses = tuple(
         ObjectSceneAnchorCardWitness.create(
@@ -131,7 +134,7 @@ def _language(
             "shape_appearance" if index != 1 else "marking_pattern",
             statement,
         )
-        for index, statement in enumerate(statements)
+        for index, statement in enumerate(statements[:witness_count])
     )
     vocabulary = freeze_object_scene_anchor_observer_vocabulary(witnesses)
     citations = []
@@ -303,6 +306,63 @@ def test_vocabulary_is_exact_selected_projection_without_support_language(
     forbidden_checker = "l" + "ean"
     assert not any(forbidden_checker in key.casefold() for key in _all_keys(data))
     assert not any("query" in key.casefold() for key in _all_keys(predicate.to_data()))
+
+
+def test_four_witness_predicate_and_query_vocabulary_round_trip(setup) -> None:
+    _, _, _, query_manifest = setup
+    decisions = query_manifest.object_decisions
+    target_ids = tuple(f"four_target_{index:02d}" for index in range(6))
+    contrast_ids = tuple(f"four_contrast_{index:02d}" for index in range(6))
+    manifests = {
+        panel_id: _panel_manifest(index + 300, decisions)
+        for index, panel_id in enumerate((*target_ids, *contrast_ids))
+    }
+    language = _language(
+        {panel_id: manifests[panel_id] for panel_id in target_ids},
+        witness_count=4,
+    )
+    targets = tuple(
+        _full_panel_evaluation(
+            panel_id,
+            manifests[panel_id],
+            language,
+            lambda *_: Disposition.PRESENT,
+        )
+        for panel_id in target_ids
+    )
+    contrasts = tuple(
+        _full_panel_evaluation(
+            panel_id,
+            manifests[panel_id],
+            language,
+            lambda *_: Disposition.CERTIFIED_ABSENT,
+        )
+        for panel_id in contrast_ids
+    )
+    version = build_object_scene_anchor_support_version_space(
+        language=language,
+        orientation=ObjectSceneAnchorOrientation.SIDE0_POSITIVE,
+        targets=targets,
+        contrasts=contrasts,
+    )
+    selected = next(
+        item for item in version.candidates if len(item.witness_digests) == 4
+    )
+    selection = ObjectSceneAnchorSelectionCommitment.create(
+        version,
+        selected_candidate_digest=selected.candidate_digest,
+        selection_kind="external_exact_selection",
+        selector_record_digest=_sha("four-query-selector"),
+    )
+    predicate = freeze_object_scene_anchor_python_predicate(version, selection)
+    vocabulary = freeze_object_scene_anchor_python_query_vocabulary(predicate)
+
+    assert len(predicate.affirmative_witness_entries) == 4
+    assert len(vocabulary.entries) == 4
+    assert ObjectSceneAnchorPythonPredicate.from_data(predicate.to_data()) == predicate
+    assert ObjectSceneAnchorPythonQueryVocabulary.from_data(
+        vocabulary.to_data()
+    ) == vocabulary
 
 
 def test_build_requires_exact_complete_selected_binding_rectangle(setup) -> None:

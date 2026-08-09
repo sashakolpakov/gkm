@@ -17,6 +17,7 @@ from bongard.object_scene_anchor_candidate_ranker import (
     ObjectSceneAnchorCandidateRanker,
     ObjectSceneAnchorCandidateRankerError,
     ObjectSceneAnchorRankCapacityGap,
+    ObjectSceneAnchorRankCandidate,
     ObjectSceneAnchorRankInput,
     ObjectSceneAnchorRankResponse,
     freeze_object_scene_anchor_rank_input,
@@ -59,6 +60,25 @@ MODEL = "gpt-5.6-sol"
 EFFORT = "medium"
 LAUNCHER_DIGEST = "b" * 64
 MODEL_CATALOG, NO_TOOLS_ATTESTATION = canonical_no_tools_runtime(LAUNCHER_DIGEST)
+
+
+def test_rank_presentation_accepts_complete_four_witness_candidate() -> None:
+    digests = tuple(sorted(_sha(f"four-rank-witness-{index}") for index in range(4)))
+    candidate = ObjectSceneAnchorRankCandidate.create(
+        alias="choice_000",
+        candidate_digest=_sha("four-rank-candidate"),
+        anchor_kind="entity",
+        witness_digests=digests,
+        affirmative_statements=(
+            "rounded outer contour",
+            "centered circular mark",
+            "continuous enclosing path",
+            "evenly spaced oblique arms",
+        ),
+    )
+
+    assert len(candidate.witness_digests) == 4
+    assert ObjectSceneAnchorRankCandidate.from_data(candidate.to_data()) == candidate
 
 
 @lru_cache(maxsize=1)

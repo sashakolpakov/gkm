@@ -25,6 +25,7 @@ from bongard.object_scene_anchor_observer import (
     ObjectSceneAnchorObserverVocabularyEntry,
 )
 from bongard.object_scene_anchor_version_space import (
+    ANCHOR_MAX_CONJUNCTS,
     ObjectSceneAnchorOrientation,
     ObjectSceneAnchorPanelWitnessEvaluation,
     ObjectSceneAnchorPredicateCandidate,
@@ -418,7 +419,7 @@ class ObjectSceneAnchorPythonClosedFormula:
     def __post_init__(self) -> None:
         if (
             type(self.witness_digests) is not tuple
-            or not 1 <= len(self.witness_digests) <= 3
+            or not 1 <= len(self.witness_digests) <= ANCHOR_MAX_CONJUNCTS
             or self.witness_digests != tuple(sorted(set(self.witness_digests)))
         ):
             raise ObjectSceneAnchorPythonPredicateError(

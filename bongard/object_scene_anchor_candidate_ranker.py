@@ -27,6 +27,7 @@ from bongard.codex_no_tools_preflight import (
     validate_codex_no_tools_attestation,
 )
 from bongard.object_scene_anchor_version_space import (
+    ANCHOR_MAX_CONJUNCTS,
     ObjectSceneAnchorOrientation,
     ObjectSceneAnchorPredicateCandidate,
     ObjectSceneAnchorSupportVersionSpace,
@@ -196,7 +197,7 @@ class ObjectSceneAnchorRankCandidate:
             raise ObjectSceneAnchorCandidateRankerError("rank anchor kind differs")
         if (
             type(self.witness_digests) is not tuple
-            or not 1 <= len(self.witness_digests) <= 3
+            or not 1 <= len(self.witness_digests) <= ANCHOR_MAX_CONJUNCTS
             or self.witness_digests != tuple(sorted(set(self.witness_digests)))
             or type(self.affirmative_statements) is not tuple
             or len(self.affirmative_statements) != len(self.witness_digests)
