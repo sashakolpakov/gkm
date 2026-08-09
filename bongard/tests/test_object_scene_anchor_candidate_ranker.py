@@ -16,6 +16,7 @@ from bongard.evidence import Disposition
 from bongard.object_scene_anchor_candidate_ranker import (
     ObjectSceneAnchorCandidateRanker,
     ObjectSceneAnchorCandidateRankerError,
+    ObjectSceneAnchorRankCapacityGap,
     ObjectSceneAnchorRankInput,
     ObjectSceneAnchorRankResponse,
     freeze_object_scene_anchor_rank_input,
@@ -24,15 +25,21 @@ from bongard.object_scene_anchor_candidate_ranker import (
     object_scene_anchor_candidate_ranker_transport_source_digest,
 )
 from bongard.object_scene_anchor_version_space import (
+    ObjectSceneAnchorAtomCitation,
     ObjectSceneAnchorOrientation,
+    ObjectSceneAnchorPredicateAtom,
+    ObjectSceneAnchorPredicateLanguage,
     build_object_scene_anchor_support_version_space,
 )
 from bongard.tests.no_tools_fixture import canonical_no_tools_runtime
 from bongard.tests.test_object_scene_anchor_version_space import (
+    _catalogs,
+    _catalogs_digest,
     _decision,
     _language,
     _panel_evaluation,
     _panel_manifest,
+    _sha,
 )
 from bongard.transport import (
     CODEX_APPLY_PATCH_TOOL_TYPE,
@@ -87,6 +94,79 @@ def _version():
     )
     assert len(version.survivor_candidate_digests) == 7
     return version
+
+
+@lru_cache(maxsize=1)
+def _dual_versions():
+    decisions = (_decision("object_0000"), _decision("object_0001"))
+    target0 = tuple(f"dual_a_target_{index:02d}" for index in range(6))
+    contrast0 = tuple(f"dual_a_contrast_{index:02d}" for index in range(6))
+    target1 = tuple(f"dual_b_target_{index:02d}" for index in range(6))
+    contrast1 = tuple(f"dual_b_contrast_{index:02d}" for index in range(6))
+    panel_ids = (*target0, *contrast0, *target1, *contrast1)
+    manifests = {
+        panel_id: _panel_manifest(index + 200, decisions)
+        for index, panel_id in enumerate(panel_ids)
+    }
+    side0_language = _language(
+        {panel_id: manifests[panel_id] for panel_id in target0}
+    )
+    spec = side0_language.atoms[0].binding_spec
+    citations = []
+    for panel_id in target1:
+        manifest = manifests[panel_id]
+        catalogs = _catalogs(manifest, spec)
+        citations.append(
+            ObjectSceneAnchorAtomCitation.create(
+                panel_id,
+                manifest.manifest_digest,
+                _catalogs_digest(manifest, spec, catalogs),
+                catalogs[0].bindings[0],
+            )
+        )
+    side1_atoms = tuple(
+        ObjectSceneAnchorPredicateAtom.create(
+            source_card_digest=_sha(f"dual-side1-card-{index}"),
+            orientation=ObjectSceneAnchorOrientation.SIDE1_POSITIVE,
+            binding_spec=spec,
+            witness_digests=atom.witness_digests,
+            positive_support_citations=citations,
+        )
+        for index, atom in enumerate(side0_language.atoms)
+    )
+    language = ObjectSceneAnchorPredicateLanguage.create(
+        source_proposal_digest=_sha("dual-proposal"),
+        vocabulary=side0_language.vocabulary,
+        atoms=(*side0_language.atoms, *side1_atoms),
+    )
+
+    def present(_panel_id, _object_id, _witness_digest):
+        return Disposition.PRESENT
+
+    def absent(_panel_id, _object_id, _witness_digest):
+        return Disposition.CERTIFIED_ABSENT
+
+    def evaluations(ids, state):
+        return tuple(
+            _panel_evaluation(panel_id, manifests[panel_id], language, state)
+            for panel_id in ids
+        )
+
+    side0 = build_object_scene_anchor_support_version_space(
+        language=language,
+        orientation=ObjectSceneAnchorOrientation.SIDE0_POSITIVE,
+        targets=evaluations(target0, present),
+        contrasts=evaluations(contrast0, absent),
+    )
+    side1 = build_object_scene_anchor_support_version_space(
+        language=language,
+        orientation=ObjectSceneAnchorOrientation.SIDE1_POSITIVE,
+        targets=evaluations(target1, present),
+        contrasts=evaluations(contrast1, absent),
+    )
+    assert len(side0.survivor_candidate_digests) == 7
+    assert len(side1.survivor_candidate_digests) == 7
+    return side0, side1
 
 
 def _text_receipt(
@@ -204,6 +284,106 @@ def test_one_call_ranks_exact_survivor_permutation_and_cold_replays() -> None:
         expected_rank_input_digest=rank_input.rank_input_digest,
     ) == response
     assert transport.calls == 1
+
+
+def test_one_call_ranks_both_orientation_survivor_sets_as_one_exact_union() -> None:
+    side0, side1 = _dual_versions()
+    rank_input = freeze_object_scene_anchor_rank_input(side0, side1)
+    reverse_input = freeze_object_scene_anchor_rank_input(side1, side0)
+    assert reverse_input == rank_input
+
+    children = tuple(sorted((side0, side1), key=lambda item: item.version_space_digest))
+    exact_union = tuple(
+        digest
+        for child in children
+        for digest in child.survivor_candidate_digests
+    )
+    assert rank_input.survivor_count == 14
+    assert rank_input.survivor_candidate_digests == exact_union
+    assert rank_input.child_version_space_digests == tuple(
+        item.version_space_digest for item in children
+    )
+    assert rank_input.child_orientations == tuple(
+        item.orientation.value for item in children
+    )
+    assert set(
+        zip(
+            rank_input.candidate_origin_version_space_digests,
+            rank_input.candidate_origin_orientations,
+            strict=True,
+        )
+    ) == set(zip(rank_input.child_version_space_digests, rank_input.child_orientations))
+    prompt = object_scene_anchor_candidate_ranker_prompt(rank_input)
+    assert not any(item.version_space_digest in prompt for item in children)
+    assert not any(item.orientation.value in prompt for item in children)
+
+    transport = _Transport()
+    ranker = _ranker(transport)
+    response = ranker(
+        side0,
+        side1,
+        expected_rank_input_digest=rank_input.rank_input_digest,
+    )
+    assert transport.calls == 1
+    assert response.ordered_candidate_digests == tuple(reversed(exact_union))
+    selected_index = rank_input.survivor_candidate_digests.index(
+        response.selected_candidate_digest
+    )
+    assert response.child_version_space_digests == rank_input.child_version_space_digests
+    assert response.child_orientations == rank_input.child_orientations
+    assert response.selected_origin_version_space_digest == (
+        rank_input.candidate_origin_version_space_digests[selected_index]
+    )
+    assert response.selected_origin_orientation == (
+        rank_input.candidate_origin_orientations[selected_index]
+    )
+    assert ObjectSceneAnchorRankResponse.from_data(response.to_data()) == response
+    assert ranker.verify_response(
+        response,
+        version_space=side1,
+        additional_version_space=side0,
+        expected_response_digest=response.response_digest,
+        expected_rank_input_digest=rank_input.rank_input_digest,
+    ) == response
+    assert transport.calls == 1
+
+    tampered = deepcopy(response.to_data())
+    other_child = next(
+        digest
+        for digest in response.child_version_space_digests
+        if digest != response.selected_origin_version_space_digest
+    )
+    tampered["selected_origin_version_space_digest"] = other_child
+    tampered["response_digest"] = canonical_digest(
+        {key: value for key, value in tampered.items() if key != "response_digest"}
+    )
+    with pytest.raises(ObjectSceneAnchorCandidateRankerError, match="exact complete"):
+        ObjectSceneAnchorRankResponse.from_data(tampered)
+
+
+def test_union_rejects_incompatible_children_and_capacity_before_call(
+    monkeypatch,
+) -> None:
+    side0, side1 = _dual_versions()
+    with pytest.raises(ObjectSceneAnchorCandidateRankerError, match="must be distinct"):
+        freeze_object_scene_anchor_rank_input(side0, side0)
+    with pytest.raises(ObjectSceneAnchorCandidateRankerError, match="exact predicate language"):
+        freeze_object_scene_anchor_rank_input(_version(), side1)
+
+    transport = _Transport()
+    monkeypatch.setattr(ranker_module, "MAX_SURVIVOR_COUNT", 13)
+    with pytest.raises(ObjectSceneAnchorRankCapacityGap) as caught:
+        _ranker(transport)(
+            side0,
+            side1,
+            expected_rank_input_digest="0" * 64,
+        )
+    assert caught.value.survivor_count == 14
+    assert caught.value.maximum_survivor_count == 13
+    assert caught.value.child_version_space_digests == tuple(
+        sorted((side0.version_space_digest, side1.version_space_digest))
+    )
+    assert transport.calls == 0
 
 
 def test_prompt_exposes_only_alias_anchor_kind_and_affirmative_statements() -> None:

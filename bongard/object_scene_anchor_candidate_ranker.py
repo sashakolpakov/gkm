@@ -27,6 +27,7 @@ from bongard.codex_no_tools_preflight import (
     validate_codex_no_tools_attestation,
 )
 from bongard.object_scene_anchor_version_space import (
+    ObjectSceneAnchorOrientation,
     ObjectSceneAnchorPredicateCandidate,
     ObjectSceneAnchorSupportVersionSpace,
     object_scene_anchor_version_space_algorithm_digest,
@@ -49,17 +50,17 @@ from bongard.transport import (
 
 
 OBJECT_SCENE_ANCHOR_CANDIDATE_RANKER_PROTOCOL_ID = (
-    "bongard.object-scene-anchor-candidate-ranker/text-only-exact-permutation-v1"
+    "bongard.object-scene-anchor-candidate-ranker/text-only-exact-union-permutation-v2"
 )
 OBJECT_SCENE_ANCHOR_CANDIDATE_RANKER_PROTOCOL_SCHEMA = (
-    "gkm.object-scene-anchor-candidate-ranker-protocol.v1"
+    "gkm.object-scene-anchor-candidate-ranker-protocol.v2"
 )
 OBJECT_SCENE_ANCHOR_RANK_CANDIDATE_SCHEMA = (
     "gkm.object-scene-anchor-rank-candidate.v1"
 )
-OBJECT_SCENE_ANCHOR_RANK_INPUT_SCHEMA = "gkm.object-scene-anchor-rank-input.v1"
+OBJECT_SCENE_ANCHOR_RANK_INPUT_SCHEMA = "gkm.object-scene-anchor-rank-input.v2"
 OBJECT_SCENE_ANCHOR_RANK_OUTPUT_SCHEMA = "gkm.object-scene-anchor-rank-output.v1"
-OBJECT_SCENE_ANCHOR_RANK_RESPONSE_SCHEMA = "gkm.object-scene-anchor-rank-response.v1"
+OBJECT_SCENE_ANCHOR_RANK_RESPONSE_SCHEMA = "gkm.object-scene-anchor-rank-response.v2"
 OBJECT_SCENE_ANCHOR_RANK_RECEIPT_SCHEMA = "gkm.object-scene-anchor-rank-receipt.v1"
 
 MAX_SURVIVOR_COUNT = 64
@@ -78,6 +79,24 @@ _FORBIDDEN_VISIBLE = re.compile(
 
 class ObjectSceneAnchorCandidateRankerError(RuntimeError):
     """A rank input, output, receipt, runtime pin, or replay is invalid."""
+
+
+class ObjectSceneAnchorRankCapacityGap(ObjectSceneAnchorCandidateRankerError):
+    """The exact survivor union cannot fit the fixed structured-output schema."""
+
+    def __init__(
+        self,
+        survivor_count: int,
+        maximum_survivor_count: int,
+        child_version_space_digests: Sequence[str],
+    ) -> None:
+        self.survivor_count = survivor_count
+        self.maximum_survivor_count = maximum_survivor_count
+        self.child_version_space_digests = tuple(child_version_space_digests)
+        super().__init__(
+            "verified survivor union exceeds the ranker capacity; "
+            "no candidates were pruned"
+        )
 
 
 TextStructuredTransport = Callable[..., CodexStructuredResult]
@@ -257,17 +276,58 @@ class ObjectSceneAnchorRankCandidate:
         return result
 
 
+def _rank_scope_digest(
+    child_version_space_digests: Sequence[str],
+    child_orientations: Sequence[str],
+    *,
+    version_space_algorithm_digest: str,
+    language_digest: str,
+) -> str:
+    if len(child_version_space_digests) == 1:
+        return child_version_space_digests[0]
+    return canonical_digest(
+        {
+            "schema": "gkm.object-scene-anchor-rank-scope.v1",
+            "child_version_spaces": [
+                {
+                    "version_space_digest": digest,
+                    "orientation": orientation,
+                }
+                for digest, orientation in zip(
+                    child_version_space_digests, child_orientations, strict=True
+                )
+            ],
+            "version_space_algorithm_digest": version_space_algorithm_digest,
+            "language_digest": language_digest,
+            "all_nonempty_children_required": True,
+            "exact_survivor_union_required": True,
+            "no_orientation_preference": True,
+        }
+    )
+
+
 def _rank_input_content(value: "ObjectSceneAnchorRankInput") -> dict[str, object]:
     return {
         "schema": OBJECT_SCENE_ANCHOR_RANK_INPUT_SCHEMA,
         "version_space_digest": value.version_space_digest,
         "version_space_algorithm_digest": value.version_space_algorithm_digest,
         "language_digest": value.language_digest,
+        "child_version_space_digests": list(value.child_version_space_digests),
+        "child_orientations": list(value.child_orientations),
         "survivor_candidate_digests": list(value.survivor_candidate_digests),
+        "candidate_origin_version_space_digests": list(
+            value.candidate_origin_version_space_digests
+        ),
+        "candidate_origin_orientations": list(value.candidate_origin_orientations),
         "candidates": [item.to_data() for item in value.candidates],
         "survivor_count": value.survivor_count,
         "maximum_survivor_count": MAX_SURVIVOR_COUNT,
         "no_silent_pruning": True,
+        "child_order": "version-space-digest-ascending",
+        "within_child_order": "verified-survivor-order",
+        "all_nonempty_children_required": True,
+        "exact_survivor_union_required": True,
+        "no_orientation_preference": True,
         **_authority_data(),
     }
 
@@ -277,7 +337,11 @@ class ObjectSceneAnchorRankInput:
     version_space_digest: str
     version_space_algorithm_digest: str
     language_digest: str
+    child_version_space_digests: tuple[str, ...]
+    child_orientations: tuple[str, ...]
     survivor_candidate_digests: tuple[str, ...]
+    candidate_origin_version_space_digests: tuple[str, ...]
+    candidate_origin_orientations: tuple[str, ...]
     candidates: tuple[ObjectSceneAnchorRankCandidate, ...]
     survivor_count: int
     rank_input_digest: str
@@ -292,12 +356,32 @@ class ObjectSceneAnchorRankInput:
             _digest(item, label)
         if self.version_space_algorithm_digest != object_scene_anchor_version_space_algorithm_digest():
             raise ObjectSceneAnchorCandidateRankerError("rank algorithm binding differs")
+        allowed_orientations = {item.value for item in ObjectSceneAnchorOrientation}
         if (
-            type(self.survivor_count) is not int
+            type(self.child_version_space_digests) is not tuple
+            or not 1 <= len(self.child_version_space_digests) <= 2
+            or self.child_version_space_digests
+            != tuple(sorted(set(self.child_version_space_digests)))
+            or type(self.child_orientations) is not tuple
+            or len(self.child_orientations) != len(self.child_version_space_digests)
+            or any(item not in allowed_orientations for item in self.child_orientations)
+            or len(set(self.child_orientations)) != len(self.child_orientations)
+            or self.version_space_digest
+            != _rank_scope_digest(
+                self.child_version_space_digests,
+                self.child_orientations,
+                version_space_algorithm_digest=self.version_space_algorithm_digest,
+                language_digest=self.language_digest,
+            )
+            or type(self.survivor_count) is not int
             or not 1 <= self.survivor_count <= MAX_SURVIVOR_COUNT
             or type(self.survivor_candidate_digests) is not tuple
             or len(self.survivor_candidate_digests) != self.survivor_count
             or len(set(self.survivor_candidate_digests)) != self.survivor_count
+            or type(self.candidate_origin_version_space_digests) is not tuple
+            or len(self.candidate_origin_version_space_digests) != self.survivor_count
+            or type(self.candidate_origin_orientations) is not tuple
+            or len(self.candidate_origin_orientations) != self.survivor_count
             or type(self.candidates) is not tuple
             or len(self.candidates) != self.survivor_count
             or any(type(item) is not ObjectSceneAnchorRankCandidate for item in self.candidates)
@@ -309,7 +393,23 @@ class ObjectSceneAnchorRankInput:
             raise ObjectSceneAnchorCandidateRankerError(
                 "rank input is not the complete bounded survivor inventory"
             )
-        for item in self.survivor_candidate_digests:
+        child_pairs = set(zip(self.child_version_space_digests, self.child_orientations))
+        origin_pairs = tuple(
+            zip(
+                self.candidate_origin_version_space_digests,
+                self.candidate_origin_orientations,
+                strict=True,
+            )
+        )
+        if set(origin_pairs) != child_pairs:
+            raise ObjectSceneAnchorCandidateRankerError(
+                "rank candidate origins differ from the nonempty child spaces"
+            )
+        for item in (
+            *self.child_version_space_digests,
+            *self.survivor_candidate_digests,
+            *self.candidate_origin_version_space_digests,
+        ):
             _digest(item, "rank survivor digest")
         if self.rank_input_digest != canonical_digest(_rank_input_content(self)):
             raise ObjectSceneAnchorCandidateRankerError("rank input digest differs")
@@ -323,8 +423,12 @@ class ObjectSceneAnchorRankInput:
             value,
             {
                 "schema", "version_space_digest", "version_space_algorithm_digest",
-                "language_digest", "survivor_candidate_digests", "candidates",
-                "survivor_count", "maximum_survivor_count", "no_silent_pruning",
+                "language_digest", "child_version_space_digests", "child_orientations",
+                "survivor_candidate_digests", "candidate_origin_version_space_digests",
+                "candidate_origin_orientations", "candidates", "survivor_count",
+                "maximum_survivor_count", "no_silent_pruning", "child_order",
+                "within_child_order", "all_nonempty_children_required",
+                "exact_survivor_union_required", "no_orientation_preference",
                 *_authority_data(), "rank_input_digest",
             },
             "rank input",
@@ -333,14 +437,26 @@ class ObjectSceneAnchorRankInput:
             raw["schema"] != OBJECT_SCENE_ANCHOR_RANK_INPUT_SCHEMA
             or raw["maximum_survivor_count"] != MAX_SURVIVOR_COUNT
             or raw["no_silent_pruning"] is not True
+            or raw["child_order"] != "version-space-digest-ascending"
+            or raw["within_child_order"] != "verified-survivor-order"
+            or raw["all_nonempty_children_required"] is not True
+            or raw["exact_survivor_union_required"] is not True
+            or raw["no_orientation_preference"] is not True
             or any(raw[key] != item for key, item in _authority_data().items())
+            or not isinstance(raw["child_version_space_digests"], list)
+            or not isinstance(raw["child_orientations"], list)
             or not isinstance(raw["survivor_candidate_digests"], list)
+            or not isinstance(raw["candidate_origin_version_space_digests"], list)
+            or not isinstance(raw["candidate_origin_orientations"], list)
             or not isinstance(raw["candidates"], list)
         ):
             raise ObjectSceneAnchorCandidateRankerError("rank input policy differs")
         result = cls(
             raw["version_space_digest"], raw["version_space_algorithm_digest"],
-            raw["language_digest"], tuple(raw["survivor_candidate_digests"]),
+            raw["language_digest"], tuple(raw["child_version_space_digests"]),
+            tuple(raw["child_orientations"]), tuple(raw["survivor_candidate_digests"]),
+            tuple(raw["candidate_origin_version_space_digests"]),
+            tuple(raw["candidate_origin_orientations"]),
             tuple(ObjectSceneAnchorRankCandidate.from_data(item) for item in raw["candidates"]),
             raw["survivor_count"], raw["rank_input_digest"],
         )
@@ -351,57 +467,120 @@ class ObjectSceneAnchorRankInput:
 
 def freeze_object_scene_anchor_rank_input(
     version_space: ObjectSceneAnchorSupportVersionSpace,
+    additional_version_space: ObjectSceneAnchorSupportVersionSpace | None = None,
 ) -> ObjectSceneAnchorRankInput:
-    """Freeze every verified survivor or fail before any transport call."""
+    """Freeze one survivor set or the exact union of two explicit orientations."""
 
     if type(version_space) is not ObjectSceneAnchorSupportVersionSpace:
         raise TypeError("version_space must be exact ObjectSceneAnchorSupportVersionSpace")
-    version = ObjectSceneAnchorSupportVersionSpace.from_data(version_space.to_data())
-    survivor_digests = version.survivor_candidate_digests
-    if not survivor_digests:
+    if additional_version_space is not None and type(
+        additional_version_space
+    ) is not ObjectSceneAnchorSupportVersionSpace:
+        raise TypeError(
+            "additional_version_space must be exact ObjectSceneAnchorSupportVersionSpace"
+        )
+    versions = tuple(
+        sorted(
+            (
+                ObjectSceneAnchorSupportVersionSpace.from_data(item.to_data())
+                for item in (version_space, additional_version_space)
+                if item is not None
+            ),
+            key=lambda item: item.version_space_digest,
+        )
+    )
+    child_digests = tuple(item.version_space_digest for item in versions)
+    child_orientations = tuple(item.orientation.value for item in versions)
+    if len(set(child_digests)) != len(child_digests):
         raise ObjectSceneAnchorCandidateRankerError(
-            "candidate ranker requires a nonempty verified survivor set"
+            "rank child version spaces must be distinct"
+        )
+    if len(versions) == 2 and len(set(child_orientations)) != 2:
+        raise ObjectSceneAnchorCandidateRankerError(
+            "two rank child spaces must have distinct explicit orientations"
+        )
+    if len({item.language.language_digest for item in versions}) != 1 or any(
+        item.language != versions[0].language for item in versions[1:]
+    ):
+        raise ObjectSceneAnchorCandidateRankerError(
+            "rank child spaces must share one exact predicate language"
+        )
+    if any(not item.survivor_candidate_digests for item in versions):
+        raise ObjectSceneAnchorCandidateRankerError(
+            "every rank child requires a nonempty verified survivor set"
+        )
+    survivor_digests = tuple(
+        digest
+        for version in versions
+        for digest in version.survivor_candidate_digests
+    )
+    if len(set(survivor_digests)) != len(survivor_digests):
+        raise ObjectSceneAnchorCandidateRankerError(
+            "candidate digest occurs in more than one rank child space"
         )
     if len(survivor_digests) > MAX_SURVIVOR_COUNT:
-        raise ObjectSceneAnchorCandidateRankerError(
-            "verified survivor set exceeds the ranker capacity; no candidates were pruned"
+        raise ObjectSceneAnchorRankCapacityGap(
+            len(survivor_digests), MAX_SURVIVOR_COUNT, child_digests
         )
-    candidate_by_digest = {item.candidate_digest: item for item in version.candidates}
-    atom_by_digest = {item.atom_digest: item for item in version.language.atoms}
-    witness_by_digest = {
-        item.witness_digest: item for item in version.language.vocabulary.entries
-    }
     presentations: list[ObjectSceneAnchorRankCandidate] = []
-    for index, digest in enumerate(survivor_digests):
-        try:
-            candidate: ObjectSceneAnchorPredicateCandidate = candidate_by_digest[digest]
-            atoms = tuple(atom_by_digest[item] for item in candidate.atom_digests)
-            witnesses = tuple(witness_by_digest[item] for item in candidate.witness_digests)
-        except KeyError as exc:  # Defensive; the version-space class already checks this.
-            raise ObjectSceneAnchorCandidateRankerError(
-                "survivor projection is outside the frozen language"
-            ) from exc
-        anchor_kinds = {item.binding_spec.anchor_kind for item in atoms}
-        if len(anchor_kinds) != 1 or any(
-            item.binding_spec.spec_digest != candidate.binding_spec_digest for item in atoms
-        ):
-            raise ObjectSceneAnchorCandidateRankerError(
-                "survivor anchor projection differs from its candidate"
+    origin_digests: list[str] = []
+    origin_orientations: list[str] = []
+    for version in versions:
+        candidate_by_digest = {
+            item.candidate_digest: item for item in version.candidates
+        }
+        atom_by_digest = {item.atom_digest: item for item in version.language.atoms}
+        witness_by_digest = {
+            item.witness_digest: item for item in version.language.vocabulary.entries
+        }
+        for digest in version.survivor_candidate_digests:
+            try:
+                candidate: ObjectSceneAnchorPredicateCandidate = candidate_by_digest[digest]
+                atoms = tuple(atom_by_digest[item] for item in candidate.atom_digests)
+                witnesses = tuple(
+                    witness_by_digest[item] for item in candidate.witness_digests
+                )
+            except KeyError as exc:  # Defensive; the version-space class checks this.
+                raise ObjectSceneAnchorCandidateRankerError(
+                    "survivor projection is outside the frozen language"
+                ) from exc
+            anchor_kinds = {item.binding_spec.anchor_kind for item in atoms}
+            if len(anchor_kinds) != 1 or any(
+                item.binding_spec.spec_digest != candidate.binding_spec_digest
+                for item in atoms
+            ):
+                raise ObjectSceneAnchorCandidateRankerError(
+                    "survivor anchor projection differs from its candidate"
+                )
+            presentations.append(
+                ObjectSceneAnchorRankCandidate.create(
+                    alias=f"choice_{len(presentations):03d}",
+                    candidate_digest=candidate.candidate_digest,
+                    anchor_kind=next(iter(anchor_kinds)),
+                    witness_digests=candidate.witness_digests,
+                    affirmative_statements=tuple(
+                        item.statement for item in witnesses
+                    ),
+                )
             )
-        presentations.append(
-            ObjectSceneAnchorRankCandidate.create(
-                alias=f"choice_{index:03d}",
-                candidate_digest=candidate.candidate_digest,
-                anchor_kind=next(iter(anchor_kinds)),
-                witness_digests=candidate.witness_digests,
-                affirmative_statements=tuple(item.statement for item in witnesses),
-            )
-        )
+            origin_digests.append(version.version_space_digest)
+            origin_orientations.append(version.orientation.value)
+    algorithm_digest = versions[0].algorithm_digest
+    language_digest = versions[0].language.language_digest
     values = {
-        "version_space_digest": version.version_space_digest,
-        "version_space_algorithm_digest": version.algorithm_digest,
-        "language_digest": version.language.language_digest,
+        "version_space_digest": _rank_scope_digest(
+            child_digests,
+            child_orientations,
+            version_space_algorithm_digest=algorithm_digest,
+            language_digest=language_digest,
+        ),
+        "version_space_algorithm_digest": algorithm_digest,
+        "language_digest": language_digest,
+        "child_version_space_digests": child_digests,
+        "child_orientations": child_orientations,
         "survivor_candidate_digests": survivor_digests,
+        "candidate_origin_version_space_digests": tuple(origin_digests),
+        "candidate_origin_orientations": tuple(origin_orientations),
         "candidates": tuple(presentations),
         "survivor_count": len(presentations),
     }
@@ -486,6 +665,13 @@ def object_scene_anchor_candidate_ranker_protocol_digest() -> str:
             "input_digest_schema": TEXT_STRUCTURED_INPUT_DIGEST_SCHEMA,
             "isolation_policy": CODEX_ISOLATION_POLICY,
             "version_space_algorithm_digest": object_scene_anchor_version_space_algorithm_digest(),
+            "rank_scope_rule": (
+                "exact-union-of-one-or-two-nonempty-distinct-orientation-version-spaces"
+            ),
+            "child_order": "version-space-digest-ascending",
+            "within_child_order": "verified-survivor-order",
+            "duplicate_candidate_digests_across_children_rejected": True,
+            "orientation_not_model_visible": True,
             "output_rule": "exact-permutation-of-every-verified-survivor-alias",
             "maximum_survivor_count": MAX_SURVIVOR_COUNT,
             "maximum_prompt_utf8_bytes": MAX_PROMPT_UTF8_BYTES,
@@ -632,14 +818,35 @@ def _output_digest(ordered_candidate_digests: Sequence[str]) -> str:
     )
 
 
+def _candidate_origin(
+    rank_input: ObjectSceneAnchorRankInput, candidate_digest: str
+) -> tuple[str, str]:
+    try:
+        index = rank_input.survivor_candidate_digests.index(candidate_digest)
+    except ValueError as exc:
+        raise ObjectSceneAnchorCandidateRankerError(
+            "selected candidate is outside the exact rank scope"
+        ) from exc
+    return (
+        rank_input.candidate_origin_version_space_digests[index],
+        rank_input.candidate_origin_orientations[index],
+    )
+
+
 def _response_content(value: "ObjectSceneAnchorRankResponse") -> dict[str, object]:
     return {
         "schema": OBJECT_SCENE_ANCHOR_RANK_RESPONSE_SCHEMA,
         "rank_input": value.rank_input.to_data(),
         "rank_input_digest": value.rank_input_digest,
         "version_space_digest": value.version_space_digest,
+        "child_version_space_digests": list(value.child_version_space_digests),
+        "child_orientations": list(value.child_orientations),
         "ordered_candidate_digests": list(value.ordered_candidate_digests),
         "selected_candidate_digest": value.selected_candidate_digest,
+        "selected_origin_version_space_digest": (
+            value.selected_origin_version_space_digest
+        ),
+        "selected_origin_orientation": value.selected_origin_orientation,
         "output_digest": value.output_digest,
         "model_payload": dict(value.model_payload),
         "prompt_digest": value.prompt_digest,
@@ -670,8 +877,12 @@ class ObjectSceneAnchorRankResponse:
     rank_input: ObjectSceneAnchorRankInput
     rank_input_digest: str
     version_space_digest: str
+    child_version_space_digests: tuple[str, ...]
+    child_orientations: tuple[str, ...]
     ordered_candidate_digests: tuple[str, ...]
     selected_candidate_digest: str
+    selected_origin_version_space_digest: str
+    selected_origin_orientation: str
     output_digest: str
     model_payload: Mapping[str, Any]
     prompt_digest: str
@@ -699,6 +910,7 @@ class ObjectSceneAnchorRankResponse:
         for label, item in (
             ("rank input digest", self.rank_input_digest),
             ("version-space digest", self.version_space_digest),
+            ("selected origin version-space digest", self.selected_origin_version_space_digest),
             ("rank output digest", self.output_digest),
             ("prompt digest", self.prompt_digest),
             ("output schema digest", self.output_schema_digest),
@@ -717,14 +929,25 @@ class ObjectSceneAnchorRankResponse:
         if self.cloud_policy_cache_binding != "absent":
             _address(self.cloud_policy_cache_binding, "ranker policy-cache binding")
         survivors = self.rank_input.survivor_candidate_digests
+        selected_origin = _candidate_origin(
+            self.rank_input, self.selected_candidate_digest
+        )
         if (
             self.rank_input.rank_input_digest != self.rank_input_digest
             or self.rank_input.version_space_digest != self.version_space_digest
+            or self.child_version_space_digests
+            != self.rank_input.child_version_space_digests
+            or self.child_orientations != self.rank_input.child_orientations
             or type(self.ordered_candidate_digests) is not tuple
             or len(self.ordered_candidate_digests) != len(survivors)
             or len(set(self.ordered_candidate_digests)) != len(survivors)
             or set(self.ordered_candidate_digests) != set(survivors)
             or self.selected_candidate_digest != self.ordered_candidate_digests[0]
+            or (
+                self.selected_origin_version_space_digest,
+                self.selected_origin_orientation,
+            )
+            != selected_origin
             or self.output_digest != _output_digest(self.ordered_candidate_digests)
             or self.physical_call_count != 1
         ):
@@ -823,8 +1046,14 @@ class ObjectSceneAnchorRankResponse:
             "rank_input": rank_input,
             "rank_input_digest": rank_input.rank_input_digest,
             "version_space_digest": rank_input.version_space_digest,
+            "child_version_space_digests": rank_input.child_version_space_digests,
+            "child_orientations": rank_input.child_orientations,
             "ordered_candidate_digests": ordered,
             "selected_candidate_digest": ordered[0],
+            "selected_origin_version_space_digest": _candidate_origin(
+                rank_input, ordered[0]
+            )[0],
+            "selected_origin_orientation": _candidate_origin(rank_input, ordered[0])[1],
             "output_digest": _output_digest(ordered),
             "model_payload": _canonical_payload(model_payload),
             "prompt_digest": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
@@ -876,7 +1105,10 @@ class ObjectSceneAnchorRankResponse:
             value,
             {
                 "schema", "rank_input", "rank_input_digest", "version_space_digest",
-                "ordered_candidate_digests", "selected_candidate_digest", "output_digest",
+                "child_version_space_digests", "child_orientations",
+                "ordered_candidate_digests", "selected_candidate_digest",
+                "selected_origin_version_space_digest", "selected_origin_orientation",
+                "output_digest",
                 "model_payload", "prompt_digest", "output_schema_digest", "protocol_id",
                 "protocol_digest", "source_digest", "transport_source_digest", "model",
                 "reasoning_effort", "model_digest", "expected_launcher_digest",
@@ -890,6 +1122,8 @@ class ObjectSceneAnchorRankResponse:
             raw["schema"] != OBJECT_SCENE_ANCHOR_RANK_RESPONSE_SCHEMA
             or any(raw[key] != item for key, item in _authority_data().items())
             or not isinstance(raw["rank_input"], Mapping)
+            or not isinstance(raw["child_version_space_digests"], list)
+            or not isinstance(raw["child_orientations"], list)
             or not isinstance(raw["ordered_candidate_digests"], list)
             or not isinstance(raw["model_payload"], Mapping)
             or not isinstance(raw["receipt"], Mapping)
@@ -899,8 +1133,14 @@ class ObjectSceneAnchorRankResponse:
             rank_input=ObjectSceneAnchorRankInput.from_data(raw["rank_input"]),
             rank_input_digest=raw["rank_input_digest"],
             version_space_digest=raw["version_space_digest"],
+            child_version_space_digests=tuple(raw["child_version_space_digests"]),
+            child_orientations=tuple(raw["child_orientations"]),
             ordered_candidate_digests=tuple(raw["ordered_candidate_digests"]),
             selected_candidate_digest=raw["selected_candidate_digest"],
+            selected_origin_version_space_digest=raw[
+                "selected_origin_version_space_digest"
+            ],
+            selected_origin_orientation=raw["selected_origin_orientation"],
             output_digest=raw["output_digest"],
             model_payload=dict(raw["model_payload"]), prompt_digest=raw["prompt_digest"],
             output_schema_digest=raw["output_schema_digest"], protocol_id=raw["protocol_id"],
@@ -924,6 +1164,7 @@ def verify_object_scene_anchor_rank_response(
     response: ObjectSceneAnchorRankResponse,
     *,
     version_space: ObjectSceneAnchorSupportVersionSpace,
+    additional_version_space: ObjectSceneAnchorSupportVersionSpace | None = None,
     expected_response_digest: str,
     expected_rank_input_digest: str,
     model: str,
@@ -944,7 +1185,9 @@ def verify_object_scene_anchor_rank_response(
         raise ObjectSceneAnchorCandidateRankerError(
             "rank response differs from external commitment"
         )
-    expected_input = freeze_object_scene_anchor_rank_input(version_space)
+    expected_input = freeze_object_scene_anchor_rank_input(
+        version_space, additional_version_space
+    )
     if (
         expected_input.rank_input_digest
         != _digest(expected_rank_input_digest, "expected rank input digest")
@@ -1034,10 +1277,13 @@ class ObjectSceneAnchorCandidateRanker:
     def __call__(
         self,
         version_space: ObjectSceneAnchorSupportVersionSpace,
+        additional_version_space: ObjectSceneAnchorSupportVersionSpace | None = None,
         *,
         expected_rank_input_digest: str,
     ) -> ObjectSceneAnchorRankResponse:
-        rank_input = freeze_object_scene_anchor_rank_input(version_space)
+        rank_input = freeze_object_scene_anchor_rank_input(
+            version_space, additional_version_space
+        )
         if rank_input.rank_input_digest != _digest(
             expected_rank_input_digest, "expected rank input digest"
         ):
@@ -1105,12 +1351,14 @@ class ObjectSceneAnchorCandidateRanker:
         response: ObjectSceneAnchorRankResponse,
         *,
         version_space: ObjectSceneAnchorSupportVersionSpace,
+        additional_version_space: ObjectSceneAnchorSupportVersionSpace | None = None,
         expected_response_digest: str,
         expected_rank_input_digest: str,
     ) -> ObjectSceneAnchorRankResponse:
         return verify_object_scene_anchor_rank_response(
             response,
             version_space=version_space,
+            additional_version_space=additional_version_space,
             expected_response_digest=expected_response_digest,
             expected_rank_input_digest=expected_rank_input_digest,
             model=self.model,
@@ -1133,6 +1381,7 @@ __all__ = (
     "OBJECT_SCENE_ANCHOR_RANK_RESPONSE_SCHEMA",
     "ObjectSceneAnchorCandidateRanker",
     "ObjectSceneAnchorCandidateRankerError",
+    "ObjectSceneAnchorRankCapacityGap",
     "ObjectSceneAnchorRankCandidate",
     "ObjectSceneAnchorRankInput",
     "ObjectSceneAnchorRankResponse",
