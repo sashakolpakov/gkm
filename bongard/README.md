@@ -34,6 +34,13 @@ campaign then moved those counts to 185 and 10,015. This is a large
 engineering pool, not 10,015 independent concepts: most tasks reuse
 generator semantics already represented in the exposure ledger.
 
+Those numbers are historical checkpoints. After the 2026-08-09 panel-soft
+drill, the exact exposure successor contains 314 unique task IDs: 290 TRAIN,
+24 validation, and zero TEST. That leaves 9,010 exact-image-unused TRAIN
+tasks, 876 exact-image-unused validation tasks, and all 1,800 TEST tasks
+sealed. Exact-image-unused still does not mean semantically independent, so
+new engineering cohorts must be stratified by generator/disclosure family.
+
 Strict reusable DRILL capacity is zero. The strict DEV reserve had 16 `bd`
 tasks before the pilot and has 15 afterward. The pilot protected exact DEV task
 IDs but failed to protect other tasks sharing their semantic disclosure keys;
