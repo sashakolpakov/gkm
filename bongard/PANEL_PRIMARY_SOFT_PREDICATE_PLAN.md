@@ -1,5 +1,60 @@
 # Panel-primary soft predicates
 
+## 2026-08-09 theory correction: one positive concept, not two side concepts
+
+The earlier two-orientation design below is obsolete for generated
+ShapeBongard tasks.  The official generator does not generally construct two
+coherent affirmative classes.  In an HD task named `A-B`, directory `1`
+contains examples satisfying `A AND B`; directory `0` deliberately mixes
+examples satisfying `not A AND B` with examples satisfying `A AND not B`.
+The Basic family uses the same one-failed-constituent pattern for composed
+concepts.  Freeform negatives are perturbations of the positive concept, not a
+promise of a second reusable concept.
+
+That semantics changes synthesis and prediction:
+
+```text
+support pixels
+-> candidate-independent typed observations
+-> complete fixed atom catalog
+-> enumerate atoms and positive conjunctions before contrast filtering
+-> retain support-consistent formulas for the dataset-declared positive side
+-> Codex ranks those verified positive formulas only
+-> freeze one Python AllOf predicate
+-> MATCH predicts the declared positive side
+-> calibrated/certified NONMATCH predicts the other side
+-> INDETERMINATE abstains; ERROR errors
+```
+
+The opposite-orientation version space may be archived as a diagnostic, but it
+must never be required for query release.  A missing coherent negative formula
+is expected, not a support gap.  `Not`, polarity repair, and negative-surrogate
+selection remain forbidden.
+
+The order of operations is equally important.  The old proposer admitted an
+atom only when it matched at least five native supports and at most one
+contrast support.  For `convex AND has_four_straight_lines`, each correct atom
+is intentionally true on a large subset of the negative mixture.  Both atoms
+were therefore discarded before Python could form the separating conjunction.
+The successor catalog is fixed independently of proposer output, forms every
+registered one- and two-atom `AllOf` first, and applies support consistency to
+the composite profile.  Vision prose is retained as narration and salience
+evidence; it has no vocabulary veto.
+
+The first exposed replay also identified the missing visual representation.
+Raw ink segmentation counts zigzag or stamped decoration as geometry and loses
+the generator's macro action.  The successor observer must recover an ordered
+macro carrier/centerline trace with typed line and arc spans, while recording
+stroke decoration separately.  `has_four_straight_lines` counts four macro
+line spans even when they are rendered as zigzags or marker chains.  Convexity
+is derived from a complete simplified closed carrier trace; it is never
+computed by taking a convex hull, which would erase concavities.  A missing or
+incomplete trace is indeterminate, never negative.
+
+Python is the canonical executable authority for this successor.  Lean is
+absent from identity, selection, evaluation, and replay, and may be removed
+without changing any decision.
+
 ## What the hard-frontend exact-unused drill established
 
 The 2026-08-09 three-task TRAIN drill reached no predicate or query decision.
@@ -201,10 +256,12 @@ atom is not an IR-level `Not`; deciding whether it is an admissible positive
 observable belongs to the typed ontology and calibration boundary.
 
 The replacement closes the four operational routes: exact task-plan binding,
-four-valued failures, native-orientation atoms, and no `Not`, complement, or
-polarity-repair operator.  A side prediction additionally requires a two-sided
-witness: its native formula must match and the other native formula must
-nonmatch.  Nonmatch alone never predicts the opposite side.
+four-valued failures, dataset-declared positive-orientation atoms, and no
+`Not`, complement, or polarity-repair operator.  Query prediction evaluates
+the one frozen affirmative formula: `match` predicts its declared positive
+side, a calibrated/certified `nonmatch` predicts the other side,
+`indeterminate` abstains, and `error` errors.  This is not negation rescue; the
+same positive formula and observation protocol are frozen before query release.
 
 ## EOD engineering drill versus scientific benchmark
 
@@ -236,25 +293,28 @@ language remains affirmative atoms and positive conjunctions only.  A reversed
 candidate is not rescued by `Not`, a polarity flip, or treating uncertainty as
 nonmatch.
 
-If both orientations have survivors, the selected engineering predicate pair
-contains exactly one native survivor per orientation.  Selection is fixed as
-fewest atoms followed by formula digest, and the content-addressed pair binds
-the complete engineering version-space digest.  This is selection for an
-engineering drill, not model ranking and not scientific synthesis.
+Only the dataset-declared positive orientation gates progress.  If it has one
+survivor, Python selects that unique formula without a model call.  If it has
+multiple survivors, a single headless Codex call ranks opaque aliases for the
+already verified formulas and Python selects the first alias in the required
+full permutation.  The complete version space, rank input, response receipt,
+and selected formula are content-addressed.  The opposite orientation is
+retained for diagnosis only.
 
-For one query panel, both selected formulas must be evaluated under the exact
-same vocabulary and observer contract.  A side is emitted only from the full
-two-sided witness:
+For one query panel, the selected positive formula is evaluated under the
+exact same vocabulary and observer contract:
 
 ```text
-side0 = side0 formula match AND side1 formula nonmatch
-side1 = side1 formula match AND side0 formula nonmatch
+declared positive side = formula MATCH
+other side             = formula NONMATCH
+abstain                 = formula INDETERMINATE
+error                   = formula ERROR
 ```
 
-A nonmatch by itself never predicts the opposite side.  Two matches, two
-nonmatches, disagreement, or indeterminacy abstain; any error produces an error.
-Every operational artifact and enum is labelled `engineering_only`,
-`uncalibrated`, not scientific evidence, and not benchmark-authoritative.
+A nonmatch is admissible only when produced by the frozen closed measurement
+contract; failed extraction and uncertainty remain indeterminate.  Every
+operational artifact and enum is labelled `engineering_only`, `uncalibrated`,
+not scientific evidence, and not benchmark-authoritative.
 The task runner now verifies sealed proposer/observer calls and freeze-before-
 query callback chronology.  Campaign-level proof that official query bytes were
 not read before that callback remains external.

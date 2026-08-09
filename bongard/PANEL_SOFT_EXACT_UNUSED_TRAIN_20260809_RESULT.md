@@ -1,5 +1,19 @@
 # Panel-soft exact-unused TRAIN drill, 2026-08-09
 
+> **Superseding theory correction.**  The discussion below correctly records
+> the frozen campaign, but its claim that exhaustive contrast-side absence was
+> the principal HD blocker is incomplete.  The official HD generator defines
+> one positive conjunction `A AND B` and a negative mixture
+> `(not A AND B) OR (A AND not B)`.  The historical proposer filtered atoms
+> individually for contrast rarity, so it necessarily discarded both useful
+> constituents before their conjunction could be formed; the runner then
+> incorrectly required a coherent affirmative predicate for the heterogeneous
+> negative class.  The successor uses a fixed candidate-independent catalog,
+> forms composites before contrast admission, freezes one positive Python
+> predicate, and treats the opposite orientation as diagnostic only.  Macro
+> action/centerline geometry, not raw decorated ink, is the remaining visual
+> representation requirement for the exposed convex/four-lines task.
+
 ## Verdict
 
 The campaign completed correctly and the result is bad in a useful way:
