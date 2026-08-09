@@ -1,6 +1,6 @@
 # Panel-primary soft predicates
 
-## What the exact-unused drill established
+## What the hard-frontend exact-unused drill established
 
 The 2026-08-09 three-task TRAIN drill reached no predicate or query decision.
 Its outcomes were two proposer gaps and one deterministic pre-model capacity
@@ -19,14 +19,33 @@ for vision:
 The hard frontend is therefore useful optional evidence, but it is not a sound
 gate for whether the vision model may describe a complete panel.
 
+## What the whole-panel exact-unused drill established
+
+The subsequent three-task whole-panel campaign completed with 75 successful
+model turns and an externally anchored zero-call replay.  It produced three
+typed support gaps: every task had zero support-consistent formulas in both
+orientations, so the ranker was never called and no query pixels were released.
+The fixed six-query denominator contains six abstentions and zero errors.
+
+This isolates a second, deeper failure.  Positive existential prose can carry
+a presence witness, but contrast-side absence requires bounded owner
+enumeration plus a complete-search certificate.  Failure to find a witness
+must remain indeterminate.  At the same time, the proposer selected recurring
+salient qualities rather than contrastively discriminative positive
+qualities, producing duplicates and shared nuisance atoms.  Exact results,
+near misses, artifact commitments, and the redesign are recorded in
+[`PANEL_SOFT_EXACT_UNUSED_TRAIN_20260809_RESULT.md`](PANEL_SOFT_EXACT_UNUSED_TRAIN_20260809_RESULT.md).
+
 ## Proposed replacement pipeline
 
 The intended primary lane is:
 
 ```text
 exact panel pixels
--> frozen affirmative panel atoms proposed from all support panels
--> complete panel-by-atom observation table under one frozen protocol
+-> contrastively nominated typed FeatureSpec values plus prose narration
+-> panel-local owners and family-specific witnesses
+-> calibrated presence or certified exhaustive-search absence
+-> complete panel-by-feature observation table under one frozen protocol
 -> verified calibration receipt for that exact observer contract
 -> scientific four-disposition projection
 -> deterministic positive-conjunction version space
@@ -39,9 +58,10 @@ The engineering lane now implements the closed Python semantics, one receipted
 support-only whole-panel proposer, two receipted complete-vocabulary observer
 turns per panel, exact support-parent reconstruction, typed support gaps,
 byte-exact freeze/reload before the query callback, fixed-denominator query
-scoring, and model-free tamper-detecting replay.  It does **not** yet implement
-a sealed scientific calibration receipt or the campaign-level official-release
-and cross-task custody wrapper.  Those remain blockers to calling this lane a
+scoring, an exactly-once official-release/cross-task custody wrapper, parallel
+task isolation, and externally anchored model-free replay.  It does **not** yet
+implement typed feature/owner/search-completeness semantics or a sealed
+scientific calibration receipt.  Those remain blockers to calling this lane a
 scientific benchmark.  Supplying an arbitrary digest is not a calibration
 receipt and cannot enable scientific `present` or `certified_absent` states.
 
