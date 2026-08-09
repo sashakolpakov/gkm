@@ -6,6 +6,7 @@ import fcntl
 import hashlib
 import json
 import os
+import shutil
 import signal
 import stat
 import subprocess
@@ -3502,6 +3503,7 @@ def _sandboxed_generation_fixture(
     source_sha256=LEGACY_HISTORICAL_RUNNER_SOURCE_SHA256,
     interrupted_exec=False,
     boundary_finding_counts=None,
+    scratch_relative=Path("abandoned_scratch"),
 ):
     monkeypatch.setattr(R, "HERE", tmp_path)
     artifact = tmp_path / "agent_solutions" / "ar25_legs"
@@ -3511,7 +3513,7 @@ def _sandboxed_generation_fixture(
     wip.mkdir(parents=True)
     (wip / "latest.json").write_bytes(b'{"attempt":"baseline"}\n')
 
-    scratch = tmp_path / "abandoned_scratch"
+    scratch = tmp_path / scratch_relative
     protected_root = scratch / ".proposer_transcripts"
     lock_root = scratch / ".workspace_locks"
     protected_root.mkdir(parents=True)
@@ -5979,6 +5981,314 @@ def test_abandoned_scratch_rejects_an_ancestor_retry_root(tmp_path, monkeypatch)
         )
 
 
+def _complete_sandbox_abandonment(fixture, monkeypatch):
+    armed = _arm_sandboxed_generation(fixture, monkeypatch)
+    R._recover_sandboxed_generation_release(
+        fixture["item"],
+        confirm_dispatch_id=fixture["dispatch_id"],
+        confirm_recovery_nonce=armed["recovery_nonce"],
+        boot_identity_provider=lambda: fixture["boot"],
+    )
+
+
+def test_removed_abandoned_scratch_allows_only_unrelated_fresh_root(
+    tmp_path, monkeypatch
+):
+    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    _complete_sandbox_abandonment(fixture, monkeypatch)
+    shutil.rmtree(fixture["scratch"])
+    fresh = tmp_path / "fresh_retry_root"
+    fresh.mkdir()
+
+    R._reject_abandoned_scratch_root(fresh, fixture["ledger"])
+    with pytest.raises(
+        R.CampaignPlanError, match="abandoned sandbox namespace"
+    ):
+        R._reject_abandoned_scratch_root(tmp_path, fixture["ledger"])
+
+    fixture["scratch"].mkdir()
+    with pytest.raises(
+        R.CampaignPlanError, match="abandoned sandbox namespace"
+    ):
+        R._reject_abandoned_scratch_root(
+            fixture["scratch"], fixture["ledger"]
+        )
+    descendant = fixture["scratch"] / "descendant_retry"
+    descendant.mkdir()
+    with pytest.raises(
+        R.CampaignPlanError, match="abandoned sandbox namespace"
+    ):
+        R._reject_abandoned_scratch_root(descendant, fixture["ledger"])
+
+
+def test_removed_abandoned_scratch_inode_moved_below_fresh_root_is_rejected(
+    tmp_path, monkeypatch
+):
+    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    _complete_sandbox_abandonment(fixture, monkeypatch)
+    fresh = tmp_path / "fresh_retry_root"
+    fresh.mkdir()
+    fixture["scratch"].rename(fresh / "moved_abandoned_root")
+
+    with pytest.raises(
+        R.CampaignPlanError, match="contains an abandoned sandbox inode"
+    ):
+        R._reject_abandoned_scratch_root(fresh, fixture["ledger"])
+
+
+def test_removed_abandoned_scratch_inode_moved_above_fresh_root_is_rejected(
+    tmp_path, monkeypatch
+):
+    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    _complete_sandbox_abandonment(fixture, monkeypatch)
+    moved_parent = tmp_path / "moved_parent"
+    fixture["scratch"].rename(moved_parent)
+    fresh = moved_parent / "fresh_retry_root"
+    fresh.mkdir()
+
+    with pytest.raises(
+        R.CampaignPlanError, match="ancestry contains an abandoned sandbox inode"
+    ):
+        R._reject_abandoned_scratch_root(fresh, fixture["ledger"])
+
+
+def test_removed_abandoned_scratch_rejects_symlinked_fresh_tree(
+    tmp_path, monkeypatch
+):
+    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    _complete_sandbox_abandonment(fixture, monkeypatch)
+    shutil.rmtree(fixture["scratch"])
+    fresh = tmp_path / "fresh_retry_root"
+    fresh.mkdir()
+    target = tmp_path / "link_target"
+    target.mkdir()
+    (fresh / "alias").symlink_to(target, target_is_directory=True)
+
+    with pytest.raises(R.CampaignPlanError, match="contains a symlink"):
+        R._reject_abandoned_scratch_root(fresh, fixture["ledger"])
+
+
+def test_removed_abandoned_scratch_rejects_unreadable_fresh_tree(
+    tmp_path, monkeypatch
+):
+    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    _complete_sandbox_abandonment(fixture, monkeypatch)
+    shutil.rmtree(fixture["scratch"])
+    fresh = tmp_path / "fresh_retry_root"
+    fresh.mkdir()
+    unreadable = fresh / "unreadable"
+    unreadable.mkdir()
+    os.chmod(unreadable, 0)
+    try:
+        with pytest.raises(R.CampaignPlanError, match="completely traversed"):
+            R._reject_abandoned_scratch_root(fresh, fixture["ledger"])
+    finally:
+        os.chmod(unreadable, 0o700)
+
+
+def test_abandoned_scratch_authentication_rejects_ledger_append_race(
+    tmp_path, monkeypatch
+):
+    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    _complete_sandbox_abandonment(fixture, monkeypatch)
+    shutil.rmtree(fixture["scratch"])
+    fresh = tmp_path / "fresh_retry_root"
+    fresh.mkdir()
+    real_traversal = R._mutable_root_traversal_receipt
+    appended = False
+
+    def racing_traversal(*args, **kwargs):
+        nonlocal appended
+        result = real_traversal(*args, **kwargs)
+        if not appended:
+            appended = True
+            R.Guard.append_ledger(
+                {"event": "synthetic_concurrent_control_row"},
+                fixture["ledger"],
+            )
+        return result
+
+    monkeypatch.setattr(
+        R, "_mutable_root_traversal_receipt", racing_traversal
+    )
+    with pytest.raises(R.CampaignPlanError, match="ledger changed"):
+        R._reject_abandoned_scratch_root(fresh, fixture["ledger"])
+    assert appended is True
+
+
+def test_abandoned_scratch_authentication_rejects_candidate_replacement_race(
+    tmp_path, monkeypatch
+):
+    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    _complete_sandbox_abandonment(fixture, monkeypatch)
+    shutil.rmtree(fixture["scratch"])
+    fresh = tmp_path / "fresh_retry_root"
+    fresh.mkdir()
+    real_traversal = R._mutable_root_traversal_receipt
+    replaced = False
+
+    def racing_traversal(*args, **kwargs):
+        nonlocal replaced
+        result = real_traversal(*args, **kwargs)
+        if not replaced:
+            replaced = True
+            fresh.rename(tmp_path / "replaced_retry_root")
+            fresh.mkdir()
+        return result
+
+    monkeypatch.setattr(
+        R, "_mutable_root_traversal_receipt", racing_traversal
+    )
+    with pytest.raises(R.CampaignPlanError, match="ancestry changed"):
+        R._reject_abandoned_scratch_root(fresh, fixture["ledger"])
+    assert replaced is True
+
+
+def test_abandoned_scratch_authentication_rejects_deep_tree_drift(
+    tmp_path, monkeypatch
+):
+    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    _complete_sandbox_abandonment(fixture, monkeypatch)
+    shutil.rmtree(fixture["scratch"])
+    fresh = tmp_path / "fresh_retry_root"
+    nested = fresh / "nested"
+    nested.mkdir(parents=True)
+    real_traversal = R._mutable_root_traversal_receipt
+    traversals = 0
+
+    def racing_traversal(*args, **kwargs):
+        nonlocal traversals
+        result = real_traversal(*args, **kwargs)
+        traversals += 1
+        if traversals == 1:
+            (nested / "late_control_file").write_bytes(b"synthetic\n")
+        return result
+
+    monkeypatch.setattr(
+        R, "_mutable_root_traversal_receipt", racing_traversal
+    )
+    with pytest.raises(R.CampaignPlanError, match="scratch tree changed"):
+        R._reject_abandoned_scratch_root(fresh, fixture["ledger"])
+    assert traversals == 2
+
+
+def test_cross_game_scratch_admission_blocks_abandonment_append(
+    tmp_path, monkeypatch
+):
+    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    armed = _arm_sandboxed_generation(fixture, monkeypatch)
+    other_game = copy.deepcopy(fixture["item"])
+    other_game["game"] = "bp35"
+    sealed_ledger = fixture["ledger"].read_bytes()
+
+    monkeypatch.setattr(
+        R,
+        "_project_runner_receipt",
+        lambda _plan, selected, **_kwargs: selected,
+    )
+    monkeypatch.setattr(R, "validate_item", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(R, "validate_inventory_item", lambda *_args: None)
+    monkeypatch.setattr(R, "validate_live_policy_item", lambda _item: None)
+    monkeypatch.setattr(R, "active_workspace_lock", lambda _game: None)
+    monkeypatch.setattr(
+        R, "item_is_admissible", lambda *_args, **_kwargs: (True, "")
+    )
+
+    class SharedScratchObserved(RuntimeError):
+        pass
+
+    def observe_shared_scratch_custody(_item):
+        with pytest.raises(
+            R.CampaignPlanError,
+            match="owns the exact artifact scratch admission",
+        ):
+            R._recover_sandboxed_generation_release(
+                fixture["item"],
+                confirm_dispatch_id=fixture["dispatch_id"],
+                confirm_recovery_nonce=armed["recovery_nonce"],
+                boot_identity_provider=lambda: fixture["boot"],
+            )
+        raise SharedScratchObserved
+
+    monkeypatch.setattr(
+        R, "_acquire_scheduler_lineage_lock", observe_shared_scratch_custody
+    )
+    with pytest.raises(SharedScratchObserved):
+        R._run_item({}, other_game, allowance=object())
+
+    assert fixture["ledger"].read_bytes() == sealed_ledger
+    assert fixture["marker"].is_file()
+
+
+@pytest.mark.parametrize(
+    "recovery_relation",
+    ("parent_of_admission", "child_of_admission"),
+)
+def test_related_cross_game_scratch_admission_blocks_abandonment_append(
+    tmp_path, monkeypatch, recovery_relation
+):
+    fixture = _sandboxed_generation_fixture(
+        tmp_path,
+        monkeypatch,
+        scratch_relative=(
+            Path("scratch_parent")
+            if recovery_relation == "parent_of_admission"
+            else Path("scratch_parent") / "recovery_child"
+        ),
+    )
+    armed = _arm_sandboxed_generation(fixture, monkeypatch)
+    if recovery_relation == "parent_of_admission":
+        admission_root = fixture["scratch"] / "admission_child"
+        admission_root.mkdir()
+    else:
+        admission_root = fixture["scratch"].parent
+    other_game = copy.deepcopy(fixture["item"])
+    other_game["game"] = "bp35"
+    other_game["historical_runner"] = dict(other_game["historical_runner"])
+    other_game["historical_runner"]["scratch_root"] = os.fspath(
+        admission_root
+    )
+    sealed_ledger = fixture["ledger"].read_bytes()
+
+    monkeypatch.setattr(
+        R,
+        "_project_runner_receipt",
+        lambda _plan, selected, **_kwargs: selected,
+    )
+    monkeypatch.setattr(R, "validate_item", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(R, "validate_inventory_item", lambda *_args: None)
+    monkeypatch.setattr(R, "validate_live_policy_item", lambda _item: None)
+    monkeypatch.setattr(R, "active_workspace_lock", lambda _game: None)
+    monkeypatch.setattr(
+        R, "item_is_admissible", lambda *_args, **_kwargs: (True, "")
+    )
+
+    class RelatedScratchObserved(RuntimeError):
+        pass
+
+    def observe_related_scratch_custody(_item):
+        with pytest.raises(
+            R.CampaignPlanError,
+            match="owns the exact artifact scratch admission",
+        ):
+            R._recover_sandboxed_generation_release(
+                fixture["item"],
+                confirm_dispatch_id=fixture["dispatch_id"],
+                confirm_recovery_nonce=armed["recovery_nonce"],
+                boot_identity_provider=lambda: fixture["boot"],
+            )
+        raise RelatedScratchObserved
+
+    monkeypatch.setattr(
+        R, "_acquire_scheduler_lineage_lock", observe_related_scratch_custody
+    )
+    with pytest.raises(RelatedScratchObserved):
+        R._run_item({}, other_game, allowance=object())
+
+    assert fixture["ledger"].read_bytes() == sealed_ledger
+    assert fixture["marker"].is_file()
+
+
 def test_sandboxed_arm_sidecar_replay_tolerates_dynamic_absence_observations(
     tmp_path, monkeypatch
 ):
@@ -6882,6 +7192,43 @@ def test_recursive_holder_scan_rejects_cross_device_directory(
 
     with pytest.raises(R.CampaignPlanError, match="crosses a filesystem"):
         R._mutable_root_traversal_receipt(root)
+
+
+def test_abandoned_inode_proof_rejects_cross_device_nondirectory(
+    tmp_path, monkeypatch
+):
+    foreign = tmp_path / "foreign"
+    foreign.write_bytes(b"synthetic\n")
+    root = R._bound_mutable_root(
+        tmp_path,
+        R._host_directory_identity(tmp_path, "test root"),
+        label="test root",
+    )
+    real_stat = os.stat
+
+    class CrossDeviceMetadata:
+        def __init__(self, metadata):
+            self._metadata = metadata
+
+        @property
+        def st_dev(self):
+            return root.identity[0] + 1
+
+        def __getattr__(self, name):
+            return getattr(self._metadata, name)
+
+    def cross_device_stat(path, *args, **kwargs):
+        metadata = real_stat(path, *args, **kwargs)
+        if path == foreign.name and kwargs.get("dir_fd") is not None:
+            return CrossDeviceMetadata(metadata)
+        return metadata
+
+    monkeypatch.setattr(R.os, "stat", cross_device_stat)
+
+    with pytest.raises(R.CampaignPlanError, match="crosses a filesystem"):
+        R._mutable_root_traversal_receipt(
+            root, require_same_device=True
+        )
 
 
 def test_recursive_holder_scan_rejects_directory_to_symlink_race(

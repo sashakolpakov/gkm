@@ -474,12 +474,25 @@ def test_dry_run_rejects_stale_live_retry_coordinate(tmp_path, monkeypatch):
         R.main()
 
 
-def test_run_item_turns_expected_headroom_failure_into_reserve_stop(monkeypatch):
+def test_run_item_turns_expected_headroom_failure_into_reserve_stop(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(R, "HERE", tmp_path)
+    (tmp_path / "agent_solutions").mkdir()
+    missing_scratch = tmp_path / "missing_scratch"
+    monkeypatch.setattr(R.Legs, "SCRATCH", os.fspath(missing_scratch))
     monkeypatch.setattr(R, "_checkpoint_reached", lambda game: 0)
     monkeypatch.setattr(
         R, "_authoritative_targets", lambda: {"ar25": 8}
     )
     monkeypatch.setattr(R, "validate_live_policy_item", lambda item: None)
+    monkeypatch.setattr(
+        R,
+        "_acquire_scheduler_scratch_admission_lock",
+        lambda _item: pytest.fail(
+            "reserve-stop must not acquire scratch admission custody"
+        ),
+    )
     plan = {
         "not_before_epoch": 100,
         "reserve_percent": 25,
@@ -489,6 +502,282 @@ def test_run_item_turns_expected_headroom_failure_into_reserve_stop(monkeypatch)
     result = R._run_item(plan, _item(), allowance=allowance)
     assert result["result"] == "reserve_stop"
     assert "requires 6%" in result["reason"]
+    assert not missing_scratch.exists()
+
+
+@pytest.mark.parametrize(
+    ("outcome", "reached"),
+    (("reserve_stop", 0), ("already_solved", 1)),
+)
+def test_historical_no_dispatch_exit_allows_absent_planned_scratch(
+    tmp_path, monkeypatch, outcome, reached
+):
+    worktree = tmp_path / "sealed_runner"
+    worktree.mkdir()
+    artifacts = tmp_path / "agent_solutions"
+    artifacts.mkdir()
+    missing_scratch = tmp_path / "retired_scratch"
+    ledger = tmp_path / "usage.jsonl"
+    source_sha256 = "1" * 64
+    head_commit = "2" * 40
+    monkeypatch.setattr(R, "HERE", tmp_path)
+    monkeypatch.setattr(R.Legs, "SCRATCH", os.fspath(missing_scratch))
+    monkeypatch.setattr(R.Guard, "DEFAULT_LEDGER", ledger)
+    monkeypatch.setattr(R, "PINNED_HISTORICAL_RUNNERS", {
+        source_sha256: {
+            "head_commit": head_commit,
+            "evidence_schema": "sealed_transcript_only_v1",
+            "lock_schema": "in_workspace_v1",
+        }
+    })
+    receipt = {
+        "schema": R.RUNNER_RECEIPT_SCHEMA,
+        "worktree": os.fspath(worktree),
+        "cwd": os.fspath(worktree),
+        "interpreter": os.fspath(Path(sys.executable).absolute()),
+        "head_commit": head_commit,
+        "source_sha256": source_sha256,
+        "artifacts_root": os.fspath(artifacts),
+        "scratch_root": os.fspath(missing_scratch),
+        "ledger": os.fspath(ledger),
+        "evidence_schema": "sealed_transcript_only_v1",
+        "lock_schema": "in_workspace_v1",
+    }
+    plan = {
+        "runner_receipt": receipt,
+        "not_before_epoch": 100,
+        "reserve_percent": 25,
+        "cost_control_enabled": True,
+    }
+    monkeypatch.setattr(R, "validate_item", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(R, "_checkpoint_reached", lambda _game: reached)
+    monkeypatch.setattr(R, "validate_inventory_item", lambda *_args: None)
+    monkeypatch.setattr(
+        R,
+        "_resume_existing_contained_residual_classification",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        R, "_resume_existing_zero_ledger_quarantine", lambda _item: None
+    )
+    monkeypatch.setattr(R, "_assert_no_dispatch_quarantine", lambda _item: None)
+    monkeypatch.setattr(R, "validate_live_policy_item", lambda _item: None)
+    monkeypatch.setattr(R, "active_workspace_lock", lambda _game: None)
+    monkeypatch.setattr(
+        R,
+        "_acquire_scheduler_scratch_admission_lock",
+        lambda _item: pytest.fail(
+            "historical no-dispatch exit acquired scratch custody"
+        ),
+    )
+
+    result = R._run_item(
+        plan,
+        _item(),
+        allowance=SimpleNamespace(remaining_percent=30),
+    )
+
+    assert result["result"] == outcome
+    assert not missing_scratch.exists()
+
+
+@pytest.mark.parametrize(
+    ("execute", "reached", "expected"),
+    (
+        (True, 0, "reserve_stop"),
+        (True, 1, "already_solved"),
+        (False, 0, "strict_rejection"),
+    ),
+)
+def test_main_historical_absent_scratch_defers_only_execute_no_dispatch(
+    tmp_path, monkeypatch, capsys, execute, reached, expected
+):
+    worktree = tmp_path / "sealed_runner"
+    worktree.mkdir()
+    artifacts = tmp_path / "agent_solutions"
+    artifacts.mkdir()
+    missing_scratch = tmp_path / "retired_scratch"
+    ledger = tmp_path / "usage.jsonl"
+    ledger.write_bytes(b"")
+    source_sha256 = "1" * 64
+    head_commit = "2" * 40
+    monkeypatch.setattr(R, "HERE", tmp_path)
+    monkeypatch.setattr(R.Legs, "SCRATCH", os.fspath(missing_scratch))
+    monkeypatch.setattr(R.Guard, "DEFAULT_LEDGER", ledger)
+    monkeypatch.setattr(R, "PINNED_HISTORICAL_RUNNERS", {
+        source_sha256: {
+            "head_commit": head_commit,
+            "evidence_schema": "sealed_transcript_only_v1",
+            "lock_schema": "in_workspace_v1",
+        }
+    })
+    receipt = {
+        "schema": R.RUNNER_RECEIPT_SCHEMA,
+        "worktree": os.fspath(worktree),
+        "cwd": os.fspath(worktree),
+        "interpreter": os.fspath(Path(sys.executable).absolute()),
+        "head_commit": head_commit,
+        "source_sha256": source_sha256,
+        "artifacts_root": os.fspath(artifacts),
+        "scratch_root": os.fspath(missing_scratch),
+        "ledger": os.fspath(ledger),
+        "evidence_schema": "sealed_transcript_only_v1",
+        "lock_schema": "in_workspace_v1",
+    }
+    plan = {
+        "runner_receipt": receipt,
+        "initial_queue": [_item()],
+        "not_before_epoch": 100,
+        "reserve_percent": 25,
+        "cost_control_enabled": True,
+    }
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(json.dumps(plan), encoding="utf-8")
+    monkeypatch.setattr(R, "_authoritative_targets", lambda: {"ar25": 8})
+    monkeypatch.setattr(R, "_checkpoint_reached", lambda _game: reached)
+    monkeypatch.setattr(R, "validate_item", lambda item, *_args, **_kwargs: item["argv"])
+    monkeypatch.setattr(R, "validate_inventory_item", lambda *_args: None)
+    monkeypatch.setattr(R, "validate_live_policy_item", lambda _item: None)
+    monkeypatch.setattr(
+        R,
+        "_resume_existing_contained_residual_classification",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        R, "_resume_existing_zero_ledger_quarantine", lambda _item: None
+    )
+    monkeypatch.setattr(R, "_assert_no_dispatch_quarantine", lambda _item: None)
+    monkeypatch.setattr(
+        R,
+        "_acquire_scheduler_scratch_admission_lock",
+        lambda _item: pytest.fail(
+            "main no-dispatch path acquired scratch custody"
+        ),
+    )
+    monkeypatch.setattr(R.Guard, "query_rate_limits", lambda: {})
+    monkeypatch.setattr(
+        R.Guard,
+        "weekly_allowance",
+        lambda _snapshot: SimpleNamespace(remaining_percent=30),
+    )
+    argv = ["codex_campaign_runner.py", "--plan", os.fspath(plan_path)]
+    if execute:
+        argv.extend(("--execute", "--max-items=1"))
+    monkeypatch.setattr(sys, "argv", argv)
+
+    if not execute:
+        with pytest.raises(R.CampaignPlanError, match="scratch root is unavailable"):
+            R.main()
+    else:
+        assert R.main() == 0
+        assert f'"result": "{expected}"' in capsys.readouterr().out
+        assert not missing_scratch.exists()
+
+
+def test_run_item_reprojects_under_scratch_custody_before_dispatch(
+    monkeypatch
+):
+    item = _item()
+    projected_with_scratch = []
+    validated_with_scratch = []
+    dispatch_held = False
+    scratch_held = False
+    dispatch_lock = object()
+    scratch_lock = object()
+
+    class DispatchBoundaryObserved(RuntimeError):
+        pass
+
+    def project(_plan, selected, **_kwargs):
+        projected_with_scratch.append((
+            scratch_held,
+            _kwargs.get("allow_abandoned_scratch", False),
+        ))
+        return selected
+
+    def validate(*_args, **kwargs):
+        validated_with_scratch.append((
+            scratch_held,
+            kwargs.get("allow_abandoned_scratch", False),
+        ))
+        return []
+
+    def acquire_dispatch(_item):
+        nonlocal dispatch_held
+        assert not dispatch_held
+        dispatch_held = True
+        return dispatch_lock
+
+    def acquire_scratch(_item):
+        nonlocal scratch_held
+        assert dispatch_held
+        assert not scratch_held
+        scratch_held = True
+        return scratch_lock
+
+    def validate_scratch(selected, _item):
+        assert selected is scratch_lock
+        assert dispatch_held and scratch_held
+
+    def release_scratch(selected, _item):
+        nonlocal scratch_held
+        assert selected is scratch_lock
+        assert dispatch_held and scratch_held
+        scratch_held = False
+
+    def release_dispatch(selected):
+        nonlocal dispatch_held
+        assert selected is dispatch_lock
+        assert dispatch_held and not scratch_held
+        dispatch_held = False
+
+    def observe_dispatch_boundary(_item):
+        assert dispatch_held and scratch_held
+        raise DispatchBoundaryObserved
+
+    monkeypatch.setattr(R, "_project_runner_receipt", project)
+    monkeypatch.setattr(R, "validate_item", validate)
+    monkeypatch.setattr(R, "_checkpoint_reached", lambda _game: 0)
+    monkeypatch.setattr(R, "validate_inventory_item", lambda *_args: None)
+    monkeypatch.setattr(
+        R, "_resume_existing_contained_residual_classification",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        R, "_resume_existing_zero_ledger_quarantine", lambda _item: None
+    )
+    monkeypatch.setattr(R, "_assert_no_dispatch_quarantine", lambda _item: None)
+    monkeypatch.setattr(R, "validate_live_policy_item", lambda _item: None)
+    monkeypatch.setattr(R, "active_workspace_lock", lambda _game: None)
+    monkeypatch.setattr(
+        R, "item_is_admissible", lambda *_args, **_kwargs: (True, "")
+    )
+    monkeypatch.setattr(R, "_acquire_scheduler_dispatch_lock", acquire_dispatch)
+    monkeypatch.setattr(
+        R, "_acquire_scheduler_scratch_admission_lock", acquire_scratch
+    )
+    monkeypatch.setattr(
+        R, "_validate_scheduler_scratch_admission_lock", validate_scratch
+    )
+    monkeypatch.setattr(
+        R, "_release_scheduler_scratch_admission_lock", release_scratch
+    )
+    monkeypatch.setattr(
+        R, "_acquire_scheduler_lineage_lock", observe_dispatch_boundary
+    )
+    monkeypatch.setattr(R, "_release_scheduler_artifact_lock", release_dispatch)
+
+    with pytest.raises(DispatchBoundaryObserved):
+        R._run_item({}, item, allowance=object())
+
+    assert projected_with_scratch == [
+        (False, True),
+        (False, True),
+        (True, False),
+    ]
+    assert validated_with_scratch == projected_with_scratch
+    assert not scratch_held
+    assert not dispatch_held
 
 
 def _taint_dispatch_fixture(
@@ -1751,6 +2040,18 @@ def test_main_replays_contained_residual_from_sealed_old_scratch_receipt(
     monkeypatch.setattr(
         R.Guard, "weekly_allowance", lambda _snapshot: fixture["allowance"]
     )
+    scratch_admissions = []
+    real_scratch_admission = R._acquire_scheduler_scratch_admission_lock
+
+    def track_scratch_admission(*args, **kwargs):
+        scratch_admissions.append((args, kwargs))
+        return real_scratch_admission(*args, **kwargs)
+
+    monkeypatch.setattr(
+        R,
+        "_acquire_scheduler_scratch_admission_lock",
+        track_scratch_admission,
+    )
     monkeypatch.setattr(
         sys,
         "argv",
@@ -1765,6 +2066,7 @@ def test_main_replays_contained_residual_from_sealed_old_scratch_receipt(
 
     assert R.main() == 0
     assert child_calls == 1
+    assert scratch_admissions == []
     assert fixture["workspace"].is_dir()
     assert fixture["protected"].is_dir()
     assert not any(
@@ -5284,7 +5586,9 @@ def test_not_solved_retry_advance_reconciles_prior_release(
 
     with monkeypatch.context() as next_dispatch:
         next_dispatch.setattr(
-            R, "validate_item", lambda item, plan=None: tuple(item["argv"])
+            R,
+            "validate_item",
+            lambda item, plan=None, **_kwargs: tuple(item["argv"]),
         )
         next_dispatch.setattr(
             R, "validate_inventory_item", lambda *_args, **_kwargs: None
@@ -5320,6 +5624,13 @@ def test_solved_rerun_reconciles_release_before_already_solved(
     with monkeypatch.context() as rerun:
         rerun.setattr(
             R, "validate_inventory_item", lambda *_args, **_kwargs: None
+        )
+        rerun.setattr(
+            R,
+            "_acquire_scheduler_scratch_admission_lock",
+            lambda _item: pytest.fail(
+                "already-solved replay must not acquire scratch custody"
+            ),
         )
         outcome = R._run_item(
             fixture["plan"],

@@ -632,6 +632,17 @@ class SchedulerArtifactLock:
     root_identity: tuple[int, int]
     path: Path
     lock_identity: tuple[int, int]
+    shared: bool = False
+
+
+@dataclass(frozen=True)
+class ScratchAdmissionLock:
+    authority: SchedulerArtifactLock
+    authorities: tuple[SchedulerArtifactLock, ...]
+    coordinates: tuple[tuple[tuple[int, int], bool], ...]
+    scratch_root: Path
+    scratch_identity: tuple[int, int]
+    ancestry_receipt: tuple[tuple[str, tuple[int, ...]], ...]
 
 
 @dataclass
@@ -798,30 +809,131 @@ def _runner_receipt(
     return dict(receipt)
 
 
+def _nofollow_directory_ancestry_receipt(
+    path: Path,
+    label: str,
+    *,
+    allow_missing: bool = False,
+) -> tuple[tuple[str, tuple[int, ...]], ...] | None:
+    """Bind every directory component from ``/`` without following aliases."""
+
+    directory_flag = getattr(os, "O_DIRECTORY", 0)
+    nofollow_flag = getattr(os, "O_NOFOLLOW", 0)
+    if (
+        not isinstance(path, Path)
+        or not path.is_absolute()
+        or Path(os.path.abspath(path)) != path
+        or not isinstance(label, str)
+        or not label
+        or not directory_flag
+        or not nofollow_flag
+    ):
+        raise CampaignPlanError(f"{label} lacks fd-relative nofollow custody")
+    flags = (
+        os.O_RDONLY
+        | directory_flag
+        | nofollow_flag
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    fields = ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid")
+
+    def receipt(metadata: os.stat_result) -> tuple[int, ...]:
+        return tuple(int(getattr(metadata, field)) for field in fields)
+
+    descriptor: int | None = None
+    observed: list[tuple[str, tuple[int, ...]]] = []
+    current = Path(path.anchor)
+    try:
+        descriptor = os.open(current, flags)
+        root_opened = os.fstat(descriptor)
+        root_at_path = current.stat(follow_symlinks=False)
+        root_receipt = receipt(root_opened)
+        if (
+            not stat.S_ISDIR(root_opened.st_mode)
+            or receipt(root_at_path) != root_receipt
+        ):
+            raise CampaignPlanError(f"{label} root custody changed")
+        observed.append((os.fspath(current), root_receipt))
+        for part in path.parts[1:]:
+            current /= part
+            try:
+                before = os.stat(
+                    part, dir_fd=descriptor, follow_symlinks=False
+                )
+            except FileNotFoundError:
+                if allow_missing:
+                    return None
+                raise CampaignPlanError(
+                    f"{label} is unavailable: {current}"
+                ) from None
+            if stat.S_ISLNK(before.st_mode) or not stat.S_ISDIR(before.st_mode):
+                raise CampaignPlanError(
+                    f"{label} has non-directory or symlinked ancestry: "
+                    f"{current}"
+                )
+            child = os.open(part, flags, dir_fd=descriptor)
+            try:
+                opened = os.fstat(child)
+                after = os.stat(
+                    part, dir_fd=descriptor, follow_symlinks=False
+                )
+                expected = receipt(before)
+                if any((
+                    not stat.S_ISDIR(opened.st_mode),
+                    receipt(opened) != expected,
+                    receipt(after) != expected,
+                )):
+                    raise CampaignPlanError(
+                        f"{label} ancestry changed while binding: {current}"
+                    )
+            except BaseException:
+                os.close(child)
+                raise
+            os.close(descriptor)
+            descriptor = child
+            observed.append((os.fspath(current), expected))
+        if receipt(os.fstat(descriptor)) != observed[-1][1]:
+            raise CampaignPlanError(f"{label} final custody changed")
+    except CampaignPlanError:
+        raise
+    except FileNotFoundError:
+        if allow_missing:
+            return None
+        raise CampaignPlanError(f"{label} is unavailable: {current}") from None
+    except (OSError, TypeError, NotImplementedError) as exc:
+        raise CampaignPlanError(f"{label} ancestry is unavailable") from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    return tuple(observed)
+
+
 def _reject_abandoned_scratch_root(scratch_root: Path, ledger: Path) -> None:
-    """Never dispatch into a namespace abandoned by operator isolation."""
+    """Reject every live or retired sandbox namespace, including moved inodes."""
 
     try:
-        records = Guard.read_ledger(ledger)
+        ledger_before = _capture_ledger_prefix(ledger)
     except (OSError, ValueError, Guard.CodexUsageGuardError) as exc:
         raise CampaignPlanError(
             "cannot authenticate abandoned scratch namespaces"
         ) from exc
+    candidate_before = _nofollow_directory_ancestry_receipt(
+        scratch_root, "runner scratch root"
+    )
+    assert candidate_before is not None
+    current_identity = (
+        candidate_before[-1][1][0], candidate_before[-1][1][1]
+    )
     try:
-        current = scratch_root.stat(follow_symlinks=False)
-        current_identity: tuple[int, int] | None = (
-            current.st_dev, current.st_ino
-        )
-    except FileNotFoundError:
-        current_identity = None
-    except OSError as exc:
-        raise CampaignPlanError("runner scratch root is unavailable") from exc
-    try:
-        _reject_symlinked_ancestry(scratch_root, "runner scratch root")
         resolved_scratch = scratch_root.resolve(strict=True)
     except OSError as exc:
         raise CampaignPlanError("runner scratch root is unavailable") from exc
-    for record in records:
+
+    forbidden_identities: set[tuple[int, int]] = set()
+    tombstone_ancestries: list[
+        tuple[Path, tuple[tuple[str, tuple[int, ...]], ...] | None]
+    ] = []
+    for record in ledger_before.records:
         if (
             record.get("event") != SANDBOX_ABANDON_EVENT
             or record.get("schema") not in {
@@ -837,25 +949,126 @@ def _reject_abandoned_scratch_root(scratch_root: Path, ledger: Path) -> None:
         identity = _marker_identity(
             record.get("scratch_root_identity"), "abandoned scratch root"
         )
+        forbidden_identities.add(identity)
+
+        # The recorded path is a permanent lexical tombstone.  Its removal
+        # cannot make the same path, an ancestor, or a descendant reusable.
+        if (
+            scratch_root == abandoned
+            or scratch_root.is_relative_to(abandoned)
+            or abandoned.is_relative_to(scratch_root)
+            or current_identity == identity
+        ):
+            raise CampaignPlanError(
+                "runner scratch root belongs to an abandoned sandbox namespace"
+            )
+        abandoned_ancestry = _nofollow_directory_ancestry_receipt(
+            abandoned,
+            "abandoned scratch root",
+            allow_missing=True,
+        )
+        tombstone_ancestries.append((abandoned, abandoned_ancestry))
+        if abandoned_ancestry is None:
+            continue
         try:
-            _reject_symlinked_ancestry(abandoned, "abandoned scratch root")
             resolved_abandoned = abandoned.resolve(strict=True)
         except OSError as exc:
             raise CampaignPlanError(
                 "abandoned scratch root is unavailable"
             ) from exc
         if (
-            scratch_root == abandoned
-            or scratch_root.is_relative_to(abandoned)
-            or abandoned.is_relative_to(scratch_root)
-            or resolved_scratch == resolved_abandoned
+            resolved_scratch == resolved_abandoned
             or resolved_scratch.is_relative_to(resolved_abandoned)
             or resolved_abandoned.is_relative_to(resolved_scratch)
-            or current_identity == identity
         ):
             raise CampaignPlanError(
                 "runner scratch root belongs to an abandoned sandbox namespace"
             )
+        if _nofollow_directory_ancestry_receipt(
+            abandoned,
+            "abandoned scratch root",
+            allow_missing=True,
+        ) != abandoned_ancestry:
+            raise CampaignPlanError(
+                "abandoned scratch root changed during alias authentication"
+            )
+
+    tree_before: str | None = None
+    if forbidden_identities:
+        ancestry_identities = {
+            (metadata[0], metadata[1])
+            for _component, metadata in candidate_before
+        }
+        if ancestry_identities & forbidden_identities:
+            raise CampaignPlanError(
+                "runner scratch ancestry contains an abandoned sandbox inode"
+            )
+        candidate = _bound_mutable_root(
+            scratch_root,
+            current_identity,
+            label="runner scratch root",
+        )
+        tree_before = _mutable_root_traversal_receipt(
+            candidate,
+            forbidden_identities=frozenset(forbidden_identities),
+            reject_symlinks=True,
+            require_same_device=True,
+        )
+
+    def revalidate_ancestry() -> None:
+        candidate_after = _nofollow_directory_ancestry_receipt(
+            scratch_root, "runner scratch root"
+        )
+        if candidate_after != candidate_before:
+            raise CampaignPlanError(
+                "runner scratch ancestry changed during abandoned-inode proof"
+            )
+
+    def revalidate_tombstones() -> None:
+        for abandoned, expected in tombstone_ancestries:
+            if _nofollow_directory_ancestry_receipt(
+                abandoned,
+                "abandoned scratch root",
+                allow_missing=True,
+            ) != expected:
+                raise CampaignPlanError(
+                    "abandoned scratch custody changed during inode proof"
+                )
+
+    def revalidate_ledger() -> None:
+        try:
+            ledger_after = _capture_ledger_prefix(ledger)
+        except (OSError, ValueError, Guard.CodexUsageGuardError) as exc:
+            raise CampaignPlanError(
+                "cannot reauthenticate abandoned scratch namespaces"
+            ) from exc
+        if any((
+            ledger_after.path != ledger_before.path,
+            ledger_after.parent_identity != ledger_before.parent_identity,
+            ledger_after.file_identity != ledger_before.file_identity,
+            ledger_after.raw_prefix != ledger_before.raw_prefix,
+        )):
+            raise CampaignPlanError(
+                "Codex ledger changed during abandoned scratch authentication"
+            )
+
+    revalidate_tombstones()
+    revalidate_ancestry()
+    revalidate_ledger()
+    if tree_before is not None:
+        tree_after = _mutable_root_traversal_receipt(
+            candidate,
+            forbidden_identities=frozenset(forbidden_identities),
+            reject_symlinks=True,
+            require_same_device=True,
+        )
+        if tree_after != tree_before:
+            raise CampaignPlanError(
+                "runner scratch tree changed during abandoned-inode proof"
+            )
+        revalidate_tombstones()
+        revalidate_ancestry()
+        revalidate_ledger()
 
 
 def _project_runner_receipt(
@@ -3940,9 +4153,45 @@ def active_workspace_lock(game: str) -> Path | None:
     return None
 
 
+def _active_scratch_workspace_lock(
+    scratch: Path,
+    *,
+    exclude_workspace: Path | None = None,
+) -> Path | None:
+    """Return any cross-game active workspace in one exact scratch root."""
+
+    if (
+        not isinstance(scratch, Path)
+        or not scratch.is_absolute()
+        or Path(os.path.abspath(scratch)) != scratch
+        or (
+            exclude_workspace is not None
+            and (
+                not isinstance(exclude_workspace, Path)
+                or exclude_workspace.parent != scratch
+            )
+        )
+    ):
+        raise CampaignPlanError("cross-game scratch lock scope is malformed")
+    pattern = os.fspath(scratch / "gkm_legs_ws_*")
+    for selected in sorted(glob.glob(pattern)):
+        workspace = Path(selected)
+        if workspace == exclude_workspace:
+            continue
+        if _workspace_lock_is_active(workspace):
+            return workspace
+    return None
+
+
 def _acquire_scheduler_artifact_lock(
-    item: dict[str, Any], *, name: str, purpose: str
+    item: dict[str, Any],
+    *,
+    name: str,
+    purpose: str,
+    shared: bool = False,
 ) -> SchedulerArtifactLock:
+    if not isinstance(shared, bool):
+        raise CampaignPlanError("scheduler artifact lock mode is malformed")
     artifact_root = _artifact_root(item)
     lock_root = artifact_root / ".campaign_locks"
     try:
@@ -3956,7 +4205,8 @@ def _acquire_scheduler_artifact_lock(
     lock_path = lock_root / name
     try:
         lock = Legs._open_unaliased_lock(os.fspath(lock_path))
-        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        mode = fcntl.LOCK_SH if shared else fcntl.LOCK_EX
+        fcntl.flock(lock.fileno(), mode | fcntl.LOCK_NB)
     except (OSError, RuntimeError, BlockingIOError) as exc:
         try:
             lock.close()
@@ -3979,14 +4229,15 @@ def _acquire_scheduler_artifact_lock(
             ) != root_identity
         ):
             raise CampaignPlanError("scheduler artifact lock identity changed")
-        lock.seek(0)
-        lock.truncate()
-        artifact = artifact_root / f"{item['game']}_legs"
-        lock.write(
-            f"pid={os.getpid()}\nartifact={artifact}\npurpose={purpose}\n"
-        )
-        lock.flush()
-        os.fsync(lock.fileno())
+        if not shared:
+            lock.seek(0)
+            lock.truncate()
+            artifact = artifact_root / f"{item['game']}_legs"
+            lock.write(
+                f"pid={os.getpid()}\nartifact={artifact}\npurpose={purpose}\n"
+            )
+            lock.flush()
+            os.fsync(lock.fileno())
     except BaseException:
         Legs._release_workspace_lock(lock)
         raise
@@ -3996,6 +4247,7 @@ def _acquire_scheduler_artifact_lock(
         root_identity=root_identity,
         path=lock_path,
         lock_identity=lock_identity,
+        shared=shared,
     )
 
 
@@ -4003,7 +4255,8 @@ def _validate_scheduler_artifact_lock(lock: SchedulerArtifactLock) -> None:
     descriptor = os.fstat(lock.handle.fileno())
     path_metadata = lock.path.stat(follow_symlinks=False)
     if (
-        _host_directory_identity(lock.root, "scheduler artifact lock root")
+        not isinstance(lock.shared, bool)
+        or _host_directory_identity(lock.root, "scheduler artifact lock root")
         != lock.root_identity
         or lock.path.is_symlink()
         or not stat.S_ISREG(path_metadata.st_mode)
@@ -4045,6 +4298,186 @@ def _acquire_scheduler_dispatch_lock(
     return _acquire_scheduler_artifact_lock(
         item, name=f"{item['game']}.scheduler.lock", purpose="dispatch"
     )
+
+
+def _item_scratch_root(item: dict[str, Any]) -> Path:
+    authority = item.get("historical_runner")
+    if authority is None:
+        scratch = Path(Legs.SCRATCH).absolute()
+    elif isinstance(authority, dict):
+        scratch = _normalized_absolute_path(
+            authority.get("scratch_root"), "scratch_root"
+        )
+    else:
+        raise CampaignPlanError("scratch admission runner receipt is malformed")
+    if not scratch.is_absolute() or Path(os.path.abspath(scratch)) != scratch:
+        raise CampaignPlanError("scratch admission root is malformed")
+    return scratch
+
+
+def _scratch_admission_lock_name(identity: tuple[int, int]) -> str:
+    """Make every lexical alias of one physical directory contend."""
+
+    if (
+        not isinstance(identity, tuple)
+        or len(identity) != 2
+        or any(
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < 0
+            for value in identity
+        )
+    ):
+        raise CampaignPlanError("scratch admission identity is malformed")
+    coordinate = hashlib.sha256(
+        f"{identity[0]}:{identity[1]}".encode("ascii")
+    ).hexdigest()
+    return f"scratch-admission-inode-{coordinate}.lock"
+
+
+def _scratch_admission_coordinates(
+    ancestry: tuple[tuple[str, tuple[int, ...]], ...],
+) -> tuple[tuple[tuple[int, int], bool], ...]:
+    """Return globally ordered inode coordinates; ``True`` means shared."""
+
+    if not ancestry:
+        raise CampaignPlanError("scratch admission ancestry is empty")
+    modes: dict[tuple[int, int], bool] = {}
+    for _component, metadata in ancestry[:-1]:
+        identity = (metadata[0], metadata[1])
+        modes.setdefault(identity, True)
+    root_metadata = ancestry[-1][1]
+    root_identity = (root_metadata[0], root_metadata[1])
+    # The exact-root exclusive mode wins if a mount alias repeated this inode
+    # earlier in the lexical ancestry.
+    modes[root_identity] = False
+    return tuple(sorted(modes.items()))
+
+
+def _acquire_scheduler_scratch_admission_lock(
+    item: dict[str, Any],
+    *,
+    scratch_root: Path | None = None,
+) -> ScratchAdmissionLock:
+    """Serialize a physical scratch namespace for one complete lifecycle."""
+
+    selected = scratch_root if scratch_root is not None else _item_scratch_root(item)
+    ancestry = _nofollow_directory_ancestry_receipt(
+        selected, "scratch admission root"
+    )
+    assert ancestry is not None
+    identity = (ancestry[-1][1][0], ancestry[-1][1][1])
+    coordinates = _scratch_admission_coordinates(ancestry)
+    authorities: list[SchedulerArtifactLock] = []
+    try:
+        for coordinate, shared in coordinates:
+            authorities.append(_acquire_scheduler_artifact_lock(
+                item,
+                name=_scratch_admission_lock_name(coordinate),
+                purpose=(
+                    "scratch admission ancestry"
+                    if shared
+                    else "scratch admission"
+                ),
+                shared=shared,
+            ))
+        rebound = _nofollow_directory_ancestry_receipt(
+            selected, "scratch admission root"
+        )
+        if rebound != ancestry:
+            raise CampaignPlanError(
+                "scratch admission root changed while acquiring custody"
+            )
+    except BaseException:
+        for acquired in reversed(authorities):
+            try:
+                _release_scheduler_artifact_lock(acquired)
+            except BaseException:
+                pass
+        raise
+    exact = next(
+        authority
+        for authority, (coordinate, shared) in zip(
+            authorities, coordinates, strict=True
+        )
+        if coordinate == identity and not shared
+    )
+    return ScratchAdmissionLock(
+        authority=exact,
+        authorities=tuple(authorities),
+        coordinates=coordinates,
+        scratch_root=selected,
+        scratch_identity=identity,
+        ancestry_receipt=ancestry,
+    )
+
+
+def _validate_scheduler_scratch_admission_lock(
+    lock: ScratchAdmissionLock,
+    item: dict[str, Any],
+    *,
+    scratch_root: Path | None = None,
+) -> None:
+    selected = scratch_root if scratch_root is not None else _item_scratch_root(item)
+    if selected != lock.scratch_root:
+        raise CampaignPlanError(
+            "scratch admission lock path binding changed"
+        )
+    rebound = _nofollow_directory_ancestry_receipt(
+        selected, "scratch admission root"
+    )
+    expected_coordinates = _scratch_admission_coordinates(rebound)
+    if any((
+        rebound != lock.ancestry_receipt,
+        expected_coordinates != lock.coordinates,
+        len(lock.authorities) != len(lock.coordinates),
+    )):
+        raise CampaignPlanError(
+            "scratch admission lock lost its physical namespace binding"
+        )
+    exact: SchedulerArtifactLock | None = None
+    for authority, (identity, shared) in zip(
+        lock.authorities, lock.coordinates, strict=True
+    ):
+        _validate_scheduler_artifact_lock(authority)
+        if any((
+            authority.shared is not shared,
+            authority.path.name != _scratch_admission_lock_name(identity),
+            authority.root != lock.authority.root,
+            authority.root_identity != lock.authority.root_identity,
+        )):
+            raise CampaignPlanError(
+                "scratch admission lock coordinate binding changed"
+            )
+        if identity == lock.scratch_identity and not shared:
+            exact = authority
+    if exact is not lock.authority:
+        raise CampaignPlanError(
+            "scratch admission lock lost its exclusive root coordinate"
+        )
+
+
+def _release_scheduler_scratch_admission_lock(
+    lock: ScratchAdmissionLock,
+    item: dict[str, Any],
+    *,
+    scratch_root: Path | None = None,
+) -> None:
+    failure: BaseException | None = None
+    try:
+        _validate_scheduler_scratch_admission_lock(
+            lock, item, scratch_root=scratch_root
+        )
+    except BaseException as exc:
+        failure = exc
+    for authority in reversed(lock.authorities):
+        try:
+            _release_scheduler_artifact_lock(authority)
+        except BaseException as exc:
+            if failure is None:
+                failure = exc
+    if failure is not None:
+        raise failure
 
 
 def _dispatch_quarantine_name(item: dict[str, Any]) -> str:
@@ -14537,8 +14970,34 @@ def _authenticated_lsof_executable() -> tuple[Path, tuple[int, int]]:
     )
 
 
-def _mutable_root_traversal_receipt(root: BoundMutableRoot) -> str:
+def _mutable_root_traversal_receipt(
+    root: BoundMutableRoot,
+    *,
+    forbidden_identities: frozenset[tuple[int, int]] = frozenset(),
+    reject_symlinks: bool = False,
+    require_same_device: bool = False,
+) -> str:
     """Prove every name via an inode-bound, fd-relative nofollow walk."""
+
+    if (
+        not isinstance(forbidden_identities, frozenset)
+        or any(
+            not isinstance(identity, tuple)
+            or len(identity) != 2
+            or any(
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 0
+                for value in identity
+            )
+            for identity in forbidden_identities
+        )
+        or not isinstance(reject_symlinks, bool)
+        or not isinstance(require_same_device, bool)
+    ):
+        raise CampaignPlanError(
+            f"{root.label} nofollow traversal policy is malformed"
+        )
 
     directory_flag = getattr(os, "O_DIRECTORY", 0)
     nofollow_flag = getattr(os, "O_NOFOLLOW", 0)
@@ -14624,7 +15083,22 @@ def _mutable_root_traversal_receipt(root: BoundMutableRoot) -> str:
                 )
             child_relative = name if relative == "." else f"{relative}/{name}"
             entries.append((child_relative, *child_receipt))
+            child_identity = (child_receipt[0], child_receipt[1])
             child_mode = child_receipt[2]
+            if child_identity in forbidden_identities:
+                raise CampaignPlanError(
+                    f"{root.label} contains an abandoned sandbox inode"
+                )
+            if reject_symlinks and stat.S_ISLNK(child_mode):
+                raise CampaignPlanError(
+                    f"{root.label} contains a symlink during abandoned-inode "
+                    "proof"
+                )
+            if require_same_device and child_receipt[0] != root.identity[0]:
+                raise CampaignPlanError(
+                    f"{root.label} crosses a filesystem during "
+                    "abandoned-inode proof"
+                )
             if not stat.S_ISDIR(child_mode):
                 continue
             if child_receipt[0] != root.identity[0]:
@@ -14681,6 +15155,7 @@ def _mutable_root_traversal_receipt(root: BoundMutableRoot) -> str:
             not stat.S_ISDIR(root_opened.st_mode),
             (root_opened.st_dev, root_opened.st_ino) != root.identity,
             metadata_receipt(root_at_path) != root_receipt,
+            root.identity in forbidden_identities,
         )):
             raise CampaignPlanError(
                 f"{root.label} identity changed before holder traversal"
@@ -18716,6 +19191,7 @@ def _recover_sandboxed_generation_release_locked(
     confirm_dispatch_id: str,
     confirm_recovery_nonce: str,
     boot_identity_provider: RebootRecovery.BootIdentityProvider,
+    scratch_admission_lock: ScratchAdmissionLock,
     marker_parser: Any = RebootRecovery.parse_sandboxed_generation_marker,
     interrupted_exec: bool = False,
 ) -> dict[str, Any]:
@@ -18730,6 +19206,9 @@ def _recover_sandboxed_generation_release_locked(
     try:
         item = _reconstruct_historical_recovery_item(
             item, parsed.armed, allow_abandoned_scratch=True
+        )
+        _validate_scheduler_scratch_admission_lock(
+            scratch_admission_lock, item
         )
         if interrupted_exec is not _is_interrupted_generation(parsed):
             raise CampaignPlanError(
@@ -18771,6 +19250,14 @@ def _recover_sandboxed_generation_release_locked(
         )):
             raise CampaignPlanError(
                 "sandboxed-generation lock binding changed before recovery"
+            )
+        active_workspace = _active_scratch_workspace_lock(
+            scratch, exclude_workspace=workspace
+        )
+        if active_workspace is not None:
+            raise CampaignPlanError(
+                "sandbox recovery cannot abandon a scratch root with another "
+                "active workspace"
             )
         if interrupted_exec:
             if lock_schema != "in_workspace_v1":
@@ -18927,6 +19414,16 @@ def _recover_sandboxed_generation_release_locked(
                 item, execution, classification, parsed=parsed
             )
         if event is None:
+            _validate_scheduler_scratch_admission_lock(
+                scratch_admission_lock, item
+            )
+            if _active_scratch_workspace_lock(
+                scratch, exclude_workspace=workspace
+            ) is not None:
+                raise CampaignPlanError(
+                    "sandbox recovery cannot append an abandonment while "
+                    "another scratch workspace is active"
+                )
             if interrupted_exec:
                 _taint_gate()
             _revalidate_sandboxed_generation_tree_hashes(
@@ -19533,7 +20030,39 @@ def _recover_sandboxed_generation_release(
     interrupted_exec: bool = False,
 ) -> dict[str, Any]:
     dispatch_lock = _acquire_scheduler_dispatch_lock(item)
+    scratch_admission_lock: ScratchAdmissionLock | None = None
     try:
+        try:
+            scratch_marker, scratch_parsed = (
+                _read_existing_dispatch_quarantine(
+                    item,
+                    require_recovery_arm=True,
+                    allow_missing_capsule=True,
+                    marker_parser=marker_parser,
+                )
+            )
+        except NoDispatchQuarantine:
+            scratch_root = None
+        else:
+            try:
+                scratch_item = _reconstruct_historical_recovery_item(
+                    item,
+                    scratch_parsed.armed,
+                    allow_abandoned_scratch=True,
+                )
+                scratch_root, _identity, _workspace, _protected = (
+                    _sandboxed_generation_paths(
+                        scratch_item, scratch_parsed
+                    )
+                )
+            finally:
+                _close_dispatch_quarantine(scratch_marker)
+        if scratch_root is not None:
+            scratch_admission_lock = (
+                _acquire_scheduler_scratch_admission_lock(
+                    item, scratch_root=scratch_root
+                )
+            )
         lineage_lock = _acquire_scheduler_lineage_lock(item)
         try:
             _assert_no_active_detached_teardown(item)
@@ -19568,11 +20097,24 @@ def _recover_sandboxed_generation_release(
                     )
                 return completed
             try:
+                if scratch_admission_lock is None:
+                    completed = _completed_sandbox_isolation_result(
+                        item,
+                        confirm_dispatch_id=confirm_dispatch_id,
+                        confirm_recovery_nonce=confirm_recovery_nonce,
+                        interrupted_exec=interrupted_exec,
+                    )
+                    if completed is None:
+                        raise NoDispatchQuarantine(
+                            "sandbox recovery quarantine is unavailable"
+                        )
+                    return completed
                 return _recover_sandboxed_generation_release_locked(
                     item,
                     confirm_dispatch_id=confirm_dispatch_id,
                     confirm_recovery_nonce=confirm_recovery_nonce,
                     boot_identity_provider=boot_identity_provider,
+                    scratch_admission_lock=scratch_admission_lock,
                     marker_parser=marker_parser,
                     interrupted_exec=interrupted_exec,
                 )
@@ -19589,7 +20131,15 @@ def _recover_sandboxed_generation_release(
         finally:
             _release_scheduler_artifact_lock(lineage_lock)
     finally:
-        _release_scheduler_artifact_lock(dispatch_lock)
+        try:
+            if scratch_admission_lock is not None:
+                _release_scheduler_scratch_admission_lock(
+                    scratch_admission_lock,
+                    item,
+                    scratch_root=scratch_admission_lock.scratch_root,
+                )
+        finally:
+            _release_scheduler_artifact_lock(dispatch_lock)
 
 
 def _recover_interrupted_generation_release(
@@ -26160,11 +26710,32 @@ def _resume_existing_contained_residual_classification(
 
 
 def _run_item_locked(
-    plan: dict[str, Any], item: dict[str, Any], *, allowance: Guard.WeeklyAllowance
+    plan: dict[str, Any],
+    item: dict[str, Any],
+    *,
+    allowance: Guard.WeeklyAllowance,
+    scratch_admission_lock: ScratchAdmissionLock | None = None,
 ) -> dict[str, Any]:
     selected_item = item
-    item = _project_runner_receipt(plan, item)
-    argv = validate_item(item, plan)
+    pre_admission = scratch_admission_lock is None
+    item = _project_runner_receipt(
+        plan,
+        item,
+        allow_abandoned_scratch=pre_admission,
+    )
+    if scratch_admission_lock is not None:
+        _validate_scheduler_scratch_admission_lock(
+            scratch_admission_lock, item
+        )
+    argv = validate_item(
+        item,
+        plan,
+        allow_abandoned_scratch=pre_admission,
+    )
+    if scratch_admission_lock is not None:
+        _validate_scheduler_scratch_admission_lock(
+            scratch_admission_lock, item
+        )
     game = item.get("game")
     target = item.get("target_level")
     if not isinstance(game, str) or not isinstance(target, int):
@@ -26207,6 +26778,39 @@ def _run_item_locked(
             "seed_mode": item["seed_mode"], "wip_mode": item["wip_mode"],
             "lineage_input_mode": item["lineage_input_mode"],
         }
+    if scratch_admission_lock is None:
+        scratch_admission_lock = (
+            _acquire_scheduler_scratch_admission_lock(item)
+        )
+        try:
+            # Admission decisions above are deliberately scratch-independent.
+            # Once a real dispatch remains, repeat the complete runner
+            # projection and tombstone proof while holding its exact physical
+            # namespace hierarchy, then retain custody through terminal work.
+            try:
+                return _run_item_locked(
+                    plan,
+                    selected_item,
+                    allowance=allowance,
+                    scratch_admission_lock=scratch_admission_lock,
+                )
+            except ContainedNormalExitResidualError:
+                resumed = _resume_existing_contained_residual_classification(
+                    item, selected_item=selected_item
+                )
+                if resumed is None:
+                    raise CampaignPlanError(
+                        "contained residual disappeared before automatic "
+                        "release"
+                    )
+                return resumed
+        finally:
+            _release_scheduler_scratch_admission_lock(
+                scratch_admission_lock, item
+            )
+    _validate_scheduler_scratch_admission_lock(
+        scratch_admission_lock, item
+    )
     lineage_probe = _acquire_scheduler_lineage_lock(item)
     try:
         _ensure_durable_wip_context_parent(item)
@@ -26225,6 +26829,10 @@ def _run_item_locked(
     safe_terminal = False
     quarantine_failure_recorded = False
     try:
+        if scratch_admission_lock is not None:
+            _validate_scheduler_scratch_admission_lock(
+                scratch_admission_lock, item
+            )
         _arm_dispatch_quarantine(
             item,
             ledger_before=ledger_before,
@@ -26236,6 +26844,10 @@ def _run_item_locked(
         if quarantine is None:
             raise CampaignPlanError(
                 "dispatch quarantine ownership handoff was lost"
+            )
+        if scratch_admission_lock is not None:
+            _validate_scheduler_scratch_admission_lock(
+                scratch_admission_lock, item
             )
         child = _run_guarded_child(
             item,
@@ -26665,25 +27277,23 @@ def _run_item(
 ) -> dict[str, Any]:
     """Run one item while holding the current scheduler's baseline lock."""
 
-    projected = _project_runner_receipt(plan, item)
-    validate_item(projected, plan)
+    projected = _project_runner_receipt(
+        plan, item, allow_abandoned_scratch=True
+    )
+    validate_item(
+        projected, plan, allow_abandoned_scratch=True
+    )
     dispatch_lock = _acquire_scheduler_dispatch_lock(projected)
     try:
         # Preserve the unprojected policy item for recovery.  A marker may
         # seal an older runner/scratch receipt than the one in the regenerated
         # plan; `_run_item_locked` projects normally for a new dispatch while
         # its classification-only resumer reconstructs the sealed receipt.
-        try:
-            return _run_item_locked(plan, item, allowance=allowance)
-        except ContainedNormalExitResidualError:
-            resumed = _resume_existing_contained_residual_classification(
-                projected, selected_item=item
-            )
-            if resumed is None:
-                raise CampaignPlanError(
-                    "contained residual disappeared before automatic release"
-                )
-            return resumed
+        return _run_item_locked(
+            plan,
+            item,
+            allowance=allowance,
+        )
     finally:
         _release_scheduler_artifact_lock(dispatch_lock)
 
@@ -26822,9 +27432,14 @@ def main() -> int:
         or interrupted_recovery_game is not None
         or incomplete_evidence_game is not None
     )
+    deferred_execute_preflight = bool(args.execute)
     items = [
         _project_runner_receipt(
-            plan, item, allow_abandoned_scratch=sandbox_operator
+            plan,
+            item,
+            allow_abandoned_scratch=(
+                sandbox_operator or deferred_execute_preflight
+            ),
         )
         for item in items
     ]
@@ -26990,7 +27605,11 @@ def main() -> int:
         print(json.dumps({"outcomes": [outcome]}, indent=2, sort_keys=True))
         return 0
     for item in items:
-        argv = validate_item(item, plan)
+        argv = validate_item(
+            item,
+            plan,
+            allow_abandoned_scratch=deferred_execute_preflight,
+        )
         game = item.get("game")
         reached = _checkpoint_reached(game) if isinstance(game, str) else 0
         validate_inventory_item(item, targets, reached)
@@ -27045,8 +27664,12 @@ def main() -> int:
                 "reason": "matched evidence or remaining frontier unavailable",
             })
             break
-        item = _project_runner_receipt(plan, selected_item)
-        print("ADAPT", item["game"], " ".join(validate_item(item, plan)))
+        item = _project_runner_receipt(
+            plan, selected_item, allow_abandoned_scratch=True
+        )
+        print("ADAPT", item["game"], " ".join(validate_item(
+            item, plan, allow_abandoned_scratch=True
+        )))
         outcome = _run_item(plan, selected_item, allowance=allowance)
         outcomes.append(outcome)
         if outcome["result"] == "reserve_stop":
