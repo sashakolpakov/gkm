@@ -6427,3 +6427,985 @@ def test_markerless_sandbox_completion_requires_matching_release_authority(
             confirm_recovery_nonce=armed["recovery_nonce"],
             boot_identity_provider=lambda: fixture["boot"],
         )
+
+
+def _detached_test_process(
+    pid: int,
+    ppid: int,
+    pgid: int,
+    sid: int,
+    *,
+    holder: bool,
+    parent_in_closure: bool,
+) -> dict[str, object]:
+    started = f"darwin:{pid}:1"
+    started_sha = hashlib.sha256(json.dumps(
+        {"os_process_start": started, "pid": pid},
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).encode("ascii")).hexdigest()
+    return {
+        "pid": pid,
+        "ppid": ppid,
+        "pgid": pgid,
+        "sid": sid,
+        "state": "L",
+        "start_identity": started,
+        "start_identity_sha256": started_sha,
+        "holder": holder,
+        "parent_in_closure": parent_in_closure,
+    }
+
+
+def _detached_test_inventory(
+    processes: list[dict[str, object]],
+) -> dict[str, object]:
+    groups: dict[str, list[int]] = {}
+    for record in processes:
+        groups.setdefault(str(record["pgid"]), []).append(int(record["pid"]))
+    return {
+        "holders": sorted(
+            int(record["pid"]) for record in processes if record["holder"]
+        ),
+        "processes": processes,
+        "groups": {
+            key: sorted(value) for key, value in sorted(groups.items())
+        },
+    }
+
+
+def test_detached_signal_path_is_exact_pid_and_descendants_first(monkeypatch):
+    identities = {
+        100: (1, 100, 100, "L", "darwin:100:1"),
+        101: (100, 100, 100, "L", "darwin:101:1"),
+        102: (101, 100, 100, "L", "darwin:102:1"),
+    }
+    sent: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        R.os, "uname", lambda: type("U", (), {"sysname": "Darwin"})()
+    )
+    monkeypatch.setattr(
+        R.Contiguous, "_scoped_group_pids", lambda pgid: set(identities)
+    )
+    monkeypatch.setattr(
+        R.Contiguous, "_process_identity", lambda pid: identities.get(pid)
+    )
+    monkeypatch.setattr(
+        R.Contiguous,
+        "_signal_owned_process_group",
+        lambda *_args: pytest.fail("killpg must not be used"),
+    )
+    monkeypatch.setattr(R.os, "kill", lambda pid, sig: sent.append((pid, sig)))
+
+    R._signal_authenticated_detached_groups(
+        identities, {100}, signal.SIGKILL
+    )
+
+    assert sent == [
+        (102, signal.SIGKILL),
+        (101, signal.SIGKILL),
+        (100, signal.SIGKILL),
+    ]
+
+
+def test_detached_signal_rejects_unauthorised_group_member(monkeypatch):
+    identities = {
+        100: (1, 100, 100, "L", "darwin:100:1"),
+    }
+    live = {
+        **identities,
+        101: (100, 100, 100, "L", "darwin:101:1"),
+    }
+    sent: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        R.os, "uname", lambda: type("U", (), {"sysname": "Darwin"})()
+    )
+    monkeypatch.setattr(
+        R.Contiguous, "_scoped_group_pids", lambda pgid: set(live)
+    )
+    monkeypatch.setattr(
+        R.Contiguous, "_process_identity", lambda pid: live.get(pid)
+    )
+    monkeypatch.setattr(R.os, "kill", lambda pid, sig: sent.append((pid, sig)))
+
+    with pytest.raises(R.CampaignPlanError, match="unauthorised"):
+        R._signal_authenticated_detached_groups(
+            identities, {100}, signal.SIGSTOP
+        )
+    assert sent == []
+
+
+def test_detached_signal_rejects_pid_birth_drift(monkeypatch):
+    expected = {
+        100: (1, 100, 100, "L", "darwin:100:1"),
+    }
+    rebound = {
+        100: (1, 100, 100, "L", "darwin:100:2"),
+    }
+    sent: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        R.os, "uname", lambda: type("U", (), {"sysname": "Darwin"})()
+    )
+    monkeypatch.setattr(
+        R.Contiguous, "_scoped_group_pids", lambda _pgid: {100}
+    )
+    monkeypatch.setattr(
+        R.Contiguous, "_process_identity", lambda pid: rebound.get(pid)
+    )
+    monkeypatch.setattr(R.os, "kill", lambda pid, sig: sent.append((pid, sig)))
+
+    with pytest.raises(R.CampaignPlanError, match="unauthorised"):
+        R._signal_authenticated_detached_groups(
+            expected, {100}, signal.SIGSTOP
+        )
+    assert sent == []
+
+
+def test_detached_adoption_rejects_disconnected_ppid_cycle():
+    anchor = _detached_test_process(
+        100, 1, 100, 100, holder=True, parent_in_closure=False
+    )
+    armed_inventory = _detached_test_inventory([anchor])
+    arm = {"anchor_pids": [100], "holder_inventory": armed_inventory}
+    cycle_left = _detached_test_process(
+        200, 201, 200, 200, holder=True, parent_in_closure=True
+    )
+    cycle_right = _detached_test_process(
+        201, 200, 201, 201, holder=False, parent_in_closure=True
+    )
+    malicious = _detached_test_inventory(
+        [anchor, cycle_left, cycle_right]
+    )
+
+    with pytest.raises(R.CampaignPlanError, match="directed anchor"):
+        R._validate_delegated_detached_inventory(arm, malicious)
+
+
+def test_recursive_holder_scan_parses_darwin_rc1_pid_output(
+    tmp_path, monkeypatch
+):
+    root = R._bound_mutable_root(
+        tmp_path,
+        R._host_directory_identity(tmp_path, "test root"),
+        label="test root",
+    )
+    scanner = Path("/bin/ps")
+    metadata = scanner.stat(follow_symlinks=False)
+    monkeypatch.setattr(
+        R,
+        "_authenticated_lsof_executable",
+        lambda: (scanner, (metadata.st_dev, metadata.st_ino)),
+    )
+    monkeypatch.setattr(R, "_mutable_root_traversal_receipt", lambda _root: "x")
+    invoked: list[list[str]] = []
+
+    def fake_run(argv, **_kwargs):
+        invoked.append(argv)
+        return subprocess.CompletedProcess(
+            argv, 1, stdout=b"123\n", stderr=b""
+        )
+
+    monkeypatch.setattr(R.subprocess, "run", fake_run)
+
+    assert R._open_file_holder_pids(root) == frozenset({123})
+    assert invoked[0][3:6] == ["-t", "+w", "+D"]
+    assert "-w" not in invoked[0]
+
+
+def test_recursive_holder_scan_accepts_complete_rc1_no_match(
+    tmp_path, monkeypatch
+):
+    root = R._bound_mutable_root(
+        tmp_path,
+        R._host_directory_identity(tmp_path, "test root"),
+        label="test root",
+    )
+    scanner = Path("/bin/ps")
+    metadata = scanner.stat(follow_symlinks=False)
+    monkeypatch.setattr(
+        R,
+        "_authenticated_lsof_executable",
+        lambda: (scanner, (metadata.st_dev, metadata.st_ino)),
+    )
+    monkeypatch.setattr(R, "_mutable_root_traversal_receipt", lambda _root: "x")
+    monkeypatch.setattr(
+        R.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            [], 1, stdout=b"", stderr=b""
+        ),
+    )
+
+    assert R._open_file_holder_pids(root) == frozenset()
+
+
+def test_recursive_holder_scan_accepts_rc1_self_only_snapshot(
+    tmp_path, monkeypatch
+):
+    root = R._bound_mutable_root(
+        tmp_path,
+        R._host_directory_identity(tmp_path, "test root"),
+        label="test root",
+    )
+    scanner = Path("/bin/ps")
+    metadata = scanner.stat(follow_symlinks=False)
+    observer = (1, 2, 3, "L", "darwin:1:1")
+    monkeypatch.setattr(
+        R,
+        "_authenticated_lsof_executable",
+        lambda: (scanner, (metadata.st_dev, metadata.st_ino)),
+    )
+    monkeypatch.setattr(R, "_mutable_root_traversal_receipt", lambda _root: "x")
+    monkeypatch.setattr(
+        R.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            [], 1, stdout=f"{os.getpid()}\n".encode("ascii"), stderr=b""
+        ),
+    )
+    monkeypatch.setattr(
+        R.Contiguous,
+        "_process_identity",
+        lambda pid: observer if pid == os.getpid() else None,
+    )
+    monkeypatch.setattr(
+        R,
+        "_authenticated_holder_process_closure",
+        lambda _pids: pytest.fail("self-only scan must not authenticate foreign PIDs"),
+    )
+
+    R._authenticated_open_file_holder_snapshot(
+        (root,), phase="synthetic self-held quarantine"
+    )
+
+
+def test_recursive_holder_scan_rejects_self_birth_drift(
+    tmp_path, monkeypatch
+):
+    root = R._bound_mutable_root(
+        tmp_path,
+        R._host_directory_identity(tmp_path, "test root"),
+        label="test root",
+    )
+    scanner = Path("/bin/ps")
+    metadata = scanner.stat(follow_symlinks=False)
+    observer_identities = iter((
+        (1, 2, 3, "L", "darwin:1:1"),
+        (1, 2, 3, "L", "darwin:1:2"),
+    ))
+    monkeypatch.setattr(
+        R,
+        "_authenticated_lsof_executable",
+        lambda: (scanner, (metadata.st_dev, metadata.st_ino)),
+    )
+    monkeypatch.setattr(R, "_mutable_root_traversal_receipt", lambda _root: "x")
+    monkeypatch.setattr(
+        R.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            [], 1, stdout=f"{os.getpid()}\n".encode("ascii"), stderr=b""
+        ),
+    )
+    monkeypatch.setattr(
+        R.Contiguous,
+        "_process_identity",
+        lambda pid: next(observer_identities) if pid == os.getpid() else None,
+    )
+
+    with pytest.raises(R.CampaignPlanError, match="observer identity changed"):
+        R._authenticated_open_file_holder_snapshot(
+            (root,), phase="synthetic self-reuse quarantine"
+        )
+
+
+def test_recursive_holder_scan_rc1_foreign_pid_still_blocks(
+    tmp_path, monkeypatch
+):
+    root = R._bound_mutable_root(
+        tmp_path,
+        R._host_directory_identity(tmp_path, "test root"),
+        label="test root",
+    )
+    scanner = Path("/bin/ps")
+    metadata = scanner.stat(follow_symlinks=False)
+    foreign_pid = 424242
+    observer = (1, 2, 3, "L", "darwin:1:1")
+    foreign = (1, foreign_pid, foreign_pid, "L", "darwin:424242:1")
+    monkeypatch.setattr(
+        R,
+        "_authenticated_lsof_executable",
+        lambda: (scanner, (metadata.st_dev, metadata.st_ino)),
+    )
+    monkeypatch.setattr(R, "_mutable_root_traversal_receipt", lambda _root: "x")
+    monkeypatch.setattr(
+        R.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            [], 1, stdout=f"{foreign_pid}\n".encode("ascii"), stderr=b""
+        ),
+    )
+    monkeypatch.setattr(
+        R.Contiguous,
+        "_process_identity",
+        lambda pid: observer if pid == os.getpid() else foreign,
+    )
+    monkeypatch.setattr(
+        R,
+        "_authenticated_holder_process_closure",
+        lambda pids: {pid: foreign for pid in pids},
+    )
+
+    with pytest.raises(R.CampaignPlanError, match="open-file holder"):
+        R._authenticated_open_file_holder_snapshot(
+            (root,), phase="synthetic foreign-held quarantine"
+        )
+
+
+@pytest.mark.parametrize(
+    ("returncode", "stdout", "stderr"),
+    (
+        (0, b"", b""),
+        (1, b"", b"incomplete scan"),
+        (2, b"", b""),
+        (1, b"not-a-pid\n", b""),
+    ),
+)
+def test_recursive_holder_scan_rejects_incomplete_or_malformed_result(
+    tmp_path, monkeypatch, returncode, stdout, stderr
+):
+    root = R._bound_mutable_root(
+        tmp_path,
+        R._host_directory_identity(tmp_path, "test root"),
+        label="test root",
+    )
+    scanner = Path("/bin/ps")
+    metadata = scanner.stat(follow_symlinks=False)
+    monkeypatch.setattr(
+        R,
+        "_authenticated_lsof_executable",
+        lambda: (scanner, (metadata.st_dev, metadata.st_ino)),
+    )
+    monkeypatch.setattr(R, "_mutable_root_traversal_receipt", lambda _root: "x")
+    monkeypatch.setattr(
+        R.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            [], returncode, stdout=stdout, stderr=stderr
+        ),
+    )
+
+    with pytest.raises(
+        R.CampaignPlanError, match="complete inventory|malformed|ambiguous"
+    ):
+        R._open_file_holder_pids(root)
+
+
+def test_recursive_holder_scan_rejects_changed_nofollow_traversal(
+    tmp_path, monkeypatch
+):
+    root = R._bound_mutable_root(
+        tmp_path,
+        R._host_directory_identity(tmp_path, "test root"),
+        label="test root",
+    )
+    scanner = Path("/bin/ps")
+    metadata = scanner.stat(follow_symlinks=False)
+    receipts = iter(("before", "after"))
+    monkeypatch.setattr(
+        R,
+        "_authenticated_lsof_executable",
+        lambda: (scanner, (metadata.st_dev, metadata.st_ino)),
+    )
+    monkeypatch.setattr(
+        R, "_mutable_root_traversal_receipt", lambda _root: next(receipts)
+    )
+    monkeypatch.setattr(
+        R.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            [], 1, stdout=b"", stderr=b""
+        ),
+    )
+
+    with pytest.raises(R.CampaignPlanError, match="authority changed"):
+        R._open_file_holder_pids(root)
+
+
+def test_recursive_holder_scan_rejects_unreadable_nofollow_tree(tmp_path):
+    sealed = tmp_path / "sealed"
+    sealed.mkdir()
+    os.chmod(sealed, 0)
+    root = R._bound_mutable_root(
+        tmp_path,
+        R._host_directory_identity(tmp_path, "test root"),
+        label="test root",
+    )
+    try:
+        with pytest.raises(R.CampaignPlanError, match="completely traversed"):
+            R._open_file_holder_pids(root)
+    finally:
+        os.chmod(sealed, 0o700)
+
+
+def test_recursive_holder_scan_rejects_cross_device_directory(
+    tmp_path, monkeypatch
+):
+    mounted = tmp_path / "mounted"
+    mounted.mkdir()
+    root = R._bound_mutable_root(
+        tmp_path,
+        R._host_directory_identity(tmp_path, "test root"),
+        label="test root",
+    )
+    real_stat = os.stat
+
+    class CrossDeviceMetadata:
+        def __init__(self, metadata):
+            self._metadata = metadata
+
+        @property
+        def st_dev(self):
+            return root.identity[0] + 1
+
+        def __getattr__(self, name):
+            return getattr(self._metadata, name)
+
+    def cross_device_stat(path, *args, **kwargs):
+        metadata = real_stat(path, *args, **kwargs)
+        if path == mounted.name and kwargs.get("dir_fd") is not None:
+            return CrossDeviceMetadata(metadata)
+        return metadata
+
+    monkeypatch.setattr(R.os, "stat", cross_device_stat)
+
+    with pytest.raises(R.CampaignPlanError, match="crosses a filesystem"):
+        R._mutable_root_traversal_receipt(root)
+
+
+def test_recursive_holder_scan_rejects_directory_to_symlink_race(
+    tmp_path, monkeypatch
+):
+    child = tmp_path / "child"
+    child.mkdir()
+    root = R._bound_mutable_root(
+        tmp_path,
+        R._host_directory_identity(tmp_path, "test root"),
+        label="test root",
+    )
+    real_stat = os.stat
+    swapped = False
+
+    def swapping_stat(path, *args, **kwargs):
+        nonlocal swapped
+        metadata = real_stat(path, *args, **kwargs)
+        descriptor = kwargs.get("dir_fd")
+        if path == child.name and descriptor is not None and not swapped:
+            os.rename(
+                child.name,
+                "child-original",
+                src_dir_fd=descriptor,
+                dst_dir_fd=descriptor,
+            )
+            os.symlink("..", child.name, dir_fd=descriptor)
+            swapped = True
+        return metadata
+
+    monkeypatch.setattr(R.os, "stat", swapping_stat)
+
+    with pytest.raises(R.CampaignPlanError, match="completely traversed"):
+        R._mutable_root_traversal_receipt(root)
+    assert swapped
+
+
+def test_recursive_holder_scan_bounds_scandir_while_consuming(
+    tmp_path, monkeypatch
+):
+    root = R._bound_mutable_root(
+        tmp_path,
+        R._host_directory_identity(tmp_path, "test root"),
+        label="test root",
+    )
+    consumed = 0
+
+    class Entry:
+        def __init__(self, name):
+            self.name = name
+
+    class Entries:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def __iter__(self):
+            nonlocal consumed
+            for index in range(5):
+                consumed += 1
+                yield Entry(f"entry-{index}")
+
+    monkeypatch.setattr(R, "MAX_OPEN_FILE_HOLDER_PIDS", 1)
+    monkeypatch.setattr(R.os, "scandir", lambda _descriptor: Entries())
+
+    with pytest.raises(R.CampaignPlanError, match="exceeded its entry bound"):
+        R._mutable_root_traversal_receipt(root)
+    assert consumed == 5
+
+
+def test_mutation_guard_holder_scan_is_foreign_reject_only(monkeypatch):
+    observer = (1, 2, 3, "L", "darwin:1:1")
+    foreign_pid = 424242
+    foreign = (1, foreign_pid, foreign_pid, "L", "darwin:424242:1")
+    monkeypatch.setattr(
+        R, "_open_file_holder_pids", lambda _root: frozenset({foreign_pid})
+    )
+    monkeypatch.setattr(
+        R.Contiguous,
+        "_process_identity",
+        lambda pid: observer if pid == os.getpid() else foreign,
+    )
+    monkeypatch.setattr(
+        R,
+        "_authenticated_holder_process_closure",
+        lambda pids: {pid: foreign for pid in pids},
+    )
+    monkeypatch.setattr(
+        R,
+        "_signal_authenticated_detached_groups",
+        lambda *_args, **_kwargs: pytest.fail(
+            "mutation-guard holders must never authorize a signal"
+        ),
+    )
+
+    with pytest.raises(R.CampaignPlanError, match="open-file holder"):
+        R._reject_discovered_mutation_guard_holders(
+            (object(),), phase="synthetic mutation guard"
+        )
+
+
+def test_detached_adoption_namespace_has_constructive_completion_bound(
+    tmp_path,
+):
+    os.chmod(tmp_path, 0o700)
+    root_fd = os.open(tmp_path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    dispatch_id = "1" * 32
+    recovery_nonce = "2" * 32
+    marker = R.DispatchQuarantine(
+        root=tmp_path,
+        root_fd=root_fd,
+        root_identity=(tmp_path.stat().st_dev, tmp_path.stat().st_ino),
+        name="ar25.jsonl",
+        path=tmp_path / "ar25.jsonl",
+        marker_fd=-1,
+        marker_identity=(3, 4),
+        dispatch_id=dispatch_id,
+    )
+    prefix = (
+        f".{marker.name}.{dispatch_id}.{recovery_nonce}."
+        "detached_teardown_adoption_"
+    )
+    try:
+        for index in range(R.MAX_DETACHED_TEARDOWN_ADOPTIONS + 1):
+            path = tmp_path / f"{prefix}{index:032x}"
+            path.write_bytes(b"")
+            os.chmod(path, 0o600)
+        with pytest.raises(R.CampaignPlanError, match="exceeded its bound"):
+            R._read_detached_teardown_adoptions(
+                marker,
+                {"recovery_nonce": recovery_nonce},
+                (5, 6),
+            )
+    finally:
+        os.close(root_fd)
+
+
+def test_detached_teardown_cli_actions_are_exposed(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["runner", "--help"])
+    with pytest.raises(SystemExit) as stopped:
+        R.main()
+    assert stopped.value.code == 0
+    help_text = capsys.readouterr().out
+    assert "--arm-detached-generation-teardown" in help_text
+    assert "--execute-detached-generation-teardown" in help_text
+    assert "--confirm-stale-recovery-nonce" in help_text
+
+
+@pytest.mark.parametrize(
+    ("arguments", "message"),
+    (
+        (
+            [
+                "--arm-detached-generation-teardown=ar25",
+                "--confirm-dispatch-id=" + "1" * 32,
+            ],
+            "requires only --confirm-stale-recovery-nonce",
+        ),
+        (
+            [
+                "--execute-detached-generation-teardown=ar25",
+                "--confirm-dispatch-id=" + "1" * 32,
+                "--confirm-recovery-nonce=" + "2" * 32,
+                "--confirm-stale-recovery-nonce=" + "3" * 32,
+            ],
+            "accepted only by detached teardown arm",
+        ),
+        (
+            [
+                "--arm-detached-generation-teardown=ar25",
+                "--confirm-dispatch-id=" + "1" * 32,
+                "--confirm-stale-recovery-nonce=" + "3" * 32,
+                "--confirm-current-wip-state-sha256=" + "4" * 64,
+            ],
+            "does not accept current-WIP confirmation",
+        ),
+    ),
+)
+def test_detached_teardown_cli_rejects_nonce_flag_mix(
+    tmp_path, monkeypatch, arguments, message
+):
+    plan = tmp_path / "plan.json"
+    plan.write_text('{"initial_queue": []}', encoding="utf-8")
+    monkeypatch.setattr(R, "_authoritative_targets", lambda: {})
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["runner", f"--plan={plan}", *arguments],
+    )
+
+    with pytest.raises(R.CampaignPlanError, match=message):
+        R.main()
+
+
+def _arm_detached_test_fixture(fixture, monkeypatch):
+    stale = (
+        _arm_interrupted_generation(fixture, monkeypatch)
+        if "execution" in fixture
+        else _arm_sandboxed_generation(fixture, monkeypatch)
+    )
+    inventory = _detached_test_inventory([
+        _detached_test_process(
+            900001,
+            1,
+            900001,
+            900001,
+            holder=True,
+            parent_in_closure=False,
+        )
+    ])
+    scanner = Path("/bin/ps")
+    scanner_stat = scanner.stat(follow_symlinks=False)
+    monkeypatch.setattr(
+        R,
+        "_authenticated_lsof_executable",
+        lambda: (
+            scanner,
+            (scanner_stat.st_dev, scanner_stat.st_ino),
+        ),
+    )
+    monkeypatch.setattr(
+        R,
+        "_fixed_point_detached_holder_inventory",
+        lambda *_args, **_kwargs: copy.deepcopy(inventory),
+    )
+    monkeypatch.setattr(
+        R, "_reject_discovered_mutation_guard_holders", lambda *_a, **_k: None
+    )
+    detached = R._arm_detached_generation_teardown(
+        fixture["item"],
+        confirm_dispatch_id=fixture["dispatch_id"],
+        confirm_stale_recovery_nonce=stale["recovery_nonce"],
+        boot_identity_provider=lambda: fixture["boot"],
+    )
+    return stale, detached
+
+
+def _install_detached_test_completion(fixture):
+    marker, _parsed = R._read_existing_dispatch_quarantine(
+        fixture["item"],
+        require_recovery_arm=True,
+        marker_parser=R._parse_detached_teardown_marker,
+    )
+    arm_name, completion_name, _correction_name, preparing_name = (
+        R._detached_teardown_names(marker.name, marker.dispatch_id)
+    )
+    arm, arm_identity, _payload = R._read_durable_recovery_record_at(
+        marker.root_fd,
+        arm_name,
+        root_path=marker.root,
+        root_identity=marker.root_identity,
+        label="detached teardown arm",
+    )
+    arm = R._validate_detached_teardown_arm_record(
+        arm, marker_name=marker.name
+    )
+    observed = datetime.now(timezone.utc).isoformat()
+    completion = {
+        "schema": R.DETACHED_TEARDOWN_COMPLETION_SCHEMA,
+        "event": R.DETACHED_TEARDOWN_COMPLETION_EVENT,
+        "recorded_at": observed,
+        "dispatch_id": marker.dispatch_id,
+        "recovery_nonce": arm["recovery_nonce"],
+        "arm_record_sha256": R._recovery_record_sha256(arm),
+        "arm_identity": list(arm_identity),
+        "holder_inventory_sha256": arm["holder_inventory_sha256"],
+        "adoption_record_names": [],
+        "adoption_record_sha256s": [],
+        **R._sandboxed_generation_tree_hashes(
+            fixture["workspace"], fixture["protected"]
+        ),
+        "boundary_finding_counts": (
+            {"dynamic_execution": 1} if "execution" in fixture else {}
+        ),
+        "terminal_taint_scan_passed": True,
+        "captured_process_identities_absent": True,
+        "captured_groups_absent": True,
+        "open_file_holders_absent": True,
+        "stale_recovery_arm_retirement_authorized": True,
+        "absence_sample_count": R.OPEN_FILE_HOLDER_ABSENCE_SAMPLES,
+        "absence_window_ns": 1,
+        "absence_first_at": observed,
+        "absence_last_at": observed,
+    }
+    completion = R._validate_detached_teardown_completion_record(
+        completion,
+        marker=marker,
+        arm=arm,
+        arm_identity=arm_identity,
+    )
+    R._install_durable_recovery_record_at(
+        marker.root_fd,
+        completion_name,
+        completion,
+        root_path=marker.root,
+        root_identity=marker.root_identity,
+        label="detached teardown completion",
+    )
+    return marker, arm, completion, preparing_name
+
+
+@pytest.mark.parametrize("staging", ("partial", "complete"))
+def test_detached_marker_retirement_recovers_staging_cut(
+    tmp_path, monkeypatch, staging
+):
+    fixture = _interrupted_generation_fixture(
+        tmp_path,
+        monkeypatch,
+        boundary_finding_counts={"dynamic_execution": 1},
+    )
+    _arm_detached_test_fixture(fixture, monkeypatch)
+    marker, arm, completion, preparing_name = (
+        _install_detached_test_completion(fixture)
+    )
+    try:
+        rows = _canonical_rows(fixture["marker"])
+        prefix = b"".join(
+            Recovery.canonical_json_line(row) for row in rows[:2]
+        )
+        staged = marker.root / preparing_name
+        staged.write_bytes(prefix if staging == "complete" else prefix[:7])
+        os.chmod(staged, 0o600)
+
+        correction = R._retire_detached_teardown_stale_arm(
+            marker, arm, completion
+        )
+    finally:
+        R._close_dispatch_quarantine(marker)
+
+    assert correction["stale_recovery_arm_invalidated"] is True
+    assert len(_canonical_rows(fixture["marker"])) == 2
+    R._assert_no_active_detached_teardown(fixture["item"])
+
+
+def test_detached_correction_allows_fresh_bound_sandbox_arm(
+    tmp_path, monkeypatch
+):
+    fixture = _interrupted_generation_fixture(
+        tmp_path,
+        monkeypatch,
+        boundary_finding_counts={"dynamic_execution": 1},
+    )
+    stale, _detached = _arm_detached_test_fixture(fixture, monkeypatch)
+    marker, arm, completion, _preparing_name = (
+        _install_detached_test_completion(fixture)
+    )
+    try:
+        correction = R._retire_detached_teardown_stale_arm(
+            marker, arm, completion
+        )
+    finally:
+        R._close_dispatch_quarantine(marker)
+
+    R._assert_no_active_detached_teardown(fixture["item"])
+    fresh = R._arm_interrupted_generation_release(
+        fixture["item"],
+        confirm_dispatch_id=fixture["dispatch_id"],
+        boot_identity_provider=lambda: fixture["boot"],
+    )
+    assert fresh["recovery_nonce"] != stale["recovery_nonce"]
+    assert correction["new_marker_identity"] == _canonical_rows(
+        fixture["marker"]
+    )[2]["pre_arm_marker_identity"]
+    R._assert_no_active_detached_teardown(fixture["item"])
+
+
+def test_detached_retirement_recovers_post_rename_pre_correction(
+    tmp_path, monkeypatch
+):
+    fixture = _interrupted_generation_fixture(
+        tmp_path,
+        monkeypatch,
+        boundary_finding_counts={"dynamic_execution": 1},
+    )
+    _arm_detached_test_fixture(fixture, monkeypatch)
+    marker, arm, completion, _preparing_name = (
+        _install_detached_test_completion(fixture)
+    )
+    rows = _canonical_rows(fixture["marker"])
+    prefix = b"".join(
+        Recovery.canonical_json_line(row) for row in rows[:2]
+    )
+    R._close_dispatch_quarantine(marker)
+    replacement = fixture["marker"].parent / ".synthetic_prefix_replace"
+    replacement.write_bytes(prefix)
+    os.chmod(replacement, 0o600)
+    os.replace(replacement, fixture["marker"])
+    R._fsync_directory(fixture["marker"].parent)
+
+    rebound, _parsed = R._read_existing_dispatch_quarantine(
+        fixture["item"],
+        require_recovery_arm=False,
+        marker_parser=R._parse_detached_teardown_marker,
+    )
+    try:
+        correction = R._retire_detached_teardown_stale_arm(
+            rebound, arm, completion
+        )
+    finally:
+        R._close_dispatch_quarantine(rebound)
+
+    assert correction["stale_recovery_arm_invalidated"] is True
+    assert correction["old_marker_identity"] != correction["new_marker_identity"]
+    R._assert_no_active_detached_teardown(fixture["item"])
+
+
+def test_detached_partial_anchor_loss_uses_adopted_replay(monkeypatch):
+    first = _detached_test_process(
+        100, 1, 100, 100, holder=True, parent_in_closure=False
+    )
+    second = _detached_test_process(
+        200, 1, 200, 200, holder=True, parent_in_closure=False
+    )
+    arm = {
+        "anchor_pids": [100, 200],
+        "holder_inventory": _detached_test_inventory([first, second]),
+    }
+    identities = {
+        100: None,
+        200: (1, 200, 200, "L", "darwin:200:1"),
+    }
+    monkeypatch.setattr(
+        R.Contiguous, "_process_identity", lambda pid: identities[pid]
+    )
+
+    assert R._detached_anchor_births_live(arm) is False
+
+    root = R.BoundMutableRoot(
+        label="abandoned workspace",
+        path=Path("/synthetic/workspace"),
+        identity=(1, 2),
+    )
+    monkeypatch.setattr(
+        R, "_discovery_lsof_holder_pids", lambda *_a, **_k: frozenset({200})
+    )
+    monkeypatch.setattr(R.time, "sleep", lambda _seconds: None)
+    cumulative = {
+        100: (1, 100, 100, "L", "darwin:100:1"),
+        200: (1, 200, 200, "L", "darwin:200:1"),
+    }
+    R._prove_current_workspace_holders_are_adopted((root,), cumulative)
+
+    sent: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        R.os, "uname", lambda: type("U", (), {"sysname": "Darwin"})()
+    )
+    monkeypatch.setattr(
+        R.Contiguous,
+        "_scoped_group_pids",
+        lambda pgid: {200} if pgid == 200 else set(),
+    )
+    monkeypatch.setattr(R.os, "kill", lambda pid, sig: sent.append((pid, sig)))
+    R._signal_authenticated_detached_groups(
+        cumulative, {100, 200}, signal.SIGKILL
+    )
+    assert sent == [(200, signal.SIGKILL)]
+
+
+def test_detached_completion_replay_reproves_terminal_state(
+    tmp_path, monkeypatch
+):
+    fixture = _interrupted_generation_fixture(
+        tmp_path,
+        monkeypatch,
+        boundary_finding_counts={"dynamic_execution": 1},
+    )
+    _stale, detached = _arm_detached_test_fixture(fixture, monkeypatch)
+    marker, _arm, _completion, _preparing = (
+        _install_detached_test_completion(fixture)
+    )
+    R._close_dispatch_quarantine(marker)
+    calls = {"process": 0, "holders": 0, "envelope": 0}
+
+    def process_absence(*_args, **_kwargs):
+        calls["process"] += 1
+        observed = datetime.now(timezone.utc).isoformat()
+        return {
+            "absence_sample_count": R.OPEN_FILE_HOLDER_ABSENCE_SAMPLES,
+            "absence_window_ns": 1,
+            "absence_first_at": observed,
+            "absence_last_at": observed,
+        }
+
+    def holder_absence(*_args, **_kwargs):
+        calls["holders"] += 1
+
+    def envelope(selected, *_args, **_kwargs):
+        calls["envelope"] += 1
+        return (
+            selected,
+            None,
+            None,
+            None,
+            fixture["execution"],
+            (),
+            (),
+            fixture["workspace"],
+            fixture["protected"],
+        )
+
+    monkeypatch.setattr(
+        R, "_prove_detached_process_and_group_absence", process_absence
+    )
+    monkeypatch.setattr(
+        R, "_prove_bound_mutable_root_holder_absence", holder_absence
+    )
+    monkeypatch.setattr(
+        R, "_validate_detached_teardown_execution_envelope", envelope
+    )
+    monkeypatch.setattr(
+        R,
+        "_detached_terminal_boundary_counts",
+        lambda *_args, **_kwargs: {"dynamic_execution": 1},
+    )
+
+    result = R._execute_detached_generation_teardown(
+        fixture["item"],
+        confirm_dispatch_id=fixture["dispatch_id"],
+        confirm_recovery_nonce=detached["recovery_nonce"],
+        boot_identity_provider=lambda: fixture["boot"],
+    )
+
+    assert result["result"] == "detached_generation_teardown_already_completed"
+    assert calls == {"process": 2, "holders": 2, "envelope": 2}
+    assert len(_canonical_rows(fixture["marker"])) == 2
