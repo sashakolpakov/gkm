@@ -20,6 +20,13 @@ predicate pair.
 The campaign is explicitly engineering-only and uncalibrated.  It is not an
 official benchmark result and does not touch the official TEST split.
 
+The pinned release contains 12,000 tasks.  After this campaign, the exact
+exposure successor contains 314 unique task IDs: 290 TRAIN, 24 validation, and
+zero TEST.  This leaves 9,010 exact-image-unused TRAIN tasks and 876
+exact-image-unused validation tasks; all 1,800 TEST tasks remain sealed.  That
+is a large representation-engineering pool, but not 9,886 independent visual
+concepts: many task IDs reuse generator semantics already disclosed elsewhere.
+
 ## Durable evidence
 
 The output root is
@@ -78,7 +85,12 @@ open/closed and contact-like relations.  It also exposed four defects.
    that purpose.
 2. **The atoms were compound and owner-free.**  Phrases could pool a compact
    cluster, a distant chain, a perimeter, and an enclosure without stable
-   panel-local subject identities.
+   panel-local subject identities.  More specifically, the proposer supplied
+   two cross-panel example clauses for each atom, but the observer prompt
+   required the phrase and **all** of those clauses together on every
+   individual panel.  Examples such as a patterned oval and a long kite thus
+   became an accidental conjunction, inflating disagreement and rejecting
+   otherwise useful phrases.
 3. **Affirmative wording did not establish affirmative semantics.**  `broad
    enclosure` can be the semantic sibling of an open-trace distinction, and
    `irregular arrangement` is a residual absence-of-regularity concept written
