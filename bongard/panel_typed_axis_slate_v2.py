@@ -1,9 +1,11 @@
 """Deterministic typed-axis support search with replayable evidence witnesses.
 
 This module is deliberately below every model, transport, query, and ranking
-layer.  It accepts twelve already-frozen support rows over eight fixed axes,
-one support-only nomination (or a typed gap) per axis, and enumerates equality
-singletons and pairs in Python.  A calibrated confidence set may induce a
+layer.  It accepts twelve already-frozen support rows over eight fixed axes and
+enumerates every equality singleton and every cross-axis equality pair in the
+closed language.  Optional support-only nominations are narration or ranking
+hints; they have no candidate-selection authority and are absent from closed
+inventory bytes.  A calibrated confidence set may induce a
 runtime disposition, but no cell is treated as self-authenticating semantic
 pixel truth.  Panel/task custody and verification of the opaque observer and
 calibration addresses belong to the external campaign adapter.  Freezing the
@@ -33,21 +35,20 @@ AXIS_COUNT = 8
 PRIMARY_ROW_COUNT = 6
 CONTRAST_ROW_COUNT = 6
 SUPPORT_ROW_COUNT = PRIMARY_ROW_COUNT + CONTRAST_ROW_COUNT
-MAX_FORMULA_COUNT = AXIS_COUNT + AXIS_COUNT * (AXIS_COUNT - 1) // 2
 
-CELL_SCHEMA = "gkm.bongard-typed-axis-cell.v2"
-ROW_SCHEMA = "gkm.bongard-typed-axis-row.v2"
-MATRIX_SCHEMA = "gkm.bongard-typed-axis-support-matrix.v2"
-NOMINATION_SCHEMA = "gkm.bongard-typed-axis-nomination.v2"
-NOMINATION_SLATE_SCHEMA = "gkm.bongard-typed-axis-nomination-slate.v2"
-ATOM_SCHEMA = "gkm.bongard-typed-axis-equality-atom.v2"
-WITNESS_SCHEMA = "gkm.bongard-typed-axis-evidence-witness.v2"
-ROW_EVALUATION_SCHEMA = "gkm.bongard-typed-axis-formula-row-evaluation.v2"
-FORMULA_SCHEMA = "gkm.bongard-typed-axis-formula-evaluation.v2"
-EMPTY_GAP_SCHEMA = "gkm.bongard-typed-axis-empty-gap.v2"
-INVENTORY_SCHEMA = "gkm.bongard-typed-axis-inventory.v2"
-ALGORITHM_ID = "bongard.typed-axis/equality-singletons-pairs-support-only-v2"
-ALGORITHM_SCHEMA = "gkm.bongard-typed-axis-algorithm.v2"
+CELL_SCHEMA = "gkm.bongard-typed-axis-cell.v3"
+ROW_SCHEMA = "gkm.bongard-typed-axis-row.v3"
+MATRIX_SCHEMA = "gkm.bongard-typed-axis-support-matrix.v3"
+NOMINATION_SCHEMA = "gkm.bongard-typed-axis-nomination.v3"
+NOMINATION_SLATE_SCHEMA = "gkm.bongard-typed-axis-nomination-slate.v3"
+ATOM_SCHEMA = "gkm.bongard-typed-axis-equality-atom.v3"
+WITNESS_SCHEMA = "gkm.bongard-typed-axis-evidence-witness.v3"
+ROW_EVALUATION_SCHEMA = "gkm.bongard-typed-axis-formula-row-evaluation.v3"
+FORMULA_SCHEMA = "gkm.bongard-typed-axis-formula-evaluation.v3"
+EMPTY_GAP_SCHEMA = "gkm.bongard-typed-axis-empty-gap.v3"
+INVENTORY_SCHEMA = "gkm.bongard-typed-axis-inventory.v3"
+ALGORITHM_ID = "bongard.typed-axis/all-equalities-cross-axis-pairs-v3"
+ALGORITHM_SCHEMA = "gkm.bongard-typed-axis-algorithm.v3"
 
 _ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _KEY = re.compile(r"[A-Za-z0-9][A-Za-z0-9_./:-]{0,255}\Z")
@@ -89,13 +90,14 @@ AxisValue: TypeAlias = int | str
 
 # Each axis is a finite, versioned state space.  Counts use literal integers;
 # categoricals use literal strings.  ``primitive_mix_or_arc_count`` combines
-# primitive mix and bounded arc count into one mutually exclusive value.
+# primitive mix and bounded arc count into one mutually exclusive value.  The
+# official panels contain at least one carrier action; an unavailable carrier
+# measurement is a typed GAP rather than a synthetic zero-action category.
 AXIS_DOMAINS: Mapping[Axis, tuple[AxisValue, ...]] = MappingProxyType({
     Axis.TOPOLOGY: ("open", "closed", "mixed_open_closed"),
     Axis.COMPONENT_COUNT: tuple(range(10)),
     Axis.STRAIGHT_ACTION_COUNT: tuple(range(10)),
     Axis.PRIMITIVE_MIX_OR_ARC_COUNT: (
-        "no_carrier_actions",
         "straight_only",
         *(f"arc_only_{count}" for count in range(1, 10)),
         *(f"mixed_{count}_arcs" for count in range(1, 10)),
@@ -116,6 +118,21 @@ AXIS_DOMAINS: Mapping[Axis, tuple[AxisValue, ...]] = MappingProxyType({
     ),
     Axis.TEXTURE: ("plain", "dotted", "dashed", "mixed_texture"),
 })
+
+CLOSED_ATOM_COUNT = sum(len(AXIS_DOMAINS[axis]) for axis in AXES)
+CROSS_AXIS_PAIR_COUNT = sum(
+    len(AXIS_DOMAINS[AXES[left]]) * len(AXIS_DOMAINS[AXES[right]])
+    for left in range(AXIS_COUNT)
+    for right in range(left + 1, AXIS_COUNT)
+)
+MAX_FORMULA_COUNT = CLOSED_ATOM_COUNT + CROSS_AXIS_PAIR_COUNT
+
+if (CLOSED_ATOM_COUNT, CROSS_AXIS_PAIR_COUNT, MAX_FORMULA_COUNT) != (
+    59,
+    1_419,
+    1_478,
+):  # pragma: no cover - import-time closed-language guard
+    raise RuntimeError("typed axis closed-language cardinality differs")
 
 
 def typed_axis_slate_source_digest() -> str:
@@ -142,7 +159,10 @@ def typed_axis_slate_algorithm_digest() -> str:
                 "primary": PRIMARY_ROW_COUNT,
                 "contrast": CONTRAST_ROW_COUNT,
             },
-            "formula_language": "positive_equality_singleton_or_pair",
+            "formula_language": "all_positive_equalities_and_cross_axis_pairs",
+            "closed_atom_count": CLOSED_ATOM_COUNT,
+            "cross_axis_pair_count": CROSS_AXIS_PAIR_COUNT,
+            "nomination_candidate_selection_authority": False,
             "maximum_formula_count": MAX_FORMULA_COUNT,
             "admission_policy": {
                 "primary_present_at_least": 5,
@@ -632,6 +652,8 @@ class TypedNominationSlate:
             "support_only": True,
             "query_rows_seen": 0,
             "polarity_choice_present": False,
+            "candidate_selection_authority": False,
+            "ranking_or_narration_hint_only": True,
         }
 
     @classmethod
@@ -646,6 +668,8 @@ class TypedNominationSlate:
                 "support_only",
                 "query_rows_seen",
                 "polarity_choice_present",
+                "candidate_selection_authority",
+                "ranking_or_narration_hint_only",
             },
             "typed nomination slate",
         )
@@ -656,6 +680,8 @@ class TypedNominationSlate:
             or raw["support_only"] is not True
             or raw["query_rows_seen"] != 0
             or raw["polarity_choice_present"] is not False
+            or raw["candidate_selection_authority"] is not False
+            or raw["ranking_or_narration_hint_only"] is not True
         ):
             raise TypedAxisSlateError("typed nomination slate policy differs")
         result = cls(
@@ -1046,25 +1072,31 @@ class FormulaEvaluation:
 
 @dataclass(frozen=True, slots=True)
 class TypedEmptyGap:
-    nomination_gap_axes: tuple[Axis, ...]
+    measurement_gap_or_error_axes: tuple[Axis, ...]
     evaluated_formula_count: int
     rejected_formula_ids: tuple[str, ...]
     reason_code: str = "no_formula_admitted"
 
     def __post_init__(self) -> None:
         if (
-            type(self.nomination_gap_axes) is not tuple
-            or tuple(sorted(self.nomination_gap_axes, key=AXES.index))
-            != self.nomination_gap_axes
-            or len(set(self.nomination_gap_axes)) != len(self.nomination_gap_axes)
-            or any(type(item) is not Axis for item in self.nomination_gap_axes)
+            type(self.measurement_gap_or_error_axes) is not tuple
+            or tuple(
+                sorted(self.measurement_gap_or_error_axes, key=AXES.index)
+            )
+            != self.measurement_gap_or_error_axes
+            or len(set(self.measurement_gap_or_error_axes))
+            != len(self.measurement_gap_or_error_axes)
+            or any(
+                type(item) is not Axis
+                for item in self.measurement_gap_or_error_axes
+            )
             or type(self.evaluated_formula_count) is not int
-            or not 0 <= self.evaluated_formula_count <= MAX_FORMULA_COUNT
+            or self.evaluated_formula_count != MAX_FORMULA_COUNT
             or type(self.rejected_formula_ids) is not tuple
             or len(self.rejected_formula_ids) != self.evaluated_formula_count
             or self.rejected_formula_ids
             != tuple(
-                f"formula_{index:02d}"
+                _formula_id(index)
                 for index in range(self.evaluated_formula_count)
             )
             or self.reason_code != "no_formula_admitted"
@@ -1076,71 +1108,110 @@ class TypedEmptyGap:
         return {
             "schema": EMPTY_GAP_SCHEMA,
             "reason_code": self.reason_code,
-            "nomination_gap_axes": [item.value for item in self.nomination_gap_axes],
+            "measurement_gap_or_error_axes": [
+                item.value for item in self.measurement_gap_or_error_axes
+            ],
             "evaluated_formula_count": self.evaluated_formula_count,
             "rejected_formula_ids": list(self.rejected_formula_ids),
         }
 
 
-def _enumerate_atoms(slate: TypedNominationSlate) -> tuple[tuple[EqualityAtom, ...], ...]:
-    atoms = tuple(EqualityAtom(item.axis, item.value) for item in slate.available)
-    return tuple((item,) for item in atoms) + tuple(
-        (atoms[left], atoms[right])
-        for left in range(len(atoms))
-        for right in range(left + 1, len(atoms))
+def _formula_id(index: int) -> str:
+    if type(index) is not int or not 0 <= index < MAX_FORMULA_COUNT:
+        raise TypedAxisSlateError("formula index lies outside the closed inventory")
+    return f"formula_{index:04d}"
+
+
+def _enumerate_closed_formula_atoms() -> tuple[tuple[EqualityAtom, ...], ...]:
+    atoms_by_axis = tuple(
+        tuple(EqualityAtom(axis, value) for value in AXIS_DOMAINS[axis])
+        for axis in AXES
+    )
+    singletons = tuple(
+        (atom,) for axis_atoms in atoms_by_axis for atom in axis_atoms
+    )
+    pairs = tuple(
+        (left_atom, right_atom)
+        for left_axis in range(AXIS_COUNT)
+        for right_axis in range(left_axis + 1, AXIS_COUNT)
+        for left_atom in atoms_by_axis[left_axis]
+        for right_atom in atoms_by_axis[right_axis]
+    )
+    result = singletons + pairs
+    if (
+        len(singletons) != CLOSED_ATOM_COUNT
+        or len(pairs) != CROSS_AXIS_PAIR_COUNT
+        or len(result) != MAX_FORMULA_COUNT
+    ):  # pragma: no cover - import policy already guards this
+        raise TypedAxisSlateError("closed formula enumeration count differs")
+    return result
+
+
+def _measurement_gap_or_error_axes(matrix: TypedSupportMatrix) -> tuple[Axis, ...]:
+    return tuple(
+        axis
+        for axis in AXES
+        if any(
+            row.cell(axis).evidence_kind in {EvidenceKind.GAP, EvidenceKind.ERROR}
+            for row in matrix.rows
+        )
     )
 
 
 @dataclass(frozen=True, slots=True)
 class TypedAxisInventory:
     matrix: TypedSupportMatrix
-    nominations: TypedNominationSlate
     formulas: tuple[FormulaEvaluation, ...]
     admitted_formula_ids: tuple[str, ...]
     empty_gap: TypedEmptyGap | None
 
     @classmethod
     def derive(
-        cls, matrix: TypedSupportMatrix, nominations: TypedNominationSlate
+        cls,
+        matrix: TypedSupportMatrix,
+        nominations: TypedNominationSlate | None = None,
     ) -> "TypedAxisInventory":
-        if type(matrix) is not TypedSupportMatrix or type(nominations) is not TypedNominationSlate:
-            raise TypeError("inventory derivation needs exact inputs")
-        if nominations.support_matrix_address != matrix.matrix_address:
-            raise TypedAxisSlateError("nomination slate is bound to another support matrix")
-        formula_atoms = _enumerate_atoms(nominations)
+        if type(matrix) is not TypedSupportMatrix:
+            raise TypeError("inventory derivation needs an exact support matrix")
+        if nominations is not None:
+            if type(nominations) is not TypedNominationSlate:
+                raise TypeError("nomination hints need an exact typed slate")
+            if nominations.support_matrix_address != matrix.matrix_address:
+                raise TypedAxisSlateError(
+                    "nomination hints are bound to another support matrix"
+                )
+        formula_atoms = _enumerate_closed_formula_atoms()
         formulas = tuple(
-            FormulaEvaluation.evaluate(f"formula_{index:02d}", atoms, matrix)
+            FormulaEvaluation.evaluate(_formula_id(index), atoms, matrix)
             for index, atoms in enumerate(formula_atoms)
         )
         admitted = tuple(item.formula_id for item in formulas if item.admitted)
         gap = None
         if not admitted:
             gap = TypedEmptyGap(
-                tuple(item.axis for item in nominations.nominations if item.value is None),
+                _measurement_gap_or_error_axes(matrix),
                 len(formulas),
                 tuple(item.formula_id for item in formulas),
             )
-        return cls(matrix, nominations, formulas, admitted, gap)
+        return cls(matrix, formulas, admitted, gap)
 
     def __post_init__(self) -> None:
         if (
             type(self.matrix) is not TypedSupportMatrix
-            or type(self.nominations) is not TypedNominationSlate
-            or self.nominations.support_matrix_address != self.matrix.matrix_address
             or type(self.formulas) is not tuple
-            or len(self.formulas) > MAX_FORMULA_COUNT
+            or len(self.formulas) != MAX_FORMULA_COUNT
             or any(type(item) is not FormulaEvaluation for item in self.formulas)
             or tuple(item.formula_id for item in self.formulas)
-            != tuple(f"formula_{index:02d}" for index in range(len(self.formulas)))
+            != tuple(_formula_id(index) for index in range(MAX_FORMULA_COUNT))
             or type(self.admitted_formula_ids) is not tuple
             or self.admitted_formula_ids
             != tuple(item.formula_id for item in self.formulas if item.admitted)
         ):
             raise TypedAxisSlateError("typed axis inventory fields differ")
 
-        expected_formula_atoms = _enumerate_atoms(self.nominations)
+        expected_formula_atoms = _enumerate_closed_formula_atoms()
         expected_formulas = tuple(
-            FormulaEvaluation.evaluate(f"formula_{index:02d}", atoms, self.matrix)
+            FormulaEvaluation.evaluate(_formula_id(index), atoms, self.matrix)
             for index, atoms in enumerate(expected_formula_atoms)
         )
         if self.formulas != expected_formulas:
@@ -1155,11 +1226,7 @@ class TypedAxisInventory:
         expected_gap = None
         if not expected_admitted:
             expected_gap = TypedEmptyGap(
-                tuple(
-                    item.axis
-                    for item in self.nominations.nominations
-                    if item.value is None
-                ),
+                _measurement_gap_or_error_axes(self.matrix),
                 len(expected_formulas),
                 tuple(item.formula_id for item in expected_formulas),
             )
@@ -1177,13 +1244,14 @@ class TypedAxisInventory:
             "algorithm_digest": typed_axis_slate_algorithm_digest(),
             "algorithm_source_sha256": typed_axis_slate_source_digest(),
             "matrix": self.matrix.to_data(),
-            "nominations": self.nominations.to_data(),
             "formulas": [item.to_data() for item in self.formulas],
             "formula_count": len(self.formulas),
+            "closed_atom_count": CLOSED_ATOM_COUNT,
+            "cross_axis_pair_count": CROSS_AXIS_PAIR_COUNT,
             "maximum_formula_count": MAX_FORMULA_COUNT,
             "admitted_formula_ids": list(self.admitted_formula_ids),
             "empty_gap": None if self.empty_gap is None else self.empty_gap.to_data(),
-            "formula_language": "positive_equality_singleton_or_pair",
+            "formula_language": "all_positive_equalities_and_cross_axis_pairs",
             "conjunction_precedence": [
                 "error",
                 "certified_absent",
@@ -1193,6 +1261,8 @@ class TypedAxisInventory:
             "query_rows_seen": 0,
             "model_calls_for_derivation_or_replay": 0,
             "ranking_present": False,
+            "nomination_hints_embedded": False,
+            "nomination_candidate_selection_authority": False,
             "negation_present": False,
             "lean_present": False,
             "semantic_pixel_truth_claimed_by_cells": False,
@@ -1210,9 +1280,10 @@ class TypedAxisInventory:
                 "algorithm_digest",
                 "algorithm_source_sha256",
                 "matrix",
-                "nominations",
                 "formulas",
                 "formula_count",
+                "closed_atom_count",
+                "cross_axis_pair_count",
                 "maximum_formula_count",
                 "admitted_formula_ids",
                 "empty_gap",
@@ -1221,6 +1292,8 @@ class TypedAxisInventory:
                 "query_rows_seen",
                 "model_calls_for_derivation_or_replay",
                 "ranking_present",
+                "nomination_hints_embedded",
+                "nomination_candidate_selection_authority",
                 "negation_present",
                 "lean_present",
                 "semantic_pixel_truth_claimed_by_cells",
@@ -1235,13 +1308,18 @@ class TypedAxisInventory:
             or raw["algorithm_digest"] != typed_axis_slate_algorithm_digest()
             or raw["algorithm_source_sha256"]
             != typed_axis_slate_source_digest()
+            or raw["closed_atom_count"] != CLOSED_ATOM_COUNT
+            or raw["cross_axis_pair_count"] != CROSS_AXIS_PAIR_COUNT
             or raw["maximum_formula_count"] != MAX_FORMULA_COUNT
-            or raw["formula_language"] != "positive_equality_singleton_or_pair"
+            or raw["formula_language"]
+            != "all_positive_equalities_and_cross_axis_pairs"
             or raw["conjunction_precedence"]
             != ["error", "certified_absent", "all_present", "indeterminate"]
             or raw["query_rows_seen"] != 0
             or raw["model_calls_for_derivation_or_replay"] != 0
             or raw["ranking_present"] is not False
+            or raw["nomination_hints_embedded"] is not False
+            or raw["nomination_candidate_selection_authority"] is not False
             or raw["negation_present"] is not False
             or raw["lean_present"] is not False
             or raw["semantic_pixel_truth_claimed_by_cells"] is not False
@@ -1250,8 +1328,7 @@ class TypedAxisInventory:
         ):
             raise TypedAxisSlateError("typed axis inventory policy differs")
         matrix = TypedSupportMatrix.from_data(raw["matrix"])
-        nominations = TypedNominationSlate.from_data(raw["nominations"])
-        rebuilt = cls.derive(matrix, nominations)
+        rebuilt = cls.derive(matrix)
         _require_canonical_match(
             rebuilt.to_data(), raw, "typed axis inventory deterministic replay"
         )
@@ -1274,6 +1351,8 @@ __all__ = (
     "ALGORITHM_ID",
     "AXES",
     "AXIS_DOMAINS",
+    "CLOSED_ATOM_COUNT",
+    "CROSS_AXIS_PAIR_COUNT",
     "Axis",
     "AxisNomination",
     "EvidenceKind",

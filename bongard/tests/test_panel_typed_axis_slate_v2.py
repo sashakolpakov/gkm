@@ -5,9 +5,13 @@ from dataclasses import replace
 
 import pytest
 
+from bongard.canonical import canonical_json
 from bongard.evidence import Disposition
 from bongard.panel_typed_axis_slate_v2 import (
     AXES,
+    AXIS_DOMAINS,
+    CLOSED_ATOM_COUNT,
+    CROSS_AXIS_PAIR_COUNT,
     Axis,
     AxisNomination,
     EqualityAtom,
@@ -72,6 +76,15 @@ def _slate(matrix: TypedSupportMatrix) -> TypedNominationSlate:
             AxisNomination.nominate(axis, PRIMARY_VALUES[axis]) for axis in AXES
         ),
     )
+
+
+def _formula(
+    inventory: TypedAxisInventory, atoms: tuple[tuple[Axis, int | str], ...]
+) -> FormulaEvaluation:
+    for item in inventory.formulas:
+        if tuple((atom.axis, atom.value) for atom in item.atoms) == atoms:
+            return item
+    raise AssertionError(f"formula not found: {atoms!r}")
 
 
 def test_cell_equality_states_preserve_exact_vs_calibrated_authority() -> None:
@@ -154,26 +167,54 @@ def test_conjunction_error_precedes_absence_then_indeterminate() -> None:
     assert [item.axis for item in evaluation.failure_witnesses] == [Axis.TOPOLOGY]
 
 
-def test_fixed_slate_enumerates_8_singletons_28_pairs_and_admits_support_formulae() -> None:
+def test_closed_slate_enumerates_59_atoms_and_1419_cross_axis_pairs() -> None:
     matrix = _matrix()
     inventory = TypedAxisInventory.derive(matrix, _slate(matrix))
 
-    assert len(inventory.formulas) == MAX_FORMULA_COUNT == 36
-    assert [len(item.atoms) for item in inventory.formulas[:8]] == [1] * 8
-    assert [len(item.atoms) for item in inventory.formulas[8:]] == [2] * 28
-    assert inventory.admitted_formula_ids == (
-        "formula_00",
-        "formula_08",
-        "formula_09",
-        "formula_10",
-        "formula_11",
-        "formula_12",
-        "formula_13",
-        "formula_14",
+    assert CLOSED_ATOM_COUNT == 59
+    assert CROSS_AXIS_PAIR_COUNT == 1_419
+    assert len(inventory.formulas) == MAX_FORMULA_COUNT == 1_478
+    assert [len(item.atoms) for item in inventory.formulas[:59]] == [1] * 59
+    assert [len(item.atoms) for item in inventory.formulas[59:]] == [2] * 1_419
+    assert all(
+        item.atoms[0].axis is not item.atoms[1].axis
+        for item in inventory.formulas[59:]
     )
+    assert [
+        (item.atoms[0].axis, item.atoms[0].value)
+        for item in inventory.formulas[:59]
+    ] == [
+        (axis, value) for axis in AXES for value in AXIS_DOMAINS[axis]
+    ]
+    assert [
+        tuple((atom.axis, atom.value) for atom in item.atoms)
+        for item in inventory.formulas[59:]
+    ] == [
+        ((left_axis, left_value), (right_axis, right_value))
+        for left_index, left_axis in enumerate(AXES)
+        for right_axis in AXES[left_index + 1 :]
+        for left_value in AXIS_DOMAINS[left_axis]
+        for right_value in AXIS_DOMAINS[right_axis]
+    ]
+
+    admitted_atoms = [
+        tuple((atom.axis, atom.value) for atom in item.atoms)
+        for item in inventory.formulas
+        if item.admitted
+    ]
+    assert admitted_atoms == [
+        ((Axis.TOPOLOGY, "closed"),),
+        *[
+            (
+                (Axis.TOPOLOGY, "closed"),
+                (axis, PRIMARY_VALUES[axis]),
+            )
+            for axis in AXES[1:]
+        ],
+    ]
     assert inventory.empty_gap is None
 
-    topology = inventory.formulas[0]
+    topology = _formula(inventory, ((Axis.TOPOLOGY, "closed"),))
     assert topology.primary_counts == (6, 0, 0, 0)
     assert topology.contrast_counts == (0, 6, 0, 0)
     assert topology.admitted is True
@@ -183,38 +224,29 @@ def test_fixed_slate_enumerates_8_singletons_28_pairs_and_admits_support_formula
         for row in topology.rows[6:]
     )
 
-    component = inventory.formulas[1]
+    component = _formula(inventory, ((Axis.COMPONENT_COUNT, 1),))
     assert component.primary_counts == (6, 0, 0, 0)
     assert component.contrast_counts == (6, 0, 0, 0)
     assert component.admitted is False
     assert "contrast_present_nonzero" in component.admission_failure_codes
-    assert inventory.to_data()["query_rows_seen"] == 0
-    assert inventory.to_data()["model_calls_for_derivation_or_replay"] == 0
-    assert inventory.to_data()["lean_present"] is False
-    assert inventory.to_data()["semantic_pixel_truth_claimed_by_cells"] is False
-    assert inventory.to_data()["panel_task_custody_verified_inside_core"] is False
-    assert inventory.to_data()["external_campaign_adapter_required"] is True
+    data = inventory.to_data()
+    assert data["query_rows_seen"] == 0
+    assert data["model_calls_for_derivation_or_replay"] == 0
+    assert data["lean_present"] is False
+    assert data["semantic_pixel_truth_claimed_by_cells"] is False
+    assert data["panel_task_custody_verified_inside_core"] is False
+    assert data["external_campaign_adapter_required"] is True
+    assert data["nomination_hints_embedded"] is False
+    assert data["nomination_candidate_selection_authority"] is False
 
 
-def test_nomination_gaps_reduce_search_and_empty_result_is_typed() -> None:
+def test_nomination_hints_cannot_change_closed_inventory_bytes() -> None:
     matrix = _matrix()
-    slate = TypedNominationSlate.freeze(
+    all_gaps = TypedNominationSlate.freeze(
         matrix,
         tuple(AxisNomination.gap(axis, "axis_unavailable") for axis in AXES),
     )
-    inventory = TypedAxisInventory.derive(matrix, slate)
-
-    assert inventory.formulas == ()
-    assert inventory.admitted_formula_ids == ()
-    assert inventory.empty_gap is not None
-    assert inventory.empty_gap.nomination_gap_axes == AXES
-    assert inventory.empty_gap.evaluated_formula_count == 0
-    assert inventory.empty_gap.rejected_formula_ids == ()
-
-
-def test_partial_nomination_enumeration_keeps_global_axis_order() -> None:
-    matrix = _matrix()
-    slate = TypedNominationSlate.freeze(
+    partial = TypedNominationSlate.freeze(
         matrix,
         tuple(
             AxisNomination.nominate(axis, PRIMARY_VALUES[axis])
@@ -223,15 +255,109 @@ def test_partial_nomination_enumeration_keeps_global_axis_order() -> None:
             for axis in AXES
         ),
     )
-    inventory = TypedAxisInventory.derive(matrix, slate)
+    baseline = TypedAxisInventory.derive(matrix)
+    with_gaps = TypedAxisInventory.derive(matrix, all_gaps)
+    with_partial = TypedAxisInventory.derive(matrix, partial)
 
-    assert [
-        tuple(atom.axis for atom in formula.atoms) for formula in inventory.formulas
-    ] == [
-        (Axis.TOPOLOGY,),
-        (Axis.STRAIGHT_ACTION_COUNT,),
-        (Axis.TOPOLOGY, Axis.STRAIGHT_ACTION_COUNT),
-    ]
+    assert all_gaps.to_data()["candidate_selection_authority"] is False
+    assert all_gaps.to_data()["ranking_or_narration_hint_only"] is True
+    assert baseline == with_gaps == with_partial
+    assert canonical_json(baseline.to_data()) == canonical_json(with_gaps.to_data())
+    assert canonical_json(baseline.to_data()) == canonical_json(with_partial.to_data())
+
+
+def test_unnominated_conjunction_survives_heterogeneous_contrast() -> None:
+    rows: list[TypedSupportRow] = []
+    for index in range(6):
+        rows.append(_row(index, SupportSide.PRIMARY))
+    for index in range(6):
+        values = dict(PRIMARY_VALUES)
+        if index < 3:
+            values[Axis.TOPOLOGY] = "open"
+        else:
+            values[Axis.STRAIGHT_ACTION_COUNT] = 3
+        rows.append(
+            TypedSupportRow(
+                f"contrast_{index:02d}",
+                SupportSide.CONTRAST,
+                tuple(
+                    TypedAxisCell.python_exact(axis, values[axis], PROTOCOL)
+                    for axis in AXES
+                ),
+            )
+        )
+    matrix = TypedSupportMatrix.freeze(rows)
+
+    wrong_hints = TypedNominationSlate.freeze(
+        matrix,
+        tuple(
+            AxisNomination.nominate(
+                axis,
+                {
+                    Axis.TOPOLOGY: "open",
+                    Axis.STRAIGHT_ACTION_COUNT: 3,
+                }.get(axis, PRIMARY_VALUES[axis]),
+            )
+            for axis in AXES
+        ),
+    )
+    all_gap_hints = TypedNominationSlate.freeze(
+        matrix,
+        tuple(AxisNomination.gap(axis, "proposer_did_not_name_axis") for axis in AXES),
+    )
+
+    with_wrong_hints = TypedAxisInventory.derive(matrix, wrong_hints)
+    with_gap_hints = TypedAxisInventory.derive(matrix, all_gap_hints)
+    target = _formula(
+        with_wrong_hints,
+        (
+            (Axis.TOPOLOGY, "closed"),
+            (Axis.STRAIGHT_ACTION_COUNT, 4),
+        ),
+    )
+
+    assert target.admitted is True
+    assert target.primary_counts == (6, 0, 0, 0)
+    assert target.contrast_counts == (0, 6, 0, 0)
+    assert with_wrong_hints.admitted_formula_ids == (target.formula_id,)
+    assert canonical_json(with_wrong_hints.to_data()) == canonical_json(
+        with_gap_hints.to_data()
+    )
+
+
+def test_nomination_hints_cannot_change_empty_version_space_gap() -> None:
+    rows = tuple(_row(index, SupportSide.PRIMARY) for index in range(6)) + tuple(
+        TypedSupportRow(
+            f"contrast_{index:02d}",
+            SupportSide.CONTRAST,
+            tuple(
+                TypedAxisCell.python_exact(
+                    axis, PRIMARY_VALUES[axis], PROTOCOL
+                )
+                for axis in AXES
+            ),
+        )
+        for index in range(6)
+    )
+    matrix = TypedSupportMatrix.freeze(rows)
+    primary_hints = _slate(matrix)
+    gap_hints = TypedNominationSlate.freeze(
+        matrix,
+        tuple(AxisNomination.gap(axis, "proposer_gap") for axis in AXES),
+    )
+
+    with_primary_hints = TypedAxisInventory.derive(matrix, primary_hints)
+    with_gap_hints = TypedAxisInventory.derive(matrix, gap_hints)
+
+    assert with_primary_hints.admitted_formula_ids == ()
+    assert with_primary_hints.empty_gap is not None
+    assert with_primary_hints.empty_gap.measurement_gap_or_error_axes == ()
+    assert with_primary_hints.empty_gap.evaluated_formula_count == 1_478
+    assert with_primary_hints.empty_gap.rejected_formula_ids[0] == "formula_0000"
+    assert with_primary_hints.empty_gap.rejected_formula_ids[-1] == "formula_1477"
+    assert canonical_json(with_primary_hints.to_data()) == canonical_json(
+        with_gap_hints.to_data()
+    )
 
 
 def test_round_trip_cold_replay_and_nested_tamper_detection() -> None:
@@ -247,12 +373,12 @@ def test_round_trip_cold_replay_and_nested_tamper_detection() -> None:
     )
 
     changed = copy.deepcopy(inventory.to_data())
-    changed["formulas"][0]["rows"][6]["disposition"] = "present"
+    changed["formulas"][1]["rows"][6]["disposition"] = "present"
     with pytest.raises(TypedAxisSlateError):
         TypedAxisInventory.from_data(changed)
 
     changed = copy.deepcopy(inventory.to_data())
-    changed["formulas"][0]["rows"][6]["atom_witnesses"][0][
+    changed["formulas"][1]["rows"][6]["atom_witnesses"][0][
         "evidence_kind"
     ] = "calibrated_set"
     with pytest.raises(TypedAxisSlateError):
@@ -337,7 +463,7 @@ def test_direct_formula_and_inventory_constructors_cannot_forge_admission() -> N
     slate = _slate(matrix)
     inventory = TypedAxisInventory.derive(matrix, slate)
 
-    rejected = inventory.formulas[1]
+    rejected = inventory.formulas[0]
     assert rejected.admitted is False
     with pytest.raises(TypedAxisSlateError):
         FormulaEvaluation(
@@ -358,7 +484,7 @@ def test_direct_formula_and_inventory_constructors_cannot_forge_admission() -> N
         )
 
     wrong_first = FormulaEvaluation.evaluate(
-        "formula_00",
+        "formula_0000",
         (EqualityAtom(Axis.SYMMETRY, PRIMARY_VALUES[Axis.SYMMETRY]),),
         matrix,
     )
@@ -369,7 +495,6 @@ def test_direct_formula_and_inventory_constructors_cannot_forge_admission() -> N
     with pytest.raises(TypedAxisSlateError):
         TypedAxisInventory(
             matrix,
-            slate,
             forged_formulas,
             forged_admitted,
             None if forged_admitted else inventory.empty_gap,
