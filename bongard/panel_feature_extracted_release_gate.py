@@ -1738,6 +1738,135 @@ def _validate_successor_freeze_bindings(
     return data
 
 
+def _validate_positive_prose_support_custody(
+    bundle: object,
+    *,
+    task: ObjectBongardTaskPlan,
+    prepared: PreparedPanelFeatureExtractedRelease,
+    archive: OfficialExtractedPanelArchive,
+) -> object:
+    """Bind every prose support byte/role to the authenticated tree manifest."""
+
+    from bongard.panel_positive_prose_evidence_bundle import (
+        PositiveProseEvidenceBundle,
+        PositiveProsePanelRole,
+        cold_replay_positive_prose_evidence_bundle,
+    )
+
+    if type(bundle) is not PositiveProseEvidenceBundle:
+        raise TypeError("positive prose freeze needs exact evidence bundle")
+    try:
+        replayed = cold_replay_positive_prose_evidence_bundle(
+            bundle, expected_artifact_address=bundle.artifact_address
+        )
+    except (TypeError, ValueError, RuntimeError) as exc:
+        raise PanelFeatureExtractedReleaseGateError(
+            "positive prose support evidence replay differs"
+        ) from exc
+    expected_ids = task.side_0_support_panel_ids + task.side_1_support_panel_ids
+    expected_roles = (
+        (PositiveProsePanelRole.PRIMARY_SUPPORT,) * 6
+        + (PositiveProsePanelRole.CONTRAST_SUPPORT,) * 6
+    )
+    if (
+        replayed.task_plan != task
+        or replayed.authorization_digest != prepared.authorization.record_digest
+        or replayed.execution_precommit_digest != prepared.precommit.record_digest
+        or replayed.query_rows
+        or tuple(row.panel_id for row in replayed.support_rows) != expected_ids
+        or tuple(row.role for row in replayed.support_rows) != expected_roles
+    ):
+        raise PanelFeatureExtractedReleaseGateError(
+            "positive prose support task roles or release lineage differ"
+        )
+    for row in replayed.support_rows:
+        manifest = archive.panel_by_id.get(row.panel_id)
+        if (
+            manifest is None
+            or manifest.sha256 != "sha256:" + row.panel_png_digest
+            or manifest.size_bytes != len(row.panel_png)
+            or row.observer_artifact.request.context.panel_id != row.panel_id
+        ):
+            raise PanelFeatureExtractedReleaseGateError(
+                "positive prose support bytes differ from authenticated manifest"
+            )
+    return replayed
+
+
+def _validate_positive_prose_freeze_bindings(
+    freeze: object,
+    *,
+    task: ObjectBongardTaskPlan,
+    prepared: PreparedPanelFeatureExtractedRelease,
+    archive: OfficialExtractedPanelArchive,
+) -> dict[str, Any]:
+    from bongard.panel_positive_prose_task_runner import (
+        CERTIFIED_ABSENT_UPPER_THRESHOLD,
+        CONTRAST_CERTIFIED_ABSENT_REQUIRED,
+        PRESENT_LOWER_THRESHOLD,
+        PRIMARY_PRESENT_REQUIRED,
+        PositiveProseSupportStatus,
+        PositiveProseTaskFreeze,
+        verify_positive_prose_task_freeze,
+    )
+
+    if type(freeze) is not PositiveProseTaskFreeze:
+        raise TypeError("task freeze must be exact PositiveProseTaskFreeze")
+    try:
+        replayed = verify_positive_prose_task_freeze(
+            freeze, expected_record_digest=freeze.record_digest
+        )
+    except (TypeError, ValueError, RuntimeError) as exc:
+        raise PanelFeatureExtractedReleaseGateError(
+            "positive prose task freeze replay differs"
+        ) from exc
+    data = _canonical_protocol_data(replayed, "positive prose task freeze")
+    _python_predicate_policy(data, "positive prose task freeze")
+    bundle = _validate_positive_prose_support_custody(
+        replayed.support_admission.evidence_bundle,
+        task=task,
+        prepared=prepared,
+        archive=archive,
+    )
+    predicate = replayed.selected_predicate
+    admission = replayed.support_admission
+    query_ids = (task.side_0_query_panel_id, task.side_1_query_panel_id)
+    if (
+        type(replayed.execution_precommit)
+        is not PanelFeatureExtractedExecutionPrecommit
+        or replayed.execution_precommit != prepared.precommit
+        or replayed.execution_precommit_digest != prepared.precommit.record_digest
+        or replayed.task_id != task.task_id
+        or replayed.task_plan_digest != task.record_digest
+        or replayed.sealed_query_panel_ids != query_ids
+        or admission.status is not PositiveProseSupportStatus.SUPPORT_ADMISSIBLE
+        or admission.gap_reasons
+        or admission.primary_counts.get("present") < PRIMARY_PRESENT_REQUIRED
+        or admission.contrast_counts.get("certified_absent")
+        < CONTRAST_CERTIFIED_ABSENT_REQUIRED
+        or predicate.cue.cue_digest != bundle.cue_digest
+        or predicate.present_when_lower_at_least != PRESENT_LOWER_THRESHOLD
+        or predicate.certified_absent_when_upper_at_most
+        != CERTIFIED_ABSENT_UPPER_THRESHOLD
+        or replayed.selected_predicate_digest != predicate.predicate_digest
+        or replayed.support_version_space_digest != replayed.version_space_digest
+        or data.get("one_positive_cue_only") is not True
+        or data.get("one_positive_formula_only") is not False
+        or data.get("negative_formula_present") is not False
+        or data.get("foil_present") is not False
+        or data.get("query_bytes_included") is not False
+        or data.get("query_observations_included") is not False
+        or data.get(
+            "query_release_authorized_only_after_exact_durable_commit"
+        )
+        is not True
+    ):
+        raise PanelFeatureExtractedReleaseGateError(
+            "positive prose freeze task, admission, cue, or thresholds differ"
+        )
+    return data
+
+
 def _validate_freeze_bindings(
     freeze: ObjectBongardTaskFreezeProtocol,
     *,
@@ -1749,6 +1878,7 @@ def _validate_freeze_bindings(
     # exact extracted-precommit branch.
     from bongard.panel_feature_primary_task_runner import PrimaryFormulaTaskFreeze
     from bongard.panel_feature_task_runner import PanelFeatureTaskFreeze
+    from bongard.panel_positive_prose_task_runner import PositiveProseTaskFreeze
 
     if type(freeze) is PanelFeatureTaskFreeze:
         return _validate_legacy_freeze_bindings(
@@ -1763,9 +1893,16 @@ def _validate_freeze_bindings(
             prepared=prepared,
             archive=archive,
         )
+    if type(freeze) is PositiveProseTaskFreeze:
+        return _validate_positive_prose_freeze_bindings(
+            freeze,
+            task=task,
+            prepared=prepared,
+            archive=archive,
+        )
     raise TypeError(
         "task freeze must be exact PanelFeatureTaskFreeze or "
-        "PrimaryFormulaTaskFreeze"
+        "PrimaryFormulaTaskFreeze or PositiveProseTaskFreeze"
     )
 
 
@@ -1865,6 +2002,56 @@ def _validate_successor_commit_bindings(
     return data
 
 
+def _validate_positive_prose_commit_bindings(
+    commit: object,
+    *,
+    freeze: object,
+    freeze_receipt: ObjectBongardWriteOnceReceipt,
+) -> dict[str, Any]:
+    from bongard.panel_positive_prose_task_runner import (
+        PositiveProseTaskFreeze,
+        PositiveProseTaskFreezeCommit,
+        verify_positive_prose_task_commit,
+    )
+
+    if type(freeze) is not PositiveProseTaskFreeze:
+        raise TypeError("positive prose commit needs exact PositiveProseTaskFreeze")
+    if type(commit) is not PositiveProseTaskFreezeCommit:
+        raise TypeError("task commit must be exact PositiveProseTaskFreezeCommit")
+    try:
+        replayed = verify_positive_prose_task_commit(
+            commit, expected_record_digest=commit.record_digest
+        )
+    except (TypeError, ValueError, RuntimeError) as exc:
+        raise PanelFeatureExtractedReleaseGateError(
+            "positive prose task commit replay differs"
+        ) from exc
+    data = _canonical_protocol_data(replayed, "positive prose task commit")
+    _python_predicate_policy(data, "positive prose task commit")
+    if (
+        replayed.task_freeze != freeze
+        or replayed.task_freeze_store_receipt != freeze_receipt
+        or data.get("durably_persisted_and_reloaded_before_query_release")
+        is not True
+        or data.get("exact_canonical_freeze_bytes_bound") is not True
+        or replayed.task_id != freeze.task_id
+        or replayed.task_plan_digest != freeze.task_plan_digest
+        or replayed.execution_precommit_digest != freeze.execution_precommit_digest
+        or replayed.version_space_digest != freeze.version_space_digest
+        or replayed.support_version_space_digest
+        != freeze.support_version_space_digest
+        or replayed.rank_response_digest != freeze.rank_response_digest
+        or replayed.selected_predicate_digest != freeze.selected_predicate_digest
+        or replayed.task_freeze_digest != freeze.record_digest
+        or replayed.exact_freeze_payload_digest != freeze_receipt.payload_digest
+        or replayed.task_freeze_store_receipt_digest != freeze_receipt.record_digest
+    ):
+        raise PanelFeatureExtractedReleaseGateError(
+            "positive prose commit does not bind exact durable freeze"
+        )
+    return data
+
+
 def _validate_commit_bindings(
     commit: ObjectBongardTaskCommitProtocol,
     *,
@@ -1878,6 +2065,10 @@ def _validate_commit_bindings(
     from bongard.panel_feature_task_runner import (
         PanelFeatureTaskFreeze,
         PanelFeatureTaskFreezeCommit,
+    )
+    from bongard.panel_positive_prose_task_runner import (
+        PositiveProseTaskFreeze,
+        PositiveProseTaskFreezeCommit,
     )
 
     if type(freeze) is PanelFeatureTaskFreeze:
@@ -1900,8 +2091,18 @@ def _validate_commit_bindings(
             freeze=freeze,
             freeze_receipt=freeze_receipt,
         )
+    if type(freeze) is PositiveProseTaskFreeze:
+        if type(commit) is not PositiveProseTaskFreezeCommit:
+            raise TypeError(
+                "positive prose freeze requires exact PositiveProseTaskFreezeCommit"
+            )
+        return _validate_positive_prose_commit_bindings(
+            commit,
+            freeze=freeze,
+            freeze_receipt=freeze_receipt,
+        )
     raise TypeError(
-        "commit binding needs an exact legacy or successor task freeze"
+        "commit binding needs an exact legacy, successor, or positive prose task freeze"
     )
 
 
