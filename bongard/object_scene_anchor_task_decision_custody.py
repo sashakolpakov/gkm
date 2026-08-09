@@ -22,6 +22,7 @@ from bongard.object_bongard_release_gate import (
     ObjectBongardWriteOnceReceipt,
 )
 from bongard.object_scene_anchor_batch_observer import (
+    ObjectSceneAnchorBatchObserverArtifact,
     object_scene_anchor_batch_observer_prompt,
 )
 from bongard.object_scene_anchor_candidate_ranker import (
@@ -29,6 +30,10 @@ from bongard.object_scene_anchor_candidate_ranker import (
     ObjectSceneAnchorRankResponse,
     freeze_object_scene_anchor_rank_input,
     object_scene_anchor_candidate_ranker_prompt,
+)
+from bongard.object_scene_anchor_card_proposer import (
+    ObjectSceneAnchorCardProposerArtifact,
+    object_scene_anchor_card_proposer_prompt,
 )
 from bongard.object_scene_anchor_python_bridge import (
     ObjectSceneAnchorPythonBridgeArtifact,
@@ -40,10 +45,15 @@ from bongard.object_scene_anchor_python_predicate import (
 from bongard.object_scene_anchor_support_observation_join import (
     ObjectSceneAnchorSupportObservationPlan,
     ObjectSceneAnchorSupportObservationResult,
+    cold_verify_object_scene_anchor_support_observation_result,
+)
+from bongard.object_scene_anchor_task_support_adapter import (
+    ObjectSceneAnchorTaskSupportAdapter,
 )
 from bongard.object_scene_anchor_version_space import (
     ObjectSceneAnchorOrientation,
     ObjectSceneAnchorSupportVersionSpace,
+    project_object_scene_anchor_card_proposal,
 )
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 from bongard.runtime_source_snapshot import capture_loaded_source, verify_loaded_source
@@ -53,13 +63,13 @@ _LOADED_SOURCE_SHA256 = capture_loaded_source(__name__, __file__)
 
 
 OBJECT_SCENE_ANCHOR_TASK_DECISION_FREEZE_SCHEMA = (
-    "gkm.object-scene-anchor-task-decision-freeze.v1"
+    "gkm.object-scene-anchor-task-decision-freeze.v2"
 )
 OBJECT_SCENE_ANCHOR_TASK_DECISION_COMMIT_SCHEMA = (
-    "gkm.object-scene-anchor-task-decision-commit.v1"
+    "gkm.object-scene-anchor-task-decision-commit.v2"
 )
 OBJECT_SCENE_ANCHOR_TASK_DECISION_CUSTODY_ID = (
-    "bongard.object-scene-anchor-task-decision-custody/python-v1"
+    "bongard.object-scene-anchor-task-decision-custody/python-v2"
 )
 
 _RAW_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -125,7 +135,7 @@ def _authority_data() -> dict[str, object]:
 def object_scene_anchor_task_decision_custody_algorithm_digest() -> str:
     return canonical_digest(
         {
-            "schema": "gkm.object-scene-anchor-task-decision-custody-algorithm.v1",
+            "schema": "gkm.object-scene-anchor-task-decision-custody-algorithm.v2",
             "algorithm_id": OBJECT_SCENE_ANCHOR_TASK_DECISION_CUSTODY_ID,
             "source_digest": (
                 object_scene_anchor_task_decision_custody_source_digest()
@@ -136,6 +146,9 @@ def object_scene_anchor_task_decision_custody_algorithm_digest() -> str:
             "selection_rule": "exact-rank-response-to-positive-python-predicate",
             "release_digest_rule": "rank-scope-and-response-and-predicate-raw",
             "query_rule": "identities-and-pixels-absent-from-model-artifacts",
+            "lineage_rule": (
+                "official-adapter-to-proposer-to-observer-to-result-to-rank"
+            ),
             **_authority_data(),
         }
     )
@@ -211,6 +224,80 @@ def _omitted_space(
     return bridge.omitted_version_space
 
 
+def _proposer_input_matches_corpus(
+    artifact: ObjectSceneAnchorCardProposerArtifact,
+    plan: ObjectSceneAnchorSupportObservationPlan,
+) -> bool:
+    return tuple(
+        (
+            item.panel_alias,
+            item.sheet,
+            item.sheet_png_byte_count,
+            item.sheet_png_digest,
+            item.panel_manifest,
+        )
+        for item in artifact.proposer_input.panels
+    ) == tuple(
+        (
+            item.panel_alias,
+            item.support_sheet,
+            item.support_sheet_png_byte_count,
+            item.support_sheet_png_digest,
+            item.panel_manifest,
+        )
+        for item in plan.corpus.panels
+    )
+
+
+def _runtime_lineage_matches(
+    proposer: ObjectSceneAnchorCardProposerArtifact,
+    observer: ObjectSceneAnchorBatchObserverArtifact,
+    response: ObjectSceneAnchorRankResponse,
+) -> bool:
+    return (
+        proposer.model == observer.model == response.model
+        and proposer.reasoning_effort
+        == observer.reasoning_effort
+        == response.reasoning_effort
+        and proposer.launcher_digest
+        == observer.expected_launcher_digest
+        == response.expected_launcher_digest
+        and proposer.policy_cache_binding
+        == observer.cloud_policy_cache_binding
+        == response.cloud_policy_cache_binding
+        and proposer.model_catalog_digest
+        == observer.model_catalog_digest
+        == response.model_catalog_digest
+        and proposer.no_tools_attestation_digest
+        == observer.no_tools_attestation_digest
+        == response.no_tools_attestation_digest
+    )
+
+
+def _complete_model_artifacts(
+    proposer: ObjectSceneAnchorCardProposerArtifact,
+    plan: ObjectSceneAnchorSupportObservationPlan,
+    observer: ObjectSceneAnchorBatchObserverArtifact,
+    rank_input: ObjectSceneAnchorRankInput,
+    response: ObjectSceneAnchorRankResponse,
+) -> tuple[object, ...]:
+    return (
+        proposer.proposer_input.to_data(),
+        object_scene_anchor_card_proposer_prompt(proposer.proposer_input),
+        proposer.model_payload,
+        proposer.receipt,
+        observer.to_data(),
+        *(
+            object_scene_anchor_batch_observer_prompt(item, plan.language.vocabulary)
+            for item in plan.batch_plan.batches
+        ),
+        rank_input.to_data(),
+        object_scene_anchor_candidate_ranker_prompt(rank_input),
+        response.model_payload,
+        response.receipt,
+    )
+
+
 def _freeze_content(value: "ObjectSceneAnchorTaskDecisionFreeze") -> dict[str, object]:
     omitted = _omitted_space(value.bridge)
     return {
@@ -220,7 +307,16 @@ def _freeze_content(value: "ObjectSceneAnchorTaskDecisionFreeze") -> dict[str, o
         "task_id": value.task_id,
         "task_plan_digest": value.task_plan_digest,
         "execution_precommit_digest": value.execution_precommit_digest,
+        "task_support_adapter": value.task_support_adapter.to_data(),
+        "task_support_adapter_digest": value.task_support_adapter_digest,
+        "card_proposer_artifact": value.card_proposer_artifact.to_data(),
+        "card_proposer_input_digest": value.card_proposer_input_digest,
+        "card_proposer_artifact_digest": value.card_proposer_artifact_digest,
+        "support_observation_plan": value.support_observation_plan.to_data(),
         "support_observation_plan_digest": value.support_observation_plan_digest,
+        "batch_observer_artifact": value.batch_observer_artifact.to_data(),
+        "batch_observer_artifact_digest": value.batch_observer_artifact_digest,
+        "support_observation_result": value.support_observation_result.to_data(),
         "support_observation_result_digest": value.support_observation_result_digest,
         "support_corpus_freeze_digest": value.support_corpus_freeze_digest,
         "batch_artifact_digest": value.batch_artifact_digest,
@@ -232,6 +328,17 @@ def _freeze_content(value: "ObjectSceneAnchorTaskDecisionFreeze") -> dict[str, o
         "orientation_version_space_digests": list(
             value.orientation_version_space_digests
         ),
+        "orientation_version_space_bindings": [
+            {
+                "orientation": orientation.value,
+                "version_space_digest": digest,
+            }
+            for orientation, digest in zip(
+                ObjectSceneAnchorOrientation,
+                value.orientation_version_space_digests,
+                strict=True,
+            )
+        ],
         "version_space_digest": value.version_space_digest,
         "support_version_space_digest": value.support_version_space_digest,
         "rank_input": value.rank_input.to_data(),
@@ -266,6 +373,11 @@ def _freeze_content(value: "ObjectSceneAnchorTaskDecisionFreeze") -> dict[str, o
         "query_identities_model_visible": False,
         "formula_frozen_before_query_release": True,
         "support_observation_result_bound": True,
+        "official_support_adapter_bound": True,
+        "card_proposer_artifact_bound": True,
+        "batch_observer_artifact_bound": True,
+        "complete_model_artifact_inventory_checked": True,
+        "orientation_version_spaces_ordered_by_bucket": True,
         "complete_nonempty_rank_scope_bound": True,
         "rank_response_and_bridge_bound": True,
         "typed_gap_omission_proof_required": True,
@@ -281,7 +393,16 @@ class ObjectSceneAnchorTaskDecisionFreeze:
     task_id: str
     task_plan_digest: str
     execution_precommit_digest: str
+    task_support_adapter: ObjectSceneAnchorTaskSupportAdapter
+    task_support_adapter_digest: str
+    card_proposer_artifact: ObjectSceneAnchorCardProposerArtifact
+    card_proposer_input_digest: str
+    card_proposer_artifact_digest: str
+    support_observation_plan: ObjectSceneAnchorSupportObservationPlan
     support_observation_plan_digest: str
+    batch_observer_artifact: ObjectSceneAnchorBatchObserverArtifact
+    batch_observer_artifact_digest: str
+    support_observation_result: ObjectSceneAnchorSupportObservationResult
     support_observation_result_digest: str
     support_corpus_freeze_digest: str
     batch_artifact_digest: str
@@ -307,7 +428,11 @@ class ObjectSceneAnchorTaskDecisionFreeze:
     def __post_init__(self) -> None:
         for label, item in (
             ("algorithm digest", self.algorithm_digest),
+            ("task support adapter digest", self.task_support_adapter_digest),
+            ("card proposer input digest", self.card_proposer_input_digest),
+            ("card proposer artifact digest", self.card_proposer_artifact_digest),
             ("support observation plan digest", self.support_observation_plan_digest),
+            ("batch observer artifact digest", self.batch_observer_artifact_digest),
             ("support observation result digest", self.support_observation_result_digest),
             ("support corpus freeze digest", self.support_corpus_freeze_digest),
             ("batch artifact digest", self.batch_artifact_digest),
@@ -358,12 +483,37 @@ class ObjectSceneAnchorTaskDecisionFreeze:
             )
         if type(self.rank_input) is not ObjectSceneAnchorRankInput:
             raise TypeError("rank input has the wrong type")
+        if type(self.task_support_adapter) is not ObjectSceneAnchorTaskSupportAdapter:
+            raise TypeError("task support adapter has the wrong type")
+        if type(self.card_proposer_artifact) is not ObjectSceneAnchorCardProposerArtifact:
+            raise TypeError("card proposer artifact has the wrong type")
+        if type(self.support_observation_plan) is not ObjectSceneAnchorSupportObservationPlan:
+            raise TypeError("support observation plan has the wrong type")
+        if type(self.batch_observer_artifact) is not ObjectSceneAnchorBatchObserverArtifact:
+            raise TypeError("batch observer artifact has the wrong type")
+        if type(self.support_observation_result) is not ObjectSceneAnchorSupportObservationResult:
+            raise TypeError("support observation result has the wrong type")
         if type(self.rank_response) is not ObjectSceneAnchorRankResponse:
             raise TypeError("rank response has the wrong type")
         if type(self.bridge) is not ObjectSceneAnchorPythonBridgeArtifact:
             raise TypeError("Python bridge has the wrong type")
         if type(self.selected_predicate) is not ObjectSceneAnchorPythonPredicate:
             raise TypeError("selected Python predicate has the wrong type")
+        adapter = ObjectSceneAnchorTaskSupportAdapter.from_data(
+            self.task_support_adapter.to_data()
+        )
+        proposer = ObjectSceneAnchorCardProposerArtifact.from_data(
+            self.card_proposer_artifact.to_data()
+        )
+        support_plan = ObjectSceneAnchorSupportObservationPlan.from_data(
+            self.support_observation_plan.to_data()
+        )
+        observer = ObjectSceneAnchorBatchObserverArtifact.from_data(
+            self.batch_observer_artifact.to_data()
+        )
+        support_result = ObjectSceneAnchorSupportObservationResult.from_data(
+            self.support_observation_result.to_data()
+        )
         rank_input = ObjectSceneAnchorRankInput.from_data(self.rank_input.to_data())
         response = ObjectSceneAnchorRankResponse.from_data(
             self.rank_response.to_data()
@@ -378,9 +528,74 @@ class ObjectSceneAnchorTaskDecisionFreeze:
         covered = set(rank_input.child_version_space_digests)
         if omitted is not None:
             covered.add(omitted.version_space_digest)
+        if proposer.proposal is None:
+            raise ObjectSceneAnchorTaskDecisionCustodyError(
+                "task decision lacks a successful exact card proposal"
+            )
+        try:
+            projected_language = project_object_scene_anchor_card_proposal(
+                proposer.proposal
+            )
+            cold_verify_object_scene_anchor_support_observation_result(
+                support_result,
+                plan=support_plan,
+                artifact=observer,
+            )
+        except (TypeError, ValueError) as exc:
+            raise ObjectSceneAnchorTaskDecisionCustodyError(
+                "task decision proposer or observer lineage does not replay"
+            ) from exc
+        expected_orientation_digests = (
+            support_result.bucket0_positive_version_space.version_space_digest,
+            support_result.bucket1_positive_version_space.version_space_digest,
+        )
         if (
             self.algorithm_digest
             != object_scene_anchor_task_decision_custody_algorithm_digest()
+            or self.task_support_adapter_digest != adapter.adapter_digest
+            or adapter.task_id != self.task_id
+            or adapter.task_plan_digest != self.task_plan_digest
+            or adapter.execution_precommit_digest != self.execution_precommit_digest
+            or adapter.expected_support_panel_ids != self.support_panel_ids
+            or adapter.support_corpus_freeze != support_plan.corpus
+            or self.card_proposer_input_digest != proposer.input_digest
+            or self.card_proposer_artifact_digest != proposer.artifact_digest
+            or proposer.status != "success"
+            or not _proposer_input_matches_corpus(proposer, support_plan)
+            or projected_language != support_plan.language
+            or proposer.proposal.proposal_digest
+            != support_plan.language.source_proposal_digest
+            or self.support_observation_plan != support_plan
+            or self.support_observation_plan_digest != support_plan.plan_digest
+            or self.batch_observer_artifact_digest != observer.artifact_digest
+            or observer.plan != support_plan.batch_plan
+            or observer.plan_digest != support_plan.batch_plan_digest
+            or observer.observation_plan_digest
+            != support_plan.observation_context_digest
+            or self.support_observation_result != support_result
+            or self.support_observation_result_digest != support_result.result_digest
+            or self.support_corpus_freeze_digest != support_plan.corpus.freeze_digest
+            or self.batch_artifact_digest != observer.artifact_digest
+            or support_result.batch_artifact_digest != observer.artifact_digest
+            or self.language_digest != support_plan.language.language_digest
+            or not _runtime_lineage_matches(proposer, observer, response)
+            or self.support_panel_binding_digests
+            != tuple(
+                item.source_panel_binding_digest
+                for item in adapter.support_corpus_freeze.panels
+            )
+            or self.support_panel_png_digests
+            != tuple(
+                item.original_panel_png_digest
+                for item in adapter.support_corpus_freeze.panels
+            )
+            or self.support_evaluation_digests
+            != tuple(
+                item.evaluation_digest
+                for item in support_result.panel_evaluations
+            )
+            or self.orientation_version_space_digests
+            != expected_orientation_digests
             or self.version_space_digest != self.support_version_space_digest
             or self.version_space_digest != rank_input.version_space_digest
             or self.rank_input_digest != rank_input.rank_input_digest
@@ -410,6 +625,16 @@ class ObjectSceneAnchorTaskDecisionFreeze:
             raise ObjectSceneAnchorTaskDecisionCustodyError(
                 "omitted orientation lacks an exact typed gap"
             )
+        model_artifacts = _complete_model_artifacts(
+            proposer, support_plan, observer, rank_input, response
+        )
+        if _has_bytes(model_artifacts) or any(
+            _contains_text(model_artifacts, query_id)
+            for query_id in self.sealed_query_panel_ids
+        ):
+            raise ObjectSceneAnchorTaskDecisionCustodyError(
+                "query identity or pixels appear in a complete model artifact"
+            )
         unsigned = _freeze_content(self)
         if _has_bytes(unsigned):
             raise ObjectSceneAnchorTaskDecisionCustodyError(
@@ -430,11 +655,17 @@ class ObjectSceneAnchorTaskDecisionFreeze:
             {
                 "schema", "custody_id", "algorithm_digest", "task_id",
                 "task_plan_digest", "execution_precommit_digest",
+                "task_support_adapter", "task_support_adapter_digest",
+                "card_proposer_artifact", "card_proposer_input_digest",
+                "card_proposer_artifact_digest", "support_observation_plan",
                 "support_observation_plan_digest",
+                "batch_observer_artifact", "batch_observer_artifact_digest",
+                "support_observation_result",
                 "support_observation_result_digest", "support_corpus_freeze_digest",
                 "batch_artifact_digest", "language_digest", "support_panel_ids",
                 "support_panel_binding_digests", "support_panel_png_digests",
                 "support_evaluation_digests", "orientation_version_space_digests",
+                "orientation_version_space_bindings",
                 "version_space_digest", "support_version_space_digest",
                 "rank_input", "rank_input_digest",
                 "ranked_child_version_space_digests", "ranked_child_orientations",
@@ -447,6 +678,10 @@ class ObjectSceneAnchorTaskDecisionFreeze:
                 "query_labels_included", "query_identities_model_visible",
                 "formula_frozen_before_query_release",
                 "support_observation_result_bound",
+                "official_support_adapter_bound", "card_proposer_artifact_bound",
+                "batch_observer_artifact_bound",
+                "complete_model_artifact_inventory_checked",
+                "orientation_version_spaces_ordered_by_bucket",
                 "complete_nonempty_rank_scope_bound",
                 "rank_response_and_bridge_bound", "typed_gap_omission_proof_required",
                 *_authority_data(), "record_digest",
@@ -463,6 +698,16 @@ class ObjectSceneAnchorTaskDecisionFreeze:
             raw["schema"] != OBJECT_SCENE_ANCHOR_TASK_DECISION_FREEZE_SCHEMA
             or raw["custody_id"] != OBJECT_SCENE_ANCHOR_TASK_DECISION_CUSTODY_ID
             or any(not isinstance(raw[name], list) for name in list_fields)
+            or (
+                isinstance(raw["orientation_version_space_digests"], list)
+                and len(raw["orientation_version_space_digests"]) != 2
+            )
+            or not isinstance(raw["task_support_adapter"], Mapping)
+            or not isinstance(raw["card_proposer_artifact"], Mapping)
+            or not isinstance(raw["support_observation_plan"], Mapping)
+            or not isinstance(raw["batch_observer_artifact"], Mapping)
+            or not isinstance(raw["support_observation_result"], Mapping)
+            or not isinstance(raw["orientation_version_space_bindings"], list)
             or not isinstance(raw["rank_input"], Mapping)
             or not isinstance(raw["rank_response"], Mapping)
             or not isinstance(raw["bridge"], Mapping)
@@ -472,6 +717,11 @@ class ObjectSceneAnchorTaskDecisionFreeze:
             or raw["query_identities_model_visible"] is not False
             or raw["formula_frozen_before_query_release"] is not True
             or raw["support_observation_result_bound"] is not True
+            or raw["official_support_adapter_bound"] is not True
+            or raw["card_proposer_artifact_bound"] is not True
+            or raw["batch_observer_artifact_bound"] is not True
+            or raw["complete_model_artifact_inventory_checked"] is not True
+            or raw["orientation_version_spaces_ordered_by_bucket"] is not True
             or raw["complete_nonempty_rank_scope_bound"] is not True
             or raw["rank_response_and_bridge_bound"] is not True
             or raw["typed_gap_omission_proof_required"] is not True
@@ -480,6 +730,21 @@ class ObjectSceneAnchorTaskDecisionFreeze:
             raise ObjectSceneAnchorTaskDecisionCustodyError(
                 "task decision freeze policy differs"
             )
+        adapter = ObjectSceneAnchorTaskSupportAdapter.from_data(
+            raw["task_support_adapter"]
+        )
+        proposer = ObjectSceneAnchorCardProposerArtifact.from_data(
+            raw["card_proposer_artifact"]
+        )
+        support_plan = ObjectSceneAnchorSupportObservationPlan.from_data(
+            raw["support_observation_plan"]
+        )
+        observer = ObjectSceneAnchorBatchObserverArtifact.from_data(
+            raw["batch_observer_artifact"]
+        )
+        support_result = ObjectSceneAnchorSupportObservationResult.from_data(
+            raw["support_observation_result"]
+        )
         rank_input = ObjectSceneAnchorRankInput.from_data(raw["rank_input"])
         response = ObjectSceneAnchorRankResponse.from_data(raw["rank_response"])
         bridge = ObjectSceneAnchorPythonBridgeArtifact.from_data(raw["bridge"])
@@ -487,8 +752,27 @@ class ObjectSceneAnchorTaskDecisionFreeze:
             raw["selected_predicate"]
         )
         omitted = bridge.omitted_version_space
+        expected_orientation_bindings = [
+            {
+                "orientation": orientation.value,
+                "version_space_digest": digest,
+            }
+            for orientation, digest in zip(
+                ObjectSceneAnchorOrientation,
+                raw["orientation_version_space_digests"],
+                strict=True,
+            )
+        ]
         if (
-            raw["ranked_child_version_space_digests"]
+            raw["orientation_version_space_bindings"]
+            != expected_orientation_bindings
+            or raw["task_support_adapter_digest"] != adapter.adapter_digest
+            or raw["card_proposer_input_digest"] != proposer.input_digest
+            or raw["card_proposer_artifact_digest"] != proposer.artifact_digest
+            or raw["support_observation_plan_digest"] != support_plan.plan_digest
+            or raw["batch_observer_artifact_digest"] != observer.artifact_digest
+            or raw["support_observation_result_digest"] != support_result.result_digest
+            or raw["ranked_child_version_space_digests"]
             != list(rank_input.child_version_space_digests)
             or raw["ranked_child_orientations"] != list(rank_input.child_orientations)
             or raw["rank_response_output_digest"] != response.output_digest
@@ -508,7 +792,11 @@ class ObjectSceneAnchorTaskDecisionFreeze:
         result = cls(
             raw["algorithm_digest"], raw["task_id"], raw["task_plan_digest"],
             raw["execution_precommit_digest"],
+            adapter, raw["task_support_adapter_digest"],
+            proposer, raw["card_proposer_input_digest"],
+            raw["card_proposer_artifact_digest"], support_plan,
             raw["support_observation_plan_digest"],
+            observer, raw["batch_observer_artifact_digest"], support_result,
             raw["support_observation_result_digest"],
             raw["support_corpus_freeze_digest"], raw["batch_artifact_digest"],
             raw["language_digest"], tuple(raw["support_panel_ids"]),
@@ -532,7 +820,10 @@ class ObjectSceneAnchorTaskDecisionFreeze:
 def _exact_parent_artifacts(
     task: ObjectBongardTaskPlan,
     precommit: ObjectBongardExecutionPrecommit,
+    task_support_adapter: ObjectSceneAnchorTaskSupportAdapter,
+    card_proposer_artifact: ObjectSceneAnchorCardProposerArtifact,
     support_plan: ObjectSceneAnchorSupportObservationPlan,
+    batch_observer_artifact: ObjectSceneAnchorBatchObserverArtifact,
     support_result: ObjectSceneAnchorSupportObservationResult,
     rank_input: ObjectSceneAnchorRankInput,
     rank_response: ObjectSceneAnchorRankResponse,
@@ -541,7 +832,10 @@ def _exact_parent_artifacts(
 ) -> tuple[
     ObjectBongardTaskPlan,
     ObjectBongardExecutionPrecommit,
+    ObjectSceneAnchorTaskSupportAdapter,
+    ObjectSceneAnchorCardProposerArtifact,
     ObjectSceneAnchorSupportObservationPlan,
+    ObjectSceneAnchorBatchObserverArtifact,
     ObjectSceneAnchorSupportObservationResult,
     ObjectSceneAnchorRankInput,
     ObjectSceneAnchorRankResponse,
@@ -550,13 +844,17 @@ def _exact_parent_artifacts(
 ]:
     expected_types = (
         ObjectBongardTaskPlan, ObjectBongardExecutionPrecommit,
+        ObjectSceneAnchorTaskSupportAdapter,
+        ObjectSceneAnchorCardProposerArtifact,
         ObjectSceneAnchorSupportObservationPlan,
+        ObjectSceneAnchorBatchObserverArtifact,
         ObjectSceneAnchorSupportObservationResult, ObjectSceneAnchorRankInput,
         ObjectSceneAnchorRankResponse, ObjectSceneAnchorPythonBridgeArtifact,
         ObjectSceneAnchorPythonPredicate,
     )
     values = (
-        task, precommit, support_plan, support_result, rank_input,
+        task, precommit, task_support_adapter, card_proposer_artifact,
+        support_plan, batch_observer_artifact, support_result, rank_input,
         rank_response, bridge, predicate,
     )
     if any(type(item) is not expected for item, expected in zip(values, expected_types)):
@@ -564,7 +862,14 @@ def _exact_parent_artifacts(
     return (
         ObjectBongardTaskPlan.from_data(task.to_data()),
         ObjectBongardExecutionPrecommit.from_data(precommit.to_data()),
+        ObjectSceneAnchorTaskSupportAdapter.from_data(task_support_adapter.to_data()),
+        ObjectSceneAnchorCardProposerArtifact.from_data(
+            card_proposer_artifact.to_data()
+        ),
         ObjectSceneAnchorSupportObservationPlan.from_data(support_plan.to_data()),
+        ObjectSceneAnchorBatchObserverArtifact.from_data(
+            batch_observer_artifact.to_data()
+        ),
         ObjectSceneAnchorSupportObservationResult.from_data(support_result.to_data()),
         ObjectSceneAnchorRankInput.from_data(rank_input.to_data()),
         ObjectSceneAnchorRankResponse.from_data(rank_response.to_data()),
@@ -577,7 +882,10 @@ def freeze_object_scene_anchor_task_decision(
     *,
     task: ObjectBongardTaskPlan,
     execution_precommit: ObjectBongardExecutionPrecommit,
+    task_support_adapter: ObjectSceneAnchorTaskSupportAdapter,
+    card_proposer_artifact: ObjectSceneAnchorCardProposerArtifact,
     support_observation_plan: ObjectSceneAnchorSupportObservationPlan,
+    batch_observer_artifact: ObjectSceneAnchorBatchObserverArtifact,
     support_observation_result: ObjectSceneAnchorSupportObservationResult,
     rank_input: ObjectSceneAnchorRankInput,
     rank_response: ObjectSceneAnchorRankResponse,
@@ -587,10 +895,12 @@ def freeze_object_scene_anchor_task_decision(
     """Validate all exact parents and freeze one query-independent decision."""
 
     (
-        task, execution_precommit, support_observation_plan,
+        task, execution_precommit, task_support_adapter, card_proposer_artifact,
+        support_observation_plan, batch_observer_artifact,
         support_observation_result, rank_input, rank_response, bridge, predicate,
     ) = _exact_parent_artifacts(
-        task, execution_precommit, support_observation_plan,
+        task, execution_precommit, task_support_adapter, card_proposer_artifact,
+        support_observation_plan, batch_observer_artifact,
         support_observation_result, rank_input, rank_response, bridge, predicate,
     )
     expected_support_ids = (
@@ -605,6 +915,15 @@ def freeze_object_scene_anchor_task_decision(
             execution_precommit.authorized_support_panel_ids
         )
         or not set(query_ids) <= set(execution_precommit.sealed_query_panel_ids)
+        or task_support_adapter.task_id != task.task_id
+        or task_support_adapter.task_plan_digest != task.record_digest
+        or task_support_adapter.prepared_batch_plan_digest
+        != execution_precommit.batch_plan_digest
+        or task_support_adapter.execution_precommit_digest
+        != execution_precommit.record_digest
+        or task_support_adapter.expected_support_panel_ids != expected_support_ids
+        or task_support_adapter.support_corpus_freeze
+        != support_observation_plan.corpus
         or tuple(item.task_id for item in panels) != (task.task_id,) * 12
         or tuple(item.panel_id for item in panels) != expected_support_ids
         or tuple(item.support_bucket_index for item in panels) != (0,) * 6 + (1,) * 6
@@ -668,17 +987,12 @@ def freeze_object_scene_anchor_task_decision(
         raise ObjectSceneAnchorTaskDecisionCustodyError(
             "bridge selection or typed-gap omission proof differs"
         )
-    model_artifacts: tuple[object, ...] = (
-        support_observation_plan.batch_plan.to_data(),
-        rank_response.model_payload,
-        rank_response.receipt,
-        object_scene_anchor_candidate_ranker_prompt(rank_input),
-        *(
-            object_scene_anchor_batch_observer_prompt(
-                item, support_observation_plan.language.vocabulary
-            )
-            for item in support_observation_plan.batch_plan.batches
-        ),
+    model_artifacts = _complete_model_artifacts(
+        card_proposer_artifact,
+        support_observation_plan,
+        batch_observer_artifact,
+        rank_input,
+        rank_response,
     )
     if _has_bytes(model_artifacts) or any(
         _contains_text(model_artifacts, query_id) for query_id in query_ids
@@ -691,7 +1005,16 @@ def freeze_object_scene_anchor_task_decision(
         "task_id": task.task_id,
         "task_plan_digest": task.record_digest,
         "execution_precommit_digest": execution_precommit.record_digest,
+        "task_support_adapter": task_support_adapter,
+        "task_support_adapter_digest": task_support_adapter.adapter_digest,
+        "card_proposer_artifact": card_proposer_artifact,
+        "card_proposer_input_digest": card_proposer_artifact.input_digest,
+        "card_proposer_artifact_digest": card_proposer_artifact.artifact_digest,
+        "support_observation_plan": support_observation_plan,
         "support_observation_plan_digest": support_observation_plan.plan_digest,
+        "batch_observer_artifact": batch_observer_artifact,
+        "batch_observer_artifact_digest": batch_observer_artifact.artifact_digest,
+        "support_observation_result": support_observation_result,
         "support_observation_result_digest": support_observation_result.result_digest,
         "support_corpus_freeze_digest": support_observation_plan.corpus.freeze_digest,
         "batch_artifact_digest": support_observation_result.batch_artifact_digest,
@@ -736,7 +1059,10 @@ def cold_verify_object_scene_anchor_task_decision_freeze(
     *,
     task: ObjectBongardTaskPlan,
     execution_precommit: ObjectBongardExecutionPrecommit,
+    task_support_adapter: ObjectSceneAnchorTaskSupportAdapter,
+    card_proposer_artifact: ObjectSceneAnchorCardProposerArtifact,
     support_observation_plan: ObjectSceneAnchorSupportObservationPlan,
+    batch_observer_artifact: ObjectSceneAnchorBatchObserverArtifact,
     support_observation_result: ObjectSceneAnchorSupportObservationResult,
     rank_input: ObjectSceneAnchorRankInput,
     rank_response: ObjectSceneAnchorRankResponse,
@@ -756,7 +1082,10 @@ def cold_verify_object_scene_anchor_task_decision_freeze(
     expected = freeze_object_scene_anchor_task_decision(
         task=task,
         execution_precommit=execution_precommit,
+        task_support_adapter=task_support_adapter,
+        card_proposer_artifact=card_proposer_artifact,
         support_observation_plan=support_observation_plan,
+        batch_observer_artifact=batch_observer_artifact,
         support_observation_result=support_observation_result,
         rank_input=rank_input,
         rank_response=rank_response,

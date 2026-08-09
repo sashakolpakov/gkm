@@ -21,6 +21,11 @@ from bongard.object_bongard_release_gate import (
 from bongard.object_scene_anchor_candidate_ranker import (
     freeze_object_scene_anchor_rank_input,
 )
+from bongard.object_scene_anchor_card_proposer import (
+    ObjectSceneAnchorCardProposerPanelInput,
+    freeze_object_scene_anchor_card_proposer_input,
+    propose_object_scene_anchor_cards,
+)
 from bongard.object_scene_anchor_python_bridge import (
     freeze_object_scene_anchor_python_bridge,
 )
@@ -45,15 +50,31 @@ from bongard.object_scene_anchor_task_decision_custody import (
     object_scene_anchor_task_decision_custody_algorithm_digest,
     object_scene_anchor_task_decision_custody_source_digest,
 )
+from bongard.tests.no_tools_fixture import (
+    canonical_codex_receipt,
+    canonical_no_tools_runtime,
+)
+import bongard.tests.test_object_scene_anchor_support_observation_join as join_fixtures
 from bongard.tests.test_object_scene_anchor_candidate_ranker import (
+    EFFORT,
+    LAUNCHER_DIGEST,
+    MODEL,
     _Transport,
     _ranker,
 )
+from bongard.tests.test_object_scene_anchor_card_proposer import _raw_payload
 from bongard.tests.test_object_scene_anchor_support_observation_join import (
     _artifact,
-    _language,
     _panel_png,
 )
+from bongard.tests.test_object_scene_anchor_task_support_adapter import (
+    adapted,
+    prepared_source,
+)
+from bongard.object_scene_anchor_version_space import (
+    project_object_scene_anchor_card_proposal,
+)
+from bongard.transport import CloudPolicyCacheSnapshot, CodexStructuredResult
 
 
 def _address(value: object) -> str:
@@ -125,17 +146,108 @@ def _corpus(task: ObjectBongardTaskPlan) -> ObjectSceneAnchorSupportCorpusRuntim
     )
 
 
-@pytest.fixture(scope="module")
-def custody_parents():
-    task = ObjectBongardTaskPlan.create(
-        "bd_anchor_custody", seed_digest=_address({"seed": "custody"})
+def _proposer(corpus):
+    rows = tuple(
+        ObjectSceneAnchorCardProposerPanelInput(
+            item.freeze.support_sheet,
+            item.exact_support_sheet_png_bytes,
+            item.freeze.panel_manifest,
+        )
+        for item in corpus.panels
     )
-    precommit = _precommit(task)
-    corpus = _corpus(task)
-    language = _language(corpus)
+    proposer_input = freeze_object_scene_anchor_card_proposer_input(
+        rows[:6], rows[6:]
+    )
+    payload = _raw_payload()
+
+    def transport(prompt, paths, schema, **_kwargs):
+        receipt = canonical_codex_receipt(
+            prompt,
+            paths,
+            schema,
+            payload,
+            launcher_digest=LAUNCHER_DIGEST,
+            reasoning_effort=EFFORT,
+            model=MODEL,
+            command_fixture="anchor task custody proposer",
+        )
+        return CodexStructuredResult(payload, receipt)
+
+    model_catalog, attestation = canonical_no_tools_runtime(LAUNCHER_DIGEST)
+    artifact = propose_object_scene_anchor_cards(
+        rows[:6],
+        rows[6:],
+        proposer_input=proposer_input,
+        expected_input_digest=proposer_input.input_digest,
+        model=MODEL,
+        reasoning_effort=EFFORT,
+        expected_launcher_digest=LAUNCHER_DIGEST,
+        cloud_policy_cache_snapshot=CloudPolicyCacheSnapshot(None),
+        model_catalog_snapshot=model_catalog,
+        no_tools_attestation=attestation,
+        transport=transport,
+    )
+    assert artifact.status == "success" and artifact.proposal is not None
+    return artifact
+
+
+def _selective_payload(runtime, *, both_orientations: bool):
+    bucket_by_manifest = {
+        item.panel_manifest.manifest_digest: item.support_bucket_index
+        for item in runtime.plan.corpus.panels
+    }
+    orientation_by_witness = {
+        witness_digest: atom.orientation
+        for atom in runtime.plan.language.atoms
+        for witness_digest in atom.witness_digests
+    }
+
+    def payload(batch, vocabulary):
+        cells = []
+        for subject, catalog, binding, _locator, witness in join_fixtures._expected_records(
+            batch, vocabulary
+        ):
+            bucket = bucket_by_manifest[catalog.preparation.panel_manifest_digest]
+            orientation = orientation_by_witness[witness.witness_digest]
+            selective = both_orientations or orientation.value == "side0_positive"
+            target_bucket = 0 if orientation.value == "side0_positive" else 1
+            present = not selective or bucket == target_bucket
+            cells.append(
+                {
+                    "subject_id": subject.subject_alias,
+                    "catalog_id": catalog.catalog_alias,
+                    "binding_id": binding.binding_id,
+                    "witness_id": witness.witness_id,
+                    "state": "P" if present else "A",
+                    "reason_code": "visible_match" if present else "visible_mismatch",
+                }
+            )
+        return {"cells": cells}
+
+    return payload
+
+
+@pytest.fixture(scope="module")
+def custody_parents(prepared_source, adapted):
+    prepared, _archive, task, _released = prepared_source
+    precommit = prepared.precommit
+    corpus = adapted.support_corpus
+    proposer = _proposer(corpus)
+    assert proposer.proposal is not None
+    language = project_object_scene_anchor_card_proposal(proposer.proposal)
     runtime = build_object_scene_anchor_support_observation_plan(corpus, language)
-    batch_artifact, calls = _artifact(runtime)
-    assert calls == 2
+    old_launcher = join_fixtures.LAUNCHER_DIGEST
+    old_payload = join_fixtures._payload
+    join_fixtures.LAUNCHER_DIGEST = LAUNCHER_DIGEST
+    join_fixtures._payload = _selective_payload(
+        runtime, both_orientations=False
+    )
+    try:
+        batch_artifact, calls = _artifact(runtime)
+    finally:
+        join_fixtures.LAUNCHER_DIGEST = old_launcher
+        join_fixtures._payload = old_payload
+    assert calls == batch_artifact.physical_call_count
     result = finalize_object_scene_anchor_support_observations(
         runtime.plan, batch_artifact
     )
@@ -162,7 +274,10 @@ def custody_parents():
     parents = {
         "task": task,
         "execution_precommit": precommit,
+        "task_support_adapter": adapted.adapter,
+        "card_proposer_artifact": proposer,
         "support_observation_plan": runtime.plan,
+        "batch_observer_artifact": batch_artifact,
         "support_observation_result": result,
         "rank_input": rank_input,
         "rank_response": response,
@@ -170,11 +285,11 @@ def custody_parents():
         "predicate": bridge.predicate,
     }
     freeze = freeze_object_scene_anchor_task_decision(**parents)
-    return parents, freeze, empty[0]
+    return parents, freeze, empty[0], runtime
 
 
 def test_freeze_satisfies_release_protocol_and_cold_replays(custody_parents) -> None:
-    parents, freeze, empty = custody_parents
+    parents, freeze, empty, _runtime = custody_parents
     data = freeze.to_data()
 
     assert isinstance(freeze, ObjectBongardTaskFreezeProtocol)
@@ -206,8 +321,61 @@ def test_freeze_satisfies_release_protocol_and_cold_replays(custody_parents) -> 
     ) == freeze
 
 
+def test_freeze_binds_both_nonempty_orientation_children(custody_parents) -> None:
+    base, _freeze, _empty, runtime = custody_parents
+    old_launcher = join_fixtures.LAUNCHER_DIGEST
+    old_payload = join_fixtures._payload
+    join_fixtures.LAUNCHER_DIGEST = LAUNCHER_DIGEST
+    join_fixtures._payload = _selective_payload(runtime, both_orientations=True)
+    try:
+        batch_artifact, _calls = _artifact(runtime)
+    finally:
+        join_fixtures.LAUNCHER_DIGEST = old_launcher
+        join_fixtures._payload = old_payload
+    result = finalize_object_scene_anchor_support_observations(
+        runtime.plan, batch_artifact
+    )
+    spaces = (
+        result.bucket0_positive_version_space,
+        result.bucket1_positive_version_space,
+    )
+    assert all(item.survivor_candidate_digests for item in spaces)
+    rank_input = freeze_object_scene_anchor_rank_input(spaces[0], spaces[1])
+    response = _ranker(_Transport())(
+        spaces[0],
+        spaces[1],
+        expected_rank_input_digest=rank_input.rank_input_digest,
+    )
+    bridge = freeze_object_scene_anchor_python_bridge(
+        response,
+        spaces[0],
+        spaces[1],
+        expected_response_digest=response.response_digest,
+        expected_rank_input_digest=rank_input.rank_input_digest,
+    )
+    parents = {
+        **base,
+        "batch_observer_artifact": batch_artifact,
+        "support_observation_result": result,
+        "rank_input": rank_input,
+        "rank_response": response,
+        "bridge": bridge,
+        "predicate": bridge.predicate,
+    }
+    freeze = freeze_object_scene_anchor_task_decision(**parents)
+
+    assert len(freeze.rank_input.child_version_space_digests) == 2
+    assert freeze.bridge.omitted_version_space is None
+    assert ObjectSceneAnchorTaskDecisionFreeze.from_data(freeze.to_data()) == freeze
+    assert cold_verify_object_scene_anchor_task_decision_freeze(
+        freeze,
+        **parents,
+        expected_freeze_digest=freeze.record_digest,
+    ) == freeze
+
+
 def test_freeze_rejects_missing_gap_proof_and_foreign_task(custody_parents) -> None:
-    parents, _freeze, _empty = custody_parents
+    parents, _freeze, _empty, _runtime = custody_parents
     direct = freeze_object_scene_anchor_python_bridge(
         parents["rank_response"],
         parents["support_observation_result"].bucket0_positive_version_space,
@@ -233,7 +401,7 @@ def test_freeze_rejects_missing_gap_proof_and_foreign_task(custody_parents) -> N
 def test_resealed_freeze_tamper_fails_or_is_caught_by_cold_replay(
     custody_parents,
 ) -> None:
-    parents, freeze, _empty = custody_parents
+    parents, freeze, _empty, _runtime = custody_parents
     tampered = deepcopy(freeze.to_data())
     tampered["rank_response_digest"] = "0" * 64
     tampered["record_digest"] = _address(
@@ -247,20 +415,36 @@ def test_resealed_freeze_tamper_fails_or_is_caught_by_cold_replay(
     external["record_digest"] = _address(
         {key: item for key, item in external.items() if key != "record_digest"}
     )
-    resealed = ObjectSceneAnchorTaskDecisionFreeze.from_data(external)
-    with pytest.raises(ObjectSceneAnchorTaskDecisionCustodyError, match="cold replay"):
-        cold_verify_object_scene_anchor_task_decision_freeze(
-            resealed,
-            **parents,
-            expected_freeze_digest=resealed.record_digest,
+    with pytest.raises(
+        ObjectSceneAnchorTaskDecisionCustodyError, match="derived commitment"
+    ):
+        ObjectSceneAnchorTaskDecisionFreeze.from_data(external)
+
+    swapped = deepcopy(freeze.to_data())
+    swapped["orientation_version_space_digests"].reverse()
+    swapped["orientation_version_space_bindings"] = [
+        {
+            "orientation": orientation,
+            "version_space_digest": digest,
+        }
+        for orientation, digest in zip(
+            ("side0_positive", "side1_positive"),
+            swapped["orientation_version_space_digests"],
+            strict=True,
         )
+    ]
+    swapped["record_digest"] = _address(
+        {key: item for key, item in swapped.items() if key != "record_digest"}
+    )
+    with pytest.raises(ObjectSceneAnchorTaskDecisionCustodyError, match="binding"):
+        ObjectSceneAnchorTaskDecisionFreeze.from_data(swapped)
 
 
 def test_commit_binds_real_persisted_freeze_payload_and_release_protocol(
     custody_parents,
     tmp_path,
 ) -> None:
-    _parents, freeze, _empty = custody_parents
+    _parents, freeze, _empty, _runtime = custody_parents
     payload = canonical_json(freeze.to_data()) + b"\n"
     store = ObjectBongardReleaseStore(tmp_path / "release-store")
     receipt = persist_object_bongard_task_freeze(store=store, freeze=freeze)
