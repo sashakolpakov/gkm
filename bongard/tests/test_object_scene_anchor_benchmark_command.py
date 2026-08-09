@@ -131,6 +131,10 @@ def _prepared(
         SimpleNamespace(
             task_id=task_id,
             record_digest=_address({"synthetic_task_index": index}),
+            side_0_support_panel_ids=(),
+            side_1_support_panel_ids=(),
+            side_0_query_panel_id=f"synthetic-query-side0-{index}",
+            side_1_query_panel_id=f"synthetic-query-side1-{index}",
         )
         for index, task_id in enumerate(task_ids)
     )
@@ -248,16 +252,16 @@ def test_cold_replay_reloads_task_rows_from_disk_without_execution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     prepared, tasks = _prepared(
-        tmp_path, ("synthetic-success", "synthetic-witness-gap")
+        tmp_path, ("synthetic-pipeline-error-0", "synthetic-pipeline-error-1")
     )
     rows = (
         _finish_task(
-            prepared, tasks[0], status="success", correct=2, determinate=2,
-            abstain=0, errors=0,
+            prepared, tasks[0], status="pipeline_error", correct=0,
+            determinate=0, abstain=0, errors=2,
         ),
         _finish_task(
-            prepared, tasks[1], status="witness_gap", correct=0,
-            determinate=0, abstain=2, errors=0,
+            prepared, tasks[1], status="pipeline_error", correct=0,
+            determinate=0, abstain=0, errors=2,
         ),
     )
     campaign = benchmark._campaign_from_tasks(prepared, rows)
