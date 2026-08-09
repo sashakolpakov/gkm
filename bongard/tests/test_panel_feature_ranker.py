@@ -122,7 +122,11 @@ def _spaces(*, empty_side1: bool = False):
                     if spec.spec_digest in side1_native
                     else EngineeringDisposition.NONMATCH
                 )
-                if empty_side1 and spec.spec_digest in side1_native and index == 6:
+                if (
+                    empty_side1
+                    and spec.spec_digest in side1_native
+                    and index in {6, 7}
+                ):
                     disposition = EngineeringDisposition.INDETERMINATE
             values[(panel, spec.spec_digest)] = disposition
     table = EngineeringSupportTable.create(vocabulary, panels, values)
