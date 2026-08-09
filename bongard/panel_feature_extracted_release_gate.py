@@ -1511,7 +1511,14 @@ def _validate_successor_support_custody(
 
     # Local imports keep the release boundary below the successor runner and
     # avoid turning its gate import into a cycle.
-    from bongard.panel_feature_evidence_bundle import PanelFeatureEvidencePhase
+    from bongard.panel_feature_evidence_bundle import (
+        PanelFeatureEvidenceBundle,
+        PanelFeatureEvidencePhase,
+    )
+    from bongard.panel_hierarchical_feature_evidence_bundle import (
+        HierarchicalFeatureEvidencePhase,
+        HierarchicalPanelFeatureEvidenceBundle,
+    )
     from bongard.panel_feature_task_bound_inventory import (
         TaskBoundClosedCatalogInventory,
         cold_replay_task_bound_closed_catalog_inventory,
@@ -1531,9 +1538,18 @@ def _validate_successor_support_custody(
         raise PanelFeatureExtractedReleaseGateError(
             "successor support evidence/inventory replay differs"
         ) from exc
-    support = bound.evidence_bundle.panels_for_phase(
-        PanelFeatureEvidencePhase.SUPPORT
-    )
+    if type(bound.evidence_bundle) is PanelFeatureEvidenceBundle:
+        support = bound.evidence_bundle.panels_for_phase(
+            PanelFeatureEvidencePhase.SUPPORT
+        )
+    elif type(bound.evidence_bundle) is HierarchicalPanelFeatureEvidenceBundle:
+        support = bound.evidence_bundle.panels_for_phase(
+            HierarchicalFeatureEvidencePhase.SUPPORT
+        )
+    else:  # never accept an evidence protocol or structural lookalike
+        raise TypeError(
+            "successor support evidence needs one exact known bundle class"
+        )
     expected_ids = task.side_0_support_panel_ids + task.side_1_support_panel_ids
     if (
         bound.task_plan != task

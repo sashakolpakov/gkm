@@ -7,9 +7,9 @@ exact task plan, an exact full-receipt evidence bundle, and the exact derived
 inventory.  The support partition is then reconstructed from evidence panel
 IDs and compared byte-for-byte with both the task plan and the inventory.
 
-The current schema has one explicit evidence branch: the legacy receipted
-``PanelFeatureEvidenceBundle``.  A hierarchical macro-observer branch must be
-added as another exact class/schema branch; structural lookalikes are never
+The schema has two explicit evidence branches: the legacy receipted
+``PanelFeatureEvidenceBundle`` and the hierarchical macro/micro
+``HierarchicalPanelFeatureEvidenceBundle``.  Structural lookalikes are never
 accepted.  Cold replay verifies every archived receipt without invoking a
 model boundary.
 """
@@ -37,9 +37,18 @@ from bongard.panel_feature_closed_catalog_inventory import (
 )
 from bongard.panel_feature_evidence_bundle import (
     PanelFeatureEvidenceBundle,
+    PanelFeatureEvidencePanel,
     PanelFeatureEvidencePhase,
     cold_replay_panel_feature_evidence_bundle,
 )
+from bongard.panel_hierarchical_feature_evidence_bundle import (
+    HierarchicalFeatureEvidencePhase,
+    HierarchicalPanelFeatureEvidenceBundle,
+    HierarchicalPanelFeatureEvidenceRow,
+    cold_replay_hierarchical_panel_feature_evidence_bundle,
+    verified_hierarchical_observation_sets,
+)
+from bongard.panel_feature_observation import PanelFeatureObservationSet
 from bongard.panel_soft_ontology import NativeOrientation
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
@@ -51,6 +60,12 @@ TASK_BOUND_CLOSED_CATALOG_INVENTORY_ID = (
     "bongard.panel-feature/task-bound-closed-catalog-inventory-python-v1"
 )
 LEGACY_EVIDENCE_KIND = "legacy_full_receipt_panel_feature_evidence_v2"
+HIERARCHICAL_EVIDENCE_KIND = (
+    "hierarchical_full_receipt_panel_feature_evidence_v1"
+)
+
+EvidenceBundle = PanelFeatureEvidenceBundle | HierarchicalPanelFeatureEvidenceBundle
+EvidenceRow = PanelFeatureEvidencePanel | HierarchicalPanelFeatureEvidenceRow
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -111,6 +126,10 @@ def _custody_policy_data() -> dict[str, object]:
         "support_partition_derived_from_exact_panel_evidence": True,
         "bare_observation_sequence_accepted": False,
         "structural_evidence_protocol_accepted": False,
+        "accepted_exact_evidence_kinds": [
+            LEGACY_EVIDENCE_KIND,
+            HIERARCHICAL_EVIDENCE_KIND,
+        ],
         "support_panel_count": 12,
         "query_panel_count": 0,
         "support_order": "task-side0-six-then-task-side1-six",
@@ -132,13 +151,65 @@ def _canonical_task(value: object) -> ObjectBongardTaskPlan:
     return value
 
 
-def _canonical_legacy_bundle(value: object) -> PanelFeatureEvidenceBundle:
-    if type(value) is not PanelFeatureEvidenceBundle:
-        raise TypeError(
-            "task binding needs exact PanelFeatureEvidenceBundle; "
-            "hierarchical evidence requires its explicit future branch"
+def _canonical_evidence_bundle(value: object) -> EvidenceBundle:
+    if type(value) is PanelFeatureEvidenceBundle:
+        return value
+    if type(value) is HierarchicalPanelFeatureEvidenceBundle:
+        return value
+    raise TypeError(
+        "task binding needs one exact known full-receipt evidence bundle class"
+    )
+
+
+def _evidence_kind(value: EvidenceBundle) -> str:
+    if type(value) is PanelFeatureEvidenceBundle:
+        return LEGACY_EVIDENCE_KIND
+    if type(value) is HierarchicalPanelFeatureEvidenceBundle:
+        return HIERARCHICAL_EVIDENCE_KIND
+    raise TypeError("task binding evidence class differs")
+
+
+def _support_panels(
+    value: EvidenceBundle,
+) -> tuple[EvidenceRow, ...]:
+    if type(value) is PanelFeatureEvidenceBundle:
+        return value.panels_for_phase(PanelFeatureEvidencePhase.SUPPORT)
+    if type(value) is HierarchicalPanelFeatureEvidenceBundle:
+        return value.panels_for_phase(HierarchicalFeatureEvidencePhase.SUPPORT)
+    raise TypeError("task binding evidence class differs")
+
+
+def _query_panels(value: EvidenceBundle) -> tuple[EvidenceRow, ...]:
+    if type(value) is PanelFeatureEvidenceBundle:
+        return value.panels_for_phase(PanelFeatureEvidencePhase.QUERY)
+    if type(value) is HierarchicalPanelFeatureEvidenceBundle:
+        return value.panels_for_phase(HierarchicalFeatureEvidencePhase.QUERY)
+    raise TypeError("task binding evidence class differs")
+
+
+def _row_observation(value: EvidenceRow) -> PanelFeatureObservationSet:
+    if type(value) is PanelFeatureEvidencePanel:
+        return value.observation_set
+    if type(value) is HierarchicalPanelFeatureEvidenceRow:
+        return value.artifact.observation_set
+    raise TypeError("task binding evidence row class differs")
+
+
+def _verified_support_observations(
+    value: EvidenceBundle,
+) -> tuple[PanelFeatureObservationSet, ...]:
+    if type(value) is PanelFeatureEvidenceBundle:
+        return tuple(
+            item.observation_set
+            for item in value.panels_for_phase(PanelFeatureEvidencePhase.SUPPORT)
         )
-    return value
+    if type(value) is HierarchicalPanelFeatureEvidenceBundle:
+        return verified_hierarchical_observation_sets(
+            value,
+            phase=HierarchicalFeatureEvidencePhase.SUPPORT,
+            expected_bundle_address=value.bundle_address,
+        )
+    raise TypeError("task binding evidence class differs")
 
 
 def _canonical_inventory(value: object) -> ClosedCatalogSupportInventory:
@@ -156,14 +227,14 @@ def _query_ids(task: ObjectBongardTaskPlan) -> tuple[str, str]:
 
 
 def _support_bindings(
-    bundle: PanelFeatureEvidenceBundle,
+    bundle: EvidenceBundle,
 ) -> tuple[tuple[str, str, str], ...]:
-    panels = bundle.panels_for_phase(PanelFeatureEvidencePhase.SUPPORT)
+    panels = _support_panels(bundle)
     return tuple(
         (
             panel.panel_id,
             panel.panel_png_digest,
-            panel.observation_set.observation_set_digest,
+            _row_observation(panel).observation_set_digest,
         )
         for panel in panels
     )
@@ -176,7 +247,7 @@ def _bound_content(value: "TaskBoundClosedCatalogInventory") -> dict[str, object
         "binding_source_digest": panel_feature_task_bound_inventory_source_digest(),
         "task_plan": value.task_plan.to_data(),
         "task_plan_digest": value.task_plan.record_digest,
-        "evidence_kind": LEGACY_EVIDENCE_KIND,
+        "evidence_kind": _evidence_kind(value.evidence_bundle),
         "evidence_bundle": value.evidence_bundle.to_data(),
         "evidence_bundle_address": value.evidence_bundle.bundle_address,
         "closed_catalog_inventory": value.inventory.to_data(),
@@ -195,7 +266,7 @@ class TaskBoundClosedCatalogInventory:
     """Exact task/role/full-receipt custody for one closed support inventory."""
 
     task_plan: ObjectBongardTaskPlan
-    evidence_bundle: PanelFeatureEvidenceBundle
+    evidence_bundle: EvidenceBundle
     inventory: ClosedCatalogSupportInventory
     support_panel_bindings: tuple[tuple[str, str, str], ...]
     sealed_query_panel_ids: tuple[str, str]
@@ -205,13 +276,13 @@ class TaskBoundClosedCatalogInventory:
 
     def __post_init__(self) -> None:
         task = _canonical_task(self.task_plan)
-        bundle = _canonical_legacy_bundle(self.evidence_bundle)
+        bundle = _canonical_evidence_bundle(self.evidence_bundle)
         inventory = _canonical_inventory(self.inventory)
-        support = bundle.panels_for_phase(PanelFeatureEvidencePhase.SUPPORT)
-        query = bundle.panels_for_phase(PanelFeatureEvidencePhase.QUERY)
+        support = _support_panels(bundle)
+        query = _query_panels(bundle)
         expected_ids = _support_ids(task)
         expected_bindings = _support_bindings(bundle)
-        expected_observations = tuple(item.observation_set for item in support)
+        expected_observations = _verified_support_observations(bundle)
         expected_axes = complete_whole_panel_feature_axes()
         narration = ProposerNarrationSnapshot.create(bundle.proposer_result)
         contracts = {item.observer_contract_digest for item in expected_observations}
@@ -224,8 +295,13 @@ class TaskBoundClosedCatalogInventory:
             or tuple(item.phase_index for item in support) != tuple(range(12))
             or tuple(item.panel_id for item in support) != expected_ids
             or tuple(item.panel_png_digest for item in support)
-            != tuple(item.observation_set.panel_digest for item in support)
+            != tuple(item.panel_digest for item in expected_observations)
             or bundle.observer_axes != expected_axes
+            or any(
+                tuple(item.axis for item in observation.axis_observations)
+                != expected_axes
+                for observation in expected_observations
+            )
             or inventory.primary_orientation
             is not NativeOrientation.SIDE0_POSITIVE
             or inventory.support_observations != expected_observations
@@ -257,15 +333,14 @@ class TaskBoundClosedCatalogInventory:
     def bind(
         cls,
         task_plan: ObjectBongardTaskPlan,
-        evidence_bundle: PanelFeatureEvidenceBundle,
+        evidence_bundle: EvidenceBundle,
         inventory: ClosedCatalogSupportInventory,
     ) -> "TaskBoundClosedCatalogInventory":
         task = _canonical_task(task_plan)
-        bundle = _canonical_legacy_bundle(evidence_bundle)
+        bundle = _canonical_evidence_bundle(evidence_bundle)
         closed = _canonical_inventory(inventory)
         observations = tuple(
-            item.observation_set
-            for item in bundle.panels_for_phase(PanelFeatureEvidencePhase.SUPPORT)
+            _row_observation(item) for item in _support_panels(bundle)
         )
         if not observations:
             raise TaskBoundClosedCatalogInventoryError(
@@ -323,7 +398,8 @@ class TaskBoundClosedCatalogInventory:
             or raw["binding_id"] != TASK_BOUND_CLOSED_CATALOG_INVENTORY_ID
             or raw["binding_source_digest"]
             != panel_feature_task_bound_inventory_source_digest()
-            or raw["evidence_kind"] != LEGACY_EVIDENCE_KIND
+            or raw["evidence_kind"]
+            not in (LEGACY_EVIDENCE_KIND, HIERARCHICAL_EVIDENCE_KIND)
             or any(raw[name] != item for name, item in policy.items())
             or type(raw["support_panel_bindings"]) is not list
             or type(raw["sealed_query_panel_ids"]) is not list
@@ -333,7 +409,18 @@ class TaskBoundClosedCatalogInventory:
             )
         try:
             task = ObjectBongardTaskPlan.from_data(raw["task_plan"])
-            bundle = PanelFeatureEvidenceBundle.from_data(raw["evidence_bundle"])
+            if raw["evidence_kind"] == LEGACY_EVIDENCE_KIND:
+                bundle: EvidenceBundle = PanelFeatureEvidenceBundle.from_data(
+                    raw["evidence_bundle"]
+                )
+            elif raw["evidence_kind"] == HIERARCHICAL_EVIDENCE_KIND:
+                bundle = HierarchicalPanelFeatureEvidenceBundle.from_data(
+                    raw["evidence_bundle"]
+                )
+            else:  # guarded above; kept explicit at the decoding boundary
+                raise TaskBoundClosedCatalogInventoryError(
+                    "task-bound inventory evidence kind differs"
+                )
             inventory = ClosedCatalogSupportInventory.from_data(
                 raw["closed_catalog_inventory"]
             )
@@ -377,10 +464,18 @@ def cold_replay_task_bound_closed_catalog_inventory(
         raise TypeError("cold replay needs exact TaskBoundClosedCatalogInventory")
     expected = _address(expected_artifact_address, "expected task-bound address")
     restored = TaskBoundClosedCatalogInventory.from_data(archived.to_data())
-    cold_replay_panel_feature_evidence_bundle(
-        restored.evidence_bundle,
-        expected_bundle_address=restored.evidence_bundle.bundle_address,
-    )
+    if type(restored.evidence_bundle) is PanelFeatureEvidenceBundle:
+        cold_replay_panel_feature_evidence_bundle(
+            restored.evidence_bundle,
+            expected_bundle_address=restored.evidence_bundle.bundle_address,
+        )
+    elif type(restored.evidence_bundle) is HierarchicalPanelFeatureEvidenceBundle:
+        cold_replay_hierarchical_panel_feature_evidence_bundle(
+            restored.evidence_bundle,
+            expected_bundle_address=restored.evidence_bundle.bundle_address,
+        )
+    else:  # exact union invariant; never accept a protocol lookalike
+        raise TypeError("task-bound inventory evidence class differs")
     cold_replay_closed_catalog_support_inventory(
         restored.inventory,
         expected_artifact_address=restored.inventory.artifact_address,
@@ -398,6 +493,7 @@ def cold_replay_task_bound_closed_catalog_inventory(
 
 
 __all__ = (
+    "HIERARCHICAL_EVIDENCE_KIND",
     "LEGACY_EVIDENCE_KIND",
     "TASK_BOUND_CLOSED_CATALOG_INVENTORY_ID",
     "TASK_BOUND_CLOSED_CATALOG_INVENTORY_SCHEMA",

@@ -42,10 +42,18 @@ from bongard.panel_feature_evidence_bundle import (
     PanelFeatureEvidencePhase,
 )
 from bongard.panel_feature_task_bound_inventory import (
+    HIERARCHICAL_EVIDENCE_KIND,
     TaskBoundClosedCatalogInventory,
     TaskBoundClosedCatalogInventoryError,
     cold_replay_task_bound_closed_catalog_inventory,
 )
+from bongard.panel_hierarchical_feature_evidence_bundle import (
+    HierarchicalFeatureEvidencePhase,
+    HierarchicalPanelFeatureEvidenceBundle,
+    HierarchicalPanelFeatureEvidenceRow,
+    verified_hierarchical_observation_sets,
+)
+from bongard.panel_hierarchical_visual_adapter import observe_hierarchical_panel
 from bongard.panel_feature_primary_task_runner import (
     PrimaryFormulaQueryDecision,
     PrimaryFormulaSupportPhase,
@@ -95,6 +103,12 @@ from bongard.tests.test_panel_positive_formula_ranker import (
     NO_TOOLS_ATTESTATION,
     POLICY,
     _text_receipt,
+)
+from bongard.tests.test_panel_hierarchical_visual_adapter import (
+    _payload as _hierarchical_payload,
+    _request as _hierarchical_request,
+    _square_spans as _hierarchical_square_spans,
+    _transport as _hierarchical_transport,
 )
 from bongard.transport import CodexStructuredResult
 
@@ -287,6 +301,77 @@ def _bundle_and_calls(
     )
 
 
+def _hierarchical_support_bundle(
+    task: ObjectBongardTaskPlan,
+) -> tuple[HierarchicalPanelFeatureEvidenceBundle, list[dict[str, object]]]:
+    support_ids = task.side_0_support_panel_ids + task.side_1_support_panel_ids
+    panels = tuple(_png(4100 + index) for index in range(12))
+    proposer_artifact, proposer_result = _proposer(panels, _proposer_payload())
+    calls: list[dict[str, object]] = []
+    rows: list[HierarchicalPanelFeatureEvidenceRow] = []
+    for index, (panel_id, panel) in enumerate(
+        zip(support_ids, panels, strict=True)
+    ):
+        request = _hierarchical_request(panel)
+        payload = _hierarchical_payload(request, _hierarchical_square_spans())
+        artifact = observe_hierarchical_panel(
+            panel,
+            request=request,
+            model=MODEL,
+            reasoning_effort=EFFORT,
+            expected_launcher_digest=LAUNCHER_DIGEST,
+            **NO_TOOLS_KWARGS,
+            transport=_hierarchical_transport(payload, panel, calls),
+        )
+        rows.append(
+            HierarchicalPanelFeatureEvidenceRow.create(
+                phase=HierarchicalFeatureEvidencePhase.SUPPORT,
+                phase_index=index,
+                panel_id=panel_id,
+                panel_png=panel,
+                artifact=artifact,
+            )
+        )
+    return (
+        HierarchicalPanelFeatureEvidenceBundle.create(
+            proposer_artifact=proposer_artifact,
+            proposer_result=proposer_result,
+            panels=rows,
+        ),
+        calls,
+    )
+
+
+def _hierarchical_query_evidence(
+    *,
+    panel_id: str,
+    phase_index: int,
+) -> tuple[HierarchicalPanelFeatureEvidenceRow, list[dict[str, object]]]:
+    panel = _png(5100 + phase_index)
+    request = _hierarchical_request(panel)
+    payload = _hierarchical_payload(request, _hierarchical_square_spans())
+    calls: list[dict[str, object]] = []
+    artifact = observe_hierarchical_panel(
+        panel,
+        request=request,
+        model=MODEL,
+        reasoning_effort=EFFORT,
+        expected_launcher_digest=LAUNCHER_DIGEST,
+        **NO_TOOLS_KWARGS,
+        transport=_hierarchical_transport(payload, panel, calls),
+    )
+    return (
+        HierarchicalPanelFeatureEvidenceRow.create(
+            phase=HierarchicalFeatureEvidencePhase.QUERY,
+            phase_index=phase_index,
+            panel_id=panel_id,
+            panel_png=panel,
+            artifact=artifact,
+        ),
+        calls,
+    )
+
+
 @pytest.fixture(scope="module")
 def bound_fixture():
     task, bundle, calls = _bundle_and_calls()
@@ -325,6 +410,43 @@ def test_exact_task_evidence_inventory_binding_and_zero_call_replay(
         == bound
     )
     assert len(calls) == 12
+
+
+def test_hierarchical_task_binding_derives_support_only_after_exact_replay() -> None:
+    task = _task()
+    bundle, calls = _hierarchical_support_bundle(task)
+    observations = verified_hierarchical_observation_sets(
+        bundle,
+        phase=HierarchicalFeatureEvidencePhase.SUPPORT,
+        expected_bundle_address=bundle.bundle_address,
+    )
+    inventory = ClosedCatalogSupportInventory.create(
+        bundle.proposer_result,
+        observations,
+        primary_orientation=NativeOrientation.SIDE0_POSITIVE,
+    )
+    bound = TaskBoundClosedCatalogInventory.bind(task, bundle, inventory)
+    assert bound.evidence_bundle is bundle
+    assert bound.to_data()["evidence_kind"] == HIERARCHICAL_EVIDENCE_KIND
+    assert bound.inventory.support_observations == observations
+    assert tuple(item[0] for item in bound.support_panel_bindings) == (
+        task.side_0_support_panel_ids + task.side_1_support_panel_ids
+    )
+    before = len(calls)
+    assert TaskBoundClosedCatalogInventory.from_data(bound.to_data()) == bound
+    assert (
+        cold_replay_task_bound_closed_catalog_inventory(
+            bound,
+            expected_artifact_address=bound.artifact_address,
+        )
+        == bound
+    )
+    assert len(calls) == before == 12
+
+    cross_kind = deepcopy(bound.to_data())
+    cross_kind["evidence_kind"] = "legacy_full_receipt_panel_feature_evidence_v2"
+    with pytest.raises(TaskBoundClosedCatalogInventoryError):
+        TaskBoundClosedCatalogInventory.from_data(cross_kind)
 
 
 def test_role_swap_wrong_task_and_bare_inventory_fail_closed(bound_fixture) -> None:
@@ -439,7 +561,7 @@ def _query_evidence(
 
 
 def _released_query(
-    evidence: PanelFeatureEvidencePanel,
+    evidence: PanelFeatureEvidencePanel | HierarchicalPanelFeatureEvidenceRow,
     precommit: ObjectBongardExecutionPrecommit,
 ) -> ReleasedOfficialExtractedPanel:
     family, task_id, side, filename = evidence.panel_id.split("/")
@@ -573,6 +695,70 @@ def test_unique_primary_freeze_commit_query_mapping_and_zero_call_replay(
     assert negative.formula_disposition is EngineeringDisposition.NONMATCH
     assert negative.outcome is EngineeringQueryOutcome.SIDE1
     assert len(support_calls) == 12
+
+
+def test_hierarchical_query_row_binds_release_bytes_kind_and_sealed_ordinal(
+    bound_fixture,
+    tmp_path: Path,
+) -> None:
+    task, _bundle, _inventory, bound, _support_calls = bound_fixture
+    freeze = PrimaryFormulaTaskFreeze.seal(
+        support_phase=PrimaryFormulaSupportPhase.create(bound),
+        execution_precommit=_precommit(task),
+    )
+    evidence, calls = _hierarchical_query_evidence(
+        panel_id=task.side_0_query_panel_id,
+        phase_index=0,
+    )
+    released = _released_query(evidence, freeze.execution_precommit)
+    store = ObjectBongardReleaseStore((tmp_path / "hierarchical-query-store").resolve())
+    receipt = store.persist(
+        object_kind="released-extracted-query-panel",
+        object_digest=released.record_digest,
+        data=released.to_data(),
+    )
+    decision = PrimaryFormulaQueryDecision.create(
+        freeze,
+        released_query_panel=released,
+        query_release_store_receipt=receipt,
+        query_evidence_panel=evidence,
+    )
+    assert decision.query_evidence_panel == evidence
+    assert decision.to_data()["query_evidence_kind"] == (
+        "hierarchical_full_catalog_panel_evidence_v1"
+    )
+    assert PrimaryFormulaQueryDecision.from_data(decision.to_data()) == decision
+    assert (
+        cold_replay_primary_formula_query_decision(
+            decision,
+            freeze=freeze,
+            expected_artifact_address=decision.artifact_address,
+        )
+        == decision
+    )
+    assert len(calls) == 1
+
+    wrong_kind = deepcopy(decision.to_data())
+    wrong_kind["query_evidence_kind"] = (
+        "legacy_full_catalog_batched_panel_evidence_v2"
+    )
+    with pytest.raises(PrimaryFormulaTaskRunnerError):
+        PrimaryFormulaQueryDecision.from_data(wrong_kind)
+
+    swapped = HierarchicalPanelFeatureEvidenceRow.create(
+        phase=HierarchicalFeatureEvidencePhase.QUERY,
+        phase_index=1,
+        panel_id=evidence.panel_id,
+        panel_png=evidence.panel_png,
+        artifact=evidence.artifact,
+    )
+    with pytest.raises(PrimaryFormulaTaskRunnerError, match="swapped"):
+        PrimaryFormulaQueryDecision.create(
+            freeze,
+            released_query_panel=released,
+            query_release_store_receipt=receipt,
+            query_evidence_panel=swapped,
+        )
 
 
 def test_query_id_evidence_swap_bare_observation_and_freeze_tamper_fail_closed(

@@ -63,6 +63,14 @@ from bongard.panel_feature_evidence_bundle import (
     PanelFeatureEvidencePanel,
     PanelFeatureEvidencePhase,
 )
+from bongard.panel_hierarchical_feature_evidence_bundle import (
+    HierarchicalFeatureEvidencePhase,
+    HierarchicalPanelFeatureEvidenceRow,
+)
+from bongard.panel_hierarchical_visual_adapter import (
+    HierarchicalPanelCodexArtifact,
+    verify_hierarchical_panel_artifact,
+)
 from bongard.panel_feature_observation import (
     EngineeringFeatureDisposition,
     PanelFeatureObservationSet,
@@ -107,6 +115,10 @@ PRIMARY_FORMULA_QUERY_DECISION_SCHEMA = (
 PRIMARY_FORMULA_TASK_RUNNER_ID = (
     "bongard.panel-feature/one-positive-task-freeze-python-v1"
 )
+LEGACY_QUERY_EVIDENCE_KIND = "legacy_full_catalog_batched_panel_evidence_v2"
+HIERARCHICAL_QUERY_EVIDENCE_KIND = (
+    "hierarchical_full_catalog_panel_evidence_v1"
+)
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -131,6 +143,7 @@ class PrimaryFormulaGapKind(str, Enum):
 
 
 Precommit = ObjectBongardExecutionPrecommit | PanelFeatureExtractedExecutionPrecommit
+QueryEvidencePanel = PanelFeatureEvidencePanel | HierarchicalPanelFeatureEvidenceRow
 
 
 def panel_feature_primary_task_runner_source_digest() -> str:
@@ -1691,32 +1704,106 @@ def _released_query_panel_from_data(kind: object, value: object) -> ReleasedQuer
 
 def _canonical_query_evidence(
     value: object,
-) -> PanelFeatureEvidencePanel:
-    if type(value) is not PanelFeatureEvidencePanel:
-        raise TypeError("query decision needs exact PanelFeatureEvidencePanel")
-    restored = PanelFeatureEvidencePanel.from_data(value.to_data())
-    artifact = restored.batched_axis_artifact
-    if (
-        restored != value
-        or restored.phase is not PanelFeatureEvidencePhase.QUERY
-        or restored.owner_artifact is not None
-        or restored.axis_artifacts
-        or type(artifact) is not TypedBatchedAxisCodexArtifact
-        or restored.observation_set != artifact.observation_set
-        or tuple(item.axis.axis_digest for item in restored.observation_set.axis_observations)
-        != tuple(item.axis_digest for item in complete_whole_panel_feature_axes())
-        or tuple(item.axis_digest for item in artifact.request.axes)
-        != tuple(item.axis_digest for item in complete_whole_panel_feature_axes())
-    ):
-        raise PrimaryFormulaTaskRunnerError(
-            "query evidence is not one exact full-catalog batched artifact"
-        )
-    verify_typed_batched_axis_codex_artifact(
-        artifact,
-        restored.panel_png,
-        expected_artifact_digest=artifact.artifact_digest,
+) -> tuple[str, QueryEvidencePanel]:
+    expected_axes = tuple(
+        item.axis_digest for item in complete_whole_panel_feature_axes()
     )
-    return restored
+    if type(value) is PanelFeatureEvidencePanel:
+        restored: QueryEvidencePanel = PanelFeatureEvidencePanel.from_data(
+            value.to_data()
+        )
+        artifact = restored.batched_axis_artifact
+        if (
+            restored != value
+            or restored.phase is not PanelFeatureEvidencePhase.QUERY
+            or restored.owner_artifact is not None
+            or restored.axis_artifacts
+            or type(artifact) is not TypedBatchedAxisCodexArtifact
+            or restored.observation_set != artifact.observation_set
+            or tuple(
+                item.axis.axis_digest
+                for item in restored.observation_set.axis_observations
+            )
+            != expected_axes
+            or tuple(item.axis_digest for item in artifact.request.axes)
+            != expected_axes
+        ):
+            raise PrimaryFormulaTaskRunnerError(
+                "query evidence is not one exact full-catalog batched artifact"
+            )
+        verify_typed_batched_axis_codex_artifact(
+            artifact,
+            restored.panel_png,
+            expected_artifact_digest=artifact.artifact_digest,
+        )
+        return LEGACY_QUERY_EVIDENCE_KIND, restored
+    if type(value) is HierarchicalPanelFeatureEvidenceRow:
+        restored = HierarchicalPanelFeatureEvidenceRow.from_data(value.to_data())
+        artifact = restored.artifact
+        if (
+            restored != value
+            or restored.phase is not HierarchicalFeatureEvidencePhase.QUERY
+            or type(artifact) is not HierarchicalPanelCodexArtifact
+            or tuple(item.axis_digest for item in artifact.request.axes)
+            != expected_axes
+            or tuple(
+                item.axis.axis_digest
+                for item in artifact.observation_set.axis_observations
+            )
+            != expected_axes
+        ):
+            raise PrimaryFormulaTaskRunnerError(
+                "query evidence is not one exact full-catalog hierarchical artifact"
+            )
+        verify_hierarchical_panel_artifact(
+            artifact,
+            restored.panel_png,
+            expected_artifact_digest=artifact.artifact_digest,
+        )
+        return HIERARCHICAL_QUERY_EVIDENCE_KIND, restored
+    raise TypeError(
+        "query decision needs one exact known full-receipt evidence row class"
+    )
+
+
+def _query_evidence_from_data(
+    kind: object,
+    value: object,
+) -> QueryEvidencePanel:
+    try:
+        if kind == LEGACY_QUERY_EVIDENCE_KIND:
+            return PanelFeatureEvidencePanel.from_data(value)  # type: ignore[arg-type]
+        if kind == HIERARCHICAL_QUERY_EVIDENCE_KIND:
+            return HierarchicalPanelFeatureEvidenceRow.from_data(value)
+    except (TypeError, ValueError) as exc:
+        raise PrimaryFormulaTaskRunnerError(
+            "query evidence does not match its exact class tag"
+        ) from exc
+    raise PrimaryFormulaTaskRunnerError("query evidence kind differs")
+
+
+def _query_evidence_parts(
+    value: QueryEvidencePanel,
+) -> tuple[object, int, str, bytes, str, PanelFeatureObservationSet]:
+    if type(value) is PanelFeatureEvidencePanel:
+        return (
+            value.phase,
+            value.phase_index,
+            value.panel_id,
+            value.panel_png,
+            value.panel_png_digest,
+            value.observation_set,
+        )
+    if type(value) is HierarchicalPanelFeatureEvidenceRow:
+        return (
+            value.phase,
+            value.phase_index,
+            value.panel_id,
+            value.panel_png,
+            value.panel_png_digest,
+            value.artifact.observation_set,
+        )
+    raise TypeError("query evidence row class differs")
 
 
 def _verify_query_custody(
@@ -1724,8 +1811,23 @@ def _verify_query_custody(
     freeze: PrimaryFormulaTaskFreeze | None,
     released: ReleasedQueryPanel,
     release_receipt: ObjectBongardWriteOnceReceipt,
-    evidence: PanelFeatureEvidencePanel,
+    evidence: QueryEvidencePanel,
 ) -> int:
+    (
+        evidence_phase,
+        evidence_phase_index,
+        evidence_panel_id,
+        evidence_panel_png,
+        evidence_panel_png_digest,
+        evidence_observation,
+    ) = _query_evidence_parts(evidence)
+    phase_is_query = (
+        type(evidence) is PanelFeatureEvidencePanel
+        and evidence_phase is PanelFeatureEvidencePhase.QUERY
+    ) or (
+        type(evidence) is HierarchicalPanelFeatureEvidenceRow
+        and evidence_phase is HierarchicalFeatureEvidencePhase.QUERY
+    )
     payload = canonical_json(released.to_data()) + b"\n"
     expected_object_kind = (
         "released-query-panel"
@@ -1738,17 +1840,17 @@ def _verify_query_custody(
         or release_receipt.payload_digest
         != "sha256:" + hashlib.sha256(payload).hexdigest()
         or release_receipt.size_bytes != len(payload)
-        or evidence.panel_id != released.panel_id
-        or evidence.panel_png != released.exact_png_bytes
-        or "sha256:" + evidence.panel_png_digest != released.exact_png_digest
-        or evidence.observation_set.panel_digest != evidence.panel_png_digest
-        or evidence.phase is not PanelFeatureEvidencePhase.QUERY
+        or evidence_panel_id != released.panel_id
+        or evidence_panel_png != released.exact_png_bytes
+        or "sha256:" + evidence_panel_png_digest != released.exact_png_digest
+        or evidence_observation.panel_digest != evidence_panel_png_digest
+        or not phase_is_query
     ):
         raise PrimaryFormulaTaskRunnerError(
             "released query, durable receipt, and observer evidence differ"
         )
     if freeze is None:
-        return evidence.phase_index
+        return evidence_phase_index
     if released.execution_precommit_digest != freeze.execution_precommit_digest:
         raise PrimaryFormulaTaskRunnerError(
             "released query belongs to a different execution precommit"
@@ -1759,7 +1861,7 @@ def _verify_query_custody(
         raise PrimaryFormulaTaskRunnerError(
             "released panel is not a sealed query for the frozen task"
         ) from exc
-    if evidence.phase_index != ordinal:
+    if evidence_phase_index != ordinal:
         raise PrimaryFormulaTaskRunnerError(
             "query evidence phase index is swapped across sealed query identities"
         )
@@ -1852,6 +1954,7 @@ def _decision_content(value: "PrimaryFormulaQueryDecision") -> dict[str, object]
         "query_release_store_receipt_digest": (
             value.query_release_store_receipt.record_digest
         ),
+        "query_evidence_kind": value.query_evidence_kind,
         "query_evidence_panel": value.query_evidence_panel.to_data(),
         "query_evidence_panel_digest": value.query_evidence_panel.record_digest,
         "query_ordinal": value.query_ordinal,
@@ -1887,7 +1990,8 @@ class PrimaryFormulaQueryDecision:
     released_query_kind: str
     released_query_panel: ReleasedQueryPanel
     query_release_store_receipt: ObjectBongardWriteOnceReceipt
-    query_evidence_panel: PanelFeatureEvidencePanel
+    query_evidence_kind: str
+    query_evidence_panel: QueryEvidencePanel
     query_ordinal: int
     query_table: EngineeringSupportTable
     formula_disposition: EngineeringDisposition
@@ -1905,7 +2009,9 @@ class PrimaryFormulaQueryDecision:
             self.released_query_panel
         )
         receipt = _canonical_store_receipt(self.query_release_store_receipt)
-        evidence = _canonical_query_evidence(self.query_evidence_panel)
+        evidence_kind, evidence = _canonical_query_evidence(
+            self.query_evidence_panel
+        )
         ordinal = _verify_query_custody(
             freeze=None,
             released=released,
@@ -1916,6 +2022,7 @@ class PrimaryFormulaQueryDecision:
             type(self.task_id) is not str
             or not self.task_id
             or self.released_query_kind != released_kind
+            or self.query_evidence_kind != evidence_kind
             or self.query_ordinal != ordinal
             or self.query_ordinal not in (0, 1)
             or type(self.selected_formula) is not AllOf
@@ -1955,7 +2062,7 @@ class PrimaryFormulaQueryDecision:
 
     @property
     def query_observation(self) -> PanelFeatureObservationSet:
-        return self.query_evidence_panel.observation_set
+        return _query_evidence_parts(self.query_evidence_panel)[5]
 
     @classmethod
     def create(
@@ -1964,7 +2071,7 @@ class PrimaryFormulaQueryDecision:
         *,
         released_query_panel: ReleasedQueryPanel,
         query_release_store_receipt: ObjectBongardWriteOnceReceipt,
-        query_evidence_panel: PanelFeatureEvidencePanel,
+        query_evidence_panel: QueryEvidencePanel,
     ) -> "PrimaryFormulaQueryDecision":
         if type(freeze) is not PrimaryFormulaTaskFreeze:
             raise TypeError("query decision needs exact PrimaryFormulaTaskFreeze")
@@ -1973,14 +2080,14 @@ class PrimaryFormulaQueryDecision:
             released_query_panel
         )
         receipt = _canonical_store_receipt(query_release_store_receipt)
-        evidence = _canonical_query_evidence(query_evidence_panel)
+        evidence_kind, evidence = _canonical_query_evidence(query_evidence_panel)
         ordinal = _verify_query_custody(
             freeze=frozen,
             released=released,
             release_receipt=receipt,
             evidence=evidence,
         )
-        observation = evidence.observation_set
+        observation = _query_evidence_parts(evidence)[5]
         table = _query_table(frozen, observation)
         formula = frozen.resolve_selected_all_of()
         disposition = evaluate_engineering_all_of(
@@ -1997,6 +2104,7 @@ class PrimaryFormulaQueryDecision:
             "released_query_kind": released_kind,
             "released_query_panel": released,
             "query_release_store_receipt": receipt,
+            "query_evidence_kind": evidence_kind,
             "query_evidence_panel": evidence,
             "query_ordinal": ordinal,
             "query_table": table,
@@ -2036,6 +2144,7 @@ class PrimaryFormulaQueryDecision:
                 "released_query_panel_digest",
                 "query_release_store_receipt",
                 "query_release_store_receipt_digest",
+                "query_evidence_kind",
                 "query_evidence_panel",
                 "query_evidence_panel_digest",
                 "query_ordinal",
@@ -2074,7 +2183,9 @@ class PrimaryFormulaQueryDecision:
         receipt = ObjectBongardWriteOnceReceipt.from_data(
             raw["query_release_store_receipt"]
         )
-        evidence = PanelFeatureEvidencePanel.from_data(raw["query_evidence_panel"])
+        evidence = _query_evidence_from_data(
+            raw["query_evidence_kind"], raw["query_evidence_panel"]
+        )
         observation = PanelFeatureObservationSet.from_data(raw["query_observation"])
         table = EngineeringSupportTable.from_data(raw["query_table"])
         result = cls(
@@ -2086,6 +2197,7 @@ class PrimaryFormulaQueryDecision:
             raw["released_query_kind"],
             released,
             receipt,
+            raw["query_evidence_kind"],
             evidence,
             raw["query_ordinal"],
             table,
@@ -2097,6 +2209,11 @@ class PrimaryFormulaQueryDecision:
             raw["selected_formula_digest"] != formula.formula_digest
             or raw["released_query_panel_digest"] != released.record_digest
             or raw["query_release_store_receipt_digest"] != receipt.record_digest
+            or raw["query_evidence_kind"]
+            not in (
+                LEGACY_QUERY_EVIDENCE_KIND,
+                HIERARCHICAL_QUERY_EVIDENCE_KIND,
+            )
             or raw["query_evidence_panel_digest"] != evidence.record_digest
             or raw["query_panel_id"] != result.query_panel_id
             or raw["query_observation"] != result.query_observation.to_data()
@@ -2136,6 +2253,8 @@ def cold_replay_primary_formula_query_decision(
 
 
 __all__ = (
+    "HIERARCHICAL_QUERY_EVIDENCE_KIND",
+    "LEGACY_QUERY_EVIDENCE_KIND",
     "PRIMARY_FORMULA_TASK_RUNNER_ID",
     "POSITIVE_FORMULA_MAX_RANK_CANDIDATES",
     "PrimaryFormulaGapKind",

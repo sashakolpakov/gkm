@@ -68,6 +68,13 @@ from bongard.panel_feature_targeted_drill_plan import (
 from bongard.panel_feature_task_bound_inventory import (
     TaskBoundClosedCatalogInventory,
 )
+from bongard.panel_hierarchical_feature_evidence_bundle import (
+    HierarchicalFeatureEvidencePhase,
+    HierarchicalPanelFeatureEvidenceBundle,
+    HierarchicalPanelFeatureEvidenceRow,
+    verified_hierarchical_observation_sets,
+)
+from bongard.panel_hierarchical_visual_adapter import observe_hierarchical_panel
 from bongard.panel_typed_codex_observer import (
     build_panel_only_observation_context,
 )
@@ -75,10 +82,12 @@ from bongard.panel_soft_ontology import (
     ClosedCount,
     ComponentCountParameters,
     FeatureFamily,
+    GestaltKind,
     NativeOrientation,
     PanelFeatureSpec,
     ReferenceFrame,
     SubjectScope,
+    SymmetryKind,
 )
 from bongard.release import OfficialReleaseDescriptor
 from bongard.tests.test_panel_batched_typed_codex_observer import (
@@ -90,6 +99,13 @@ from bongard.tests.test_panel_feature_proposer import (
 )
 from bongard.tests.test_panel_feature_task_bound_inventory import (
     _support_payload,
+    _variant_alias,
+)
+from bongard.tests.test_panel_hierarchical_visual_adapter import (
+    _payload as _hierarchical_payload,
+    _request as _hierarchical_request,
+    _square_spans as _hierarchical_square_spans,
+    _transport as _hierarchical_transport,
 )
 from bongard.tests.test_prototype_scene_observer import (
     EFFORT,
@@ -388,6 +404,117 @@ def _successor_bound_inventory(
     return TaskBoundClosedCatalogInventory.bind(task, bundle, inventory), calls
 
 
+def _hierarchical_support_payload(request, index: int) -> dict[str, object]:
+    payload = _hierarchical_payload(
+        request,
+        [],
+        trace_resolution="indeterminate",
+        trace_issue="ambiguous_geometry",
+    )
+    axis_payloads = payload["axis_payloads"]
+    assert isinstance(axis_payloads, dict)
+    for item in request.aliases:
+        assert len(item.view.bindings) == 1
+        binding = item.view.bindings[0]
+        if item.view.axis.family is FeatureFamily.GESTALT_RESEMBLANCE:
+            kind = GestaltKind.BIRD_LIKE if index < 9 else GestaltKind.ANIMAL_LIKE
+            row = {
+                "resolution": "complete",
+                "variant_evidence": [
+                    {
+                        "variant_alias": _variant_alias(item, kind),
+                        "evidence_x": binding.search_region.minimum.x,
+                        "evidence_y": binding.search_region.minimum.y,
+                    }
+                ],
+                "issue": "none",
+            }
+        elif item.view.axis.family is FeatureFamily.SYMMETRY:
+            kind = (
+                SymmetryKind.REFLECTIONAL
+                if index < 6 or index >= 9
+                else SymmetryKind.HALF_TURN
+            )
+            row = {
+                "resolution": "complete",
+                "variant_evidence": [
+                    {
+                        "variant_alias": _variant_alias(item, kind),
+                        "evidence_x": binding.search_region.minimum.x,
+                        "evidence_y": binding.search_region.minimum.y,
+                    }
+                ],
+                "issue": "none",
+            }
+        else:
+            row = {
+                "resolution": "unclear",
+                "variant_evidence": [],
+                "issue": "ambiguous_geometry",
+            }
+        axis_payloads[item.alias] = {binding.alias: row}
+    return payload
+
+
+def _successor_hierarchical_bound_inventory(
+    prepared: PreparedPanelFeatureExtractedRelease,
+    fixture: _Fixture,
+) -> tuple[TaskBoundClosedCatalogInventory, list[dict[str, object]]]:
+    task = prepared.plan.tasks[0]
+    support_ids = task.side_0_support_panel_ids + task.side_1_support_panel_ids
+    support_pngs = []
+    for panel_id in support_ids:
+        released, _receipt = release_panel_feature_extracted_support_panel(
+            prepared=prepared,
+            archive=fixture.archive,
+            panel_id=panel_id,
+        )
+        support_pngs.append(released.exact_png_bytes)
+    panels = tuple(support_pngs)
+    proposer_artifact, proposer_result = _proposer(panels, _proposer_payload())
+    calls: list[dict[str, object]] = []
+    rows: list[HierarchicalPanelFeatureEvidenceRow] = []
+    for index, (panel_id, panel) in enumerate(
+        zip(support_ids, panels, strict=True)
+    ):
+        request = _hierarchical_request(panel)
+        payload = _hierarchical_support_payload(request, index)
+        artifact = observe_hierarchical_panel(
+            panel,
+            request=request,
+            model=MODEL,
+            reasoning_effort=EFFORT,
+            expected_launcher_digest=LAUNCHER_DIGEST,
+            **NO_TOOLS_KWARGS,
+            transport=_hierarchical_transport(payload, panel, calls),
+        )
+        rows.append(
+            HierarchicalPanelFeatureEvidenceRow.create(
+                phase=HierarchicalFeatureEvidencePhase.SUPPORT,
+                phase_index=index,
+                panel_id=panel_id,
+                panel_png=panel,
+                artifact=artifact,
+            )
+        )
+    bundle = HierarchicalPanelFeatureEvidenceBundle.create(
+        proposer_artifact=proposer_artifact,
+        proposer_result=proposer_result,
+        panels=rows,
+    )
+    observations = verified_hierarchical_observation_sets(
+        bundle,
+        phase=HierarchicalFeatureEvidencePhase.SUPPORT,
+        expected_bundle_address=bundle.bundle_address,
+    )
+    inventory = ClosedCatalogSupportInventory.create(
+        bundle.proposer_result,
+        observations,
+        primary_orientation=NativeOrientation.SIDE0_POSITIVE,
+    )
+    return TaskBoundClosedCatalogInventory.bind(task, bundle, inventory), calls
+
+
 def _successor_freeze(
     prepared: PreparedPanelFeatureExtractedRelease,
     fixture: _Fixture,
@@ -667,6 +794,116 @@ def test_successor_one_positive_freeze_commit_and_support_custody_gate_queries(
         assert decision.query_evidence_panel == evidence
     assert released_ids == list(freeze.sealed_query_panel_ids)
     assert len(query_calls) == 2
+
+
+def test_successor_hierarchical_support_exact_branch_and_manifest_tamper(
+    tmp_path: Path,
+) -> None:
+    fixture = _fixture(tmp_path)
+    prepared = _prepare(fixture)
+    task = prepared.plan.tasks[0]
+    bound, calls = _successor_hierarchical_bound_inventory(prepared, fixture)
+    phase = PrimaryFormulaSupportPhase.create(bound)
+    assert type(bound.evidence_bundle) is HierarchicalPanelFeatureEvidenceBundle
+    assert len(calls) == 12
+    assert phase.status is PrimaryFormulaSupportStatus.UNIQUE_PRIMARY_SURVIVOR
+    freeze = PrimaryFormulaTaskFreeze.seal(
+        support_phase=phase,
+        execution_precommit=prepared.precommit,
+    )
+    freeze_receipt = persist_object_bongard_task_freeze(
+        store=fixture.store,
+        freeze=freeze,
+    )
+    commit = PrimaryFormulaTaskFreezeCommit.seal(freeze, freeze_receipt)
+    commit_receipt = persist_object_bongard_task_commit(
+        store=fixture.store,
+        commit=commit,
+    )
+    released, receipt = release_panel_feature_extracted_query_panel(
+        prepared=prepared,
+        archive=fixture.archive,
+        panel_id=task.side_0_query_panel_id,
+        task_freeze=freeze,
+        task_commit=commit,
+        task_freeze_receipt=freeze_receipt,
+        task_commit_receipt=commit_receipt,
+    )
+    assert released.panel_id == task.side_0_query_panel_id
+    assert receipt.object_kind == "released-extracted-query-panel"
+
+    first, second, *rest = bound.evidence_bundle.panels
+    rows = (
+        HierarchicalPanelFeatureEvidenceRow.create(
+            phase=first.phase,
+            phase_index=first.phase_index,
+            panel_id=first.panel_id,
+            panel_png=second.panel_png,
+            artifact=second.artifact,
+        ),
+        HierarchicalPanelFeatureEvidenceRow.create(
+            phase=second.phase,
+            phase_index=second.phase_index,
+            panel_id=second.panel_id,
+            panel_png=first.panel_png,
+            artifact=first.artifact,
+        ),
+        *rest,
+    )
+    relabelled_proposer, relabelled_result = _proposer(
+        tuple(item.panel_png for item in rows), _proposer_payload()
+    )
+    relabelled_bundle = HierarchicalPanelFeatureEvidenceBundle.create(
+        proposer_artifact=relabelled_proposer,
+        proposer_result=relabelled_result,
+        panels=rows,
+    )
+    relabelled_observations = verified_hierarchical_observation_sets(
+        relabelled_bundle,
+        phase=HierarchicalFeatureEvidencePhase.SUPPORT,
+        expected_bundle_address=relabelled_bundle.bundle_address,
+    )
+    relabelled_inventory = ClosedCatalogSupportInventory.create(
+        relabelled_bundle.proposer_result,
+        relabelled_observations,
+        primary_orientation=NativeOrientation.SIDE0_POSITIVE,
+    )
+    relabelled_bound = TaskBoundClosedCatalogInventory.bind(
+        task,
+        relabelled_bundle,
+        relabelled_inventory,
+    )
+    relabelled_phase = PrimaryFormulaSupportPhase.create(relabelled_bound)
+    assert relabelled_phase.status is PrimaryFormulaSupportStatus.UNIQUE_PRIMARY_SURVIVOR
+    relabelled_freeze = PrimaryFormulaTaskFreeze.seal(
+        support_phase=relabelled_phase,
+        execution_precommit=prepared.precommit,
+    )
+    relabelled_freeze_receipt = persist_object_bongard_task_freeze(
+        store=fixture.store,
+        freeze=relabelled_freeze,
+    )
+    relabelled_commit = PrimaryFormulaTaskFreezeCommit.seal(
+        relabelled_freeze,
+        relabelled_freeze_receipt,
+    )
+    relabelled_commit_receipt = persist_object_bongard_task_commit(
+        store=fixture.store,
+        commit=relabelled_commit,
+    )
+    with pytest.raises(
+        PanelFeatureExtractedReleaseGateError,
+        match="support evidence differs from the authenticated extracted manifest",
+    ):
+        release_panel_feature_extracted_query_panel(
+            prepared=prepared,
+            archive=fixture.archive,
+            panel_id=task.side_1_query_panel_id,
+            task_freeze=relabelled_freeze,
+            task_commit=relabelled_commit,
+            task_freeze_receipt=relabelled_freeze_receipt,
+            task_commit_receipt=relabelled_commit_receipt,
+        )
 
 
 def test_successor_rejects_support_pixels_relabelled_between_panel_ids(
