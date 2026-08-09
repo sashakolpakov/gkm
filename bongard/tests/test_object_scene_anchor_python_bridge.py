@@ -36,7 +36,12 @@ from bongard.object_scene_anchor_python_query_observation import (
     _evaluation_content,
     object_scene_anchor_python_query_algorithm_digest,
 )
-from bongard.object_scene_anchor_version_space import ObjectSceneAnchorOrientation
+from bongard.object_scene_anchor_version_space import (
+    ObjectSceneAnchorOrientation,
+    ObjectSceneAnchorSupportVersionSpace,
+    _make_support_gap,
+    _version_content,
+)
 from bongard.tests.test_object_scene_anchor_candidate_ranker import (
     _Transport,
     _dual_versions,
@@ -72,6 +77,67 @@ def _opposite(orientation: ObjectSceneAnchorOrientation) -> ObjectSceneAnchorOri
         if orientation is ObjectSceneAnchorOrientation.SIDE0_POSITIVE
         else ObjectSceneAnchorOrientation.SIDE0_POSITIVE
     )
+
+
+def _empty_version_space(
+    source: ObjectSceneAnchorSupportVersionSpace,
+) -> ObjectSceneAnchorSupportVersionSpace:
+    rows = tuple(
+        (Disposition.CERTIFIED_ABSENT,) * len(source.support_sides)
+        for _candidate in source.candidates
+    )
+    gap = _make_support_gap(
+        source.candidates,
+        source.support_panel_ids,
+        source.support_sides,
+        rows,
+    )
+    values = {
+        "algorithm_digest": source.algorithm_digest,
+        "language": source.language,
+        "orientation": source.orientation,
+        "candidates": source.candidates,
+        "support_panel_ids": source.support_panel_ids,
+        "support_evaluation_digests": source.support_evaluation_digests,
+        "support_sides": source.support_sides,
+        "rows": rows,
+        "survivor_candidate_digests": (),
+        "gap": gap,
+    }
+    provisional = object.__new__(ObjectSceneAnchorSupportVersionSpace)
+    for name, item in values.items():
+        object.__setattr__(provisional, name, item)
+    return ObjectSceneAnchorSupportVersionSpace(
+        **values,
+        version_space_digest=canonical_digest(_version_content(provisional)),
+    )
+
+
+@lru_cache(maxsize=1)
+def _single_bridge_fixture():
+    side0, side1 = _dual_versions()
+    empty_side1 = _empty_version_space(side1)
+    rank_input = freeze_object_scene_anchor_rank_input(side0)
+    transport = _Transport()
+    response = _ranker(transport)(
+        side0,
+        expected_rank_input_digest=rank_input.rank_input_digest,
+    )
+    assert transport.calls == 1
+    direct = freeze_object_scene_anchor_python_bridge(
+        response,
+        side0,
+        expected_response_digest=response.response_digest,
+        expected_rank_input_digest=rank_input.rank_input_digest,
+    )
+    proved_omission = freeze_object_scene_anchor_python_bridge(
+        response,
+        side0,
+        empty_side1,
+        expected_response_digest=response.response_digest,
+        expected_rank_input_digest=rank_input.rank_input_digest,
+    )
+    return side0, empty_side1, rank_input, response, direct, proved_omission
 
 
 def _query_evaluation(
@@ -130,6 +196,8 @@ def test_union_response_selects_exact_child_and_freezes_python_predicate() -> No
     assert bridge.predicate.selection_commitment == bridge.selection_commitment
     assert bridge.predicate.version_space_digest == selected_version.version_space_digest
     assert bridge.predicate.candidate.candidate_digest == response.selected_candidate_digest
+    assert bridge.to_data()["formal_prover_required"] is False
+    assert bridge.predicate.to_data()["pure_python_evaluation"] is True
 
     assert ObjectSceneAnchorPythonBridgeArtifact.from_data(bridge.to_data()) == bridge
     assert cold_verify_object_scene_anchor_python_predicate(
@@ -150,6 +218,90 @@ def test_union_response_selects_exact_child_and_freezes_python_predicate() -> No
     encoded = json.dumps(bridge.to_data(), sort_keys=True).casefold()
     assert "rank_response_payload" in encoded
     assert '"rank_response":' not in encoded
+
+
+def test_exact_single_child_path_freezes_and_replays_without_a_sibling() -> None:
+    side0, _empty, rank_input, response, bridge, _proved = _single_bridge_fixture()
+    data = bridge.to_data()
+
+    assert bridge.child_version_space_digests == (side0.version_space_digest,)
+    assert bridge.child_orientations == (side0.orientation,)
+    assert bridge.omitted_version_space is None
+    assert data["ranked_child_count"] == data["supplied_version_space_count"] == 1
+    assert data["omitted_version_space"] is None
+    assert data["omitted_version_space_digest"] is None
+    assert data["omitted_gap_digest"] is None
+    assert ObjectSceneAnchorPythonBridgeArtifact.from_data(data) == bridge
+    assert cold_verify_object_scene_anchor_python_bridge(
+        bridge,
+        response=response,
+        first_version_space=side0,
+        second_version_space=None,
+        expected_bridge_digest=bridge.bridge_digest,
+        expected_response_digest=response.response_digest,
+        expected_rank_input_digest=rank_input.rank_input_digest,
+    ) == bridge
+
+
+def test_opposite_empty_space_is_a_self_contained_omission_proof() -> None:
+    side0, empty, rank_input, response, direct, bridge = _single_bridge_fixture()
+    data = bridge.to_data()
+
+    assert bridge.child_version_space_digests == (side0.version_space_digest,)
+    assert bridge.child_orientations == (side0.orientation,)
+    assert bridge.omitted_version_space == empty
+    assert data["ranked_child_count"] == 1
+    assert data["supplied_version_space_count"] == 2
+    assert data["omitted_version_space_digest"] == empty.version_space_digest
+    assert data["omitted_gap_digest"] == empty.gap.gap_digest
+    assert bridge.predicate == direct.predicate
+    assert bridge.bridge_digest != direct.bridge_digest
+    assert bridge == freeze_object_scene_anchor_python_bridge(
+        response,
+        empty,
+        side0,
+        expected_response_digest=response.response_digest,
+        expected_rank_input_digest=rank_input.rank_input_digest,
+    )
+    assert ObjectSceneAnchorPythonBridgeArtifact.from_data(data) == bridge
+    assert cold_verify_object_scene_anchor_python_bridge(
+        bridge,
+        response=response,
+        first_version_space=empty,
+        second_version_space=side0,
+        expected_bridge_digest=bridge.bridge_digest,
+        expected_response_digest=response.response_digest,
+        expected_rank_input_digest=rank_input.rank_input_digest,
+    ) == bridge
+
+    tampered = deepcopy(data)
+    tampered["omitted_version_space"] = None
+    tampered["bridge_digest"] = canonical_digest(
+        {key: value for key, value in tampered.items() if key != "bridge_digest"}
+    )
+    with pytest.raises(ObjectSceneAnchorPythonBridgeError, match="commitments"):
+        ObjectSceneAnchorPythonBridgeArtifact.from_data(tampered)
+
+
+def test_empty_space_cannot_rank_alone_or_masquerade_as_opposite() -> None:
+    side0, empty, rank_input, response, _direct, _proved = _single_bridge_fixture()
+    with pytest.raises(ObjectSceneAnchorPythonBridgeError, match="rankable"):
+        freeze_object_scene_anchor_python_bridge(
+            response,
+            empty,
+            expected_response_digest=response.response_digest,
+            expected_rank_input_digest=rank_input.rank_input_digest,
+        )
+
+    same_orientation_empty = _empty_version_space(side0)
+    with pytest.raises(ObjectSceneAnchorPythonBridgeError, match="rank union"):
+        freeze_object_scene_anchor_python_bridge(
+            response,
+            side0,
+            same_orientation_empty,
+            expected_response_digest=response.response_digest,
+            expected_rank_input_digest=rank_input.rank_input_digest,
+        )
 
 
 def test_bridge_rejects_mismatch_resealed_tamper_and_no_response() -> None:

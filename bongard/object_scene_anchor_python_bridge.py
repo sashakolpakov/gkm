@@ -1,9 +1,12 @@
-"""Exact rank-union selection and bucket prediction in canonical Python.
+"""Exact rank selection and bucket prediction in canonical Python.
 
 The rank response may order survivors, but it cannot edit them.  This module
-resolves its first-ranked digest back to the exact child version space, freezes
-the existing positive Python predicate, and projects a later P/A/I/E query
-decision to one of the two Bongard buckets or to abstention/error.
+resolves its first-ranked digest back to one of the exact nonempty child version
+spaces, freezes the existing positive Python predicate, and projects a later
+P/A/I/E query decision to one of the two Bongard buckets or to abstention/error.
+One or two nonempty orientations may be ranked.  An opposite empty orientation
+may be supplied as a self-contained typed-gap omission proof, but is never sent
+to the ranker as a fake candidate source.
 """
 
 from __future__ import annotations
@@ -46,13 +49,13 @@ from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 
 OBJECT_SCENE_ANCHOR_PYTHON_BRIDGE_SCHEMA = (
-    "gkm.object-scene-anchor-python-rank-bridge.v1"
+    "gkm.object-scene-anchor-python-rank-bridge.v2"
 )
 OBJECT_SCENE_ANCHOR_PYTHON_PREDICTION_SCHEMA = (
     "gkm.object-scene-anchor-python-bucket-prediction.v1"
 )
 OBJECT_SCENE_ANCHOR_PYTHON_BRIDGE_ALGORITHM_ID = (
-    "bongard.object-scene-anchor-python-rank-bridge/exact-two-child-selection-v1"
+    "bongard.object-scene-anchor-python-rank-bridge/exact-ranked-children-v2"
 )
 OBJECT_SCENE_ANCHOR_PYTHON_PREDICTION_ALGORITHM_ID = (
     "bongard.object-scene-anchor-python-bucket-prediction/four-disposition-v1"
@@ -139,7 +142,7 @@ def object_scene_anchor_python_bridge_source_digest() -> str:
 def object_scene_anchor_python_bridge_algorithm_digest() -> str:
     return canonical_digest(
         {
-            "schema": "gkm.object-scene-anchor-python-rank-bridge-algorithm.v1",
+            "schema": "gkm.object-scene-anchor-python-rank-bridge-algorithm.v2",
             "algorithm_id": OBJECT_SCENE_ANCHOR_PYTHON_BRIDGE_ALGORITHM_ID,
             "source_digest": object_scene_anchor_python_bridge_source_digest(),
             "ranker_protocol_digest": (
@@ -148,7 +151,11 @@ def object_scene_anchor_python_bridge_algorithm_digest() -> str:
             "predicate_algorithm_digest": (
                 object_scene_anchor_python_predicate_algorithm_digest()
             ),
-            "required_child_count": 2,
+            "ranked_child_count_range": [1, 2],
+            "direct_single_child_allowed": True,
+            "opposite_empty_child_allowed": True,
+            "empty_child_requires_exact_typed_gap": True,
+            "empty_child_omitted_from_rank_input": True,
             "child_spaces_must_be_exact": True,
             "rank_input_must_be_exact_union": True,
             "selected_origin_must_match_candidate": True,
@@ -190,6 +197,26 @@ def _bridge_content(value: "ObjectSceneAnchorPythonBridgeArtifact") -> dict[str,
         "rank_input_digest": value.rank_input_digest,
         "child_version_space_digests": list(value.child_version_space_digests),
         "child_orientations": [item.value for item in value.child_orientations],
+        "ranked_child_count": len(value.child_version_space_digests),
+        "omitted_version_space": (
+            None
+            if value.omitted_version_space is None
+            else value.omitted_version_space.to_data()
+        ),
+        "omitted_version_space_digest": (
+            None
+            if value.omitted_version_space is None
+            else value.omitted_version_space.version_space_digest
+        ),
+        "omitted_gap_digest": (
+            None
+            if value.omitted_version_space is None
+            else value.omitted_version_space.gap.gap_digest
+        ),
+        "supplied_version_space_count": (
+            len(value.child_version_space_digests)
+            + int(value.omitted_version_space is not None)
+        ),
         "selected_origin_version_space_digest": (
             value.selected_origin_version_space_digest
         ),
@@ -198,23 +225,24 @@ def _bridge_content(value: "ObjectSceneAnchorPythonBridgeArtifact") -> dict[str,
         "selection_commitment": value.selection_commitment.to_data(),
         "predicate": value.predicate.to_data(),
         "rank_response_payload_retained": False,
-        "both_child_spaces_verified": True,
+        "all_supplied_spaces_verified": True,
+        "direct_single_child_allowed": True,
+        "empty_child_omitted_only_with_typed_gap": True,
         **_authority_data(),
     }
 
 
 @dataclass(frozen=True, slots=True)
 class ObjectSceneAnchorPythonBridgeArtifact:
-    """Model-free result of resolving an exact two-child rank response."""
+    """Model-free result of resolving an exact one- or two-child response."""
 
     source_digest: str
     algorithm_digest: str
     rank_response_digest: str
     rank_input_digest: str
-    child_version_space_digests: tuple[str, str]
-    child_orientations: tuple[
-        ObjectSceneAnchorOrientation, ObjectSceneAnchorOrientation
-    ]
+    child_version_space_digests: tuple[str, ...]
+    child_orientations: tuple[ObjectSceneAnchorOrientation, ...]
+    omitted_version_space: ObjectSceneAnchorSupportVersionSpace | None
     selected_origin_version_space_digest: str
     selected_origin_orientation: ObjectSceneAnchorOrientation
     selected_candidate_digest: str
@@ -235,22 +263,40 @@ class ObjectSceneAnchorPythonBridgeArtifact:
             _digest(item, label)
         if (
             type(self.child_version_space_digests) is not tuple
-            or len(self.child_version_space_digests) != 2
+            or not 1 <= len(self.child_version_space_digests) <= 2
             or self.child_version_space_digests
             != tuple(sorted(set(self.child_version_space_digests)))
             or type(self.child_orientations) is not tuple
-            or len(self.child_orientations) != 2
+            or len(self.child_orientations)
+            != len(self.child_version_space_digests)
             or any(
                 not isinstance(item, ObjectSceneAnchorOrientation)
                 for item in self.child_orientations
             )
-            or len(set(self.child_orientations)) != 2
+            or len(set(self.child_orientations)) != len(self.child_orientations)
         ):
             raise ObjectSceneAnchorPythonBridgeError(
-                "bridge requires two exact distinct child spaces"
+                "bridge requires one or two exact distinct ranked child spaces"
             )
         for item in self.child_version_space_digests:
             _digest(item, "child version-space digest")
+        if self.omitted_version_space is not None:
+            if type(self.omitted_version_space) is not ObjectSceneAnchorSupportVersionSpace:
+                raise TypeError("omitted version space has the wrong type")
+            omitted = ObjectSceneAnchorSupportVersionSpace.from_data(
+                self.omitted_version_space.to_data()
+            )
+            if (
+                omitted != self.omitted_version_space
+                or omitted.survivor_candidate_digests
+                or omitted.gap is None
+                or len(self.child_version_space_digests) != 1
+                or omitted.version_space_digest in self.child_version_space_digests
+                or omitted.orientation in self.child_orientations
+            ):
+                raise ObjectSceneAnchorPythonBridgeError(
+                    "omitted child is not one exact opposite typed-gap space"
+                )
         if not isinstance(
             self.selected_origin_orientation, ObjectSceneAnchorOrientation
         ):
@@ -276,6 +322,15 @@ class ObjectSceneAnchorPythonBridgeArtifact:
             != object_scene_anchor_python_bridge_algorithm_digest()
             or selection != self.selection_commitment
             or predicate != self.predicate
+            or (
+                self.omitted_version_space is not None
+                and (
+                    self.omitted_version_space.language.language_digest
+                    != predicate.language_digest
+                    or self.omitted_version_space.algorithm_digest
+                    != selection.version_space_algorithm_digest
+                )
+            )
             or selection.selection_kind != "exact_rank_response"
             or selection.selector_record_digest != self.rank_response_digest
             or selection.version_space_digest
@@ -305,9 +360,14 @@ class ObjectSceneAnchorPythonBridgeArtifact:
                 "schema", "algorithm_id", "source_digest", "algorithm_digest",
                 "rank_response_digest", "rank_input_digest",
                 "child_version_space_digests", "child_orientations",
+                "ranked_child_count", "omitted_version_space",
+                "omitted_version_space_digest", "omitted_gap_digest",
+                "supplied_version_space_count",
                 "selected_origin_version_space_digest", "selected_origin_orientation",
                 "selected_candidate_digest", "selection_commitment", "predicate",
-                "rank_response_payload_retained", "both_child_spaces_verified",
+                "rank_response_payload_retained", "all_supplied_spaces_verified",
+                "direct_single_child_allowed",
+                "empty_child_omitted_only_with_typed_gap",
                 *_authority_data(), "bridge_digest",
             },
             "Python rank bridge",
@@ -316,10 +376,16 @@ class ObjectSceneAnchorPythonBridgeArtifact:
             raw["schema"] != OBJECT_SCENE_ANCHOR_PYTHON_BRIDGE_SCHEMA
             or raw["algorithm_id"] != OBJECT_SCENE_ANCHOR_PYTHON_BRIDGE_ALGORITHM_ID
             or raw["rank_response_payload_retained"] is not False
-            or raw["both_child_spaces_verified"] is not True
+            or raw["all_supplied_spaces_verified"] is not True
+            or raw["direct_single_child_allowed"] is not True
+            or raw["empty_child_omitted_only_with_typed_gap"] is not True
             or any(raw[key] != item for key, item in _authority_data().items())
             or not isinstance(raw["child_version_space_digests"], list)
             or not isinstance(raw["child_orientations"], list)
+            or (
+                raw["omitted_version_space"] is not None
+                and not isinstance(raw["omitted_version_space"], Mapping)
+            )
             or not isinstance(raw["selection_commitment"], Mapping)
             or not isinstance(raw["predicate"], Mapping)
         ):
@@ -328,15 +394,44 @@ class ObjectSceneAnchorPythonBridgeArtifact:
         child_orientations = tuple(
             _orientation(item) for item in raw["child_orientations"]
         )
-        if len(child_digests) != 2 or len(child_orientations) != 2:
+        if (
+            not 1 <= len(child_digests) <= 2
+            or len(child_orientations) != len(child_digests)
+        ):
             raise ObjectSceneAnchorPythonBridgeError("bridge child count differs")
+        omitted = (
+            None
+            if raw["omitted_version_space"] is None
+            else ObjectSceneAnchorSupportVersionSpace.from_data(
+                raw["omitted_version_space"]
+            )
+        )
+        omitted_gap_digest = (
+            None
+            if omitted is None or omitted.gap is None
+            else omitted.gap.gap_digest
+        )
+        if (
+            type(raw["ranked_child_count"]) is not int
+            or raw["ranked_child_count"] != len(child_digests)
+            or type(raw["supplied_version_space_count"]) is not int
+            or raw["supplied_version_space_count"]
+            != len(child_digests) + int(omitted is not None)
+            or raw["omitted_version_space_digest"]
+            != (None if omitted is None else omitted.version_space_digest)
+            or raw["omitted_gap_digest"] != omitted_gap_digest
+        ):
+            raise ObjectSceneAnchorPythonBridgeError(
+                "bridge ranked or omitted child commitments differ"
+            )
         result = cls(
             raw["source_digest"],
             raw["algorithm_digest"],
             raw["rank_response_digest"],
             raw["rank_input_digest"],
-            (child_digests[0], child_digests[1]),
-            (child_orientations[0], child_orientations[1]),
+            child_digests,
+            child_orientations,
+            omitted,
             raw["selected_origin_version_space_digest"],
             _orientation(raw["selected_origin_orientation"]),
             raw["selected_candidate_digest"],
@@ -353,42 +448,70 @@ class ObjectSceneAnchorPythonBridgeArtifact:
         return result
 
 
-def _exact_children(
+def _exact_supplied_spaces(
     first: ObjectSceneAnchorSupportVersionSpace,
-    second: ObjectSceneAnchorSupportVersionSpace,
+    second: ObjectSceneAnchorSupportVersionSpace | None,
 ) -> tuple[
-    ObjectSceneAnchorSupportVersionSpace,
-    ObjectSceneAnchorSupportVersionSpace,
+    tuple[ObjectSceneAnchorSupportVersionSpace, ...],
+    tuple[ObjectSceneAnchorSupportVersionSpace, ...],
+    ObjectSceneAnchorSupportVersionSpace | None,
 ]:
-    if type(first) is not ObjectSceneAnchorSupportVersionSpace or type(
-        second
-    ) is not ObjectSceneAnchorSupportVersionSpace:
+    if type(first) is not ObjectSceneAnchorSupportVersionSpace or (
+        second is not None
+        and type(second) is not ObjectSceneAnchorSupportVersionSpace
+    ):
         raise TypeError("bridge child spaces must be exact support version spaces")
-    children = tuple(
+    supplied = tuple(
         sorted(
             (
-                ObjectSceneAnchorSupportVersionSpace.from_data(first.to_data()),
-                ObjectSceneAnchorSupportVersionSpace.from_data(second.to_data()),
+                ObjectSceneAnchorSupportVersionSpace.from_data(item.to_data())
+                for item in (first, second)
+                if item is not None
             ),
             key=lambda item: item.version_space_digest,
         )
     )
-    return children[0], children[1]
+    if (
+        len({item.version_space_digest for item in supplied}) != len(supplied)
+        or (
+            len(supplied) == 2
+            and len({item.orientation for item in supplied}) != 2
+        )
+        or len({item.language.language_digest for item in supplied}) != 1
+        or any(item.language != supplied[0].language for item in supplied[1:])
+    ):
+        raise ObjectSceneAnchorPythonBridgeError(
+            "bridge child spaces do not form one exact rank union"
+        )
+    ranked = tuple(item for item in supplied if item.survivor_candidate_digests)
+    omitted = tuple(item for item in supplied if not item.survivor_candidate_digests)
+    if (
+        not ranked
+        or len(omitted) > 1
+        or (omitted and (len(ranked) != 1 or omitted[0].gap is None))
+    ):
+        raise ObjectSceneAnchorPythonBridgeError(
+            "bridge child spaces do not contain one or two rankable survivor sets"
+        )
+    return supplied, ranked, None if not omitted else omitted[0]
 
 
 def freeze_object_scene_anchor_python_bridge(
     response: ObjectSceneAnchorRankResponse | None,
     first_version_space: ObjectSceneAnchorSupportVersionSpace,
-    second_version_space: ObjectSceneAnchorSupportVersionSpace,
+    second_version_space: ObjectSceneAnchorSupportVersionSpace | None = None,
     *,
     expected_response_digest: str,
     expected_rank_input_digest: str,
 ) -> ObjectSceneAnchorPythonBridgeArtifact:
-    """Resolve one exact union response and freeze its selected Python predicate."""
+    """Resolve an exact rank response and freeze its selected Python predicate."""
 
+    _supplied, children, omitted = _exact_supplied_spaces(
+        first_version_space, second_version_space
+    )
     try:
         rank_input = freeze_object_scene_anchor_rank_input(
-            first_version_space, second_version_space
+            children[0], None if len(children) == 1 else children[1]
         )
     except ObjectSceneAnchorRankCapacityGap:
         raise
@@ -426,9 +549,8 @@ def freeze_object_scene_anchor_python_bridge(
         != rank_input.child_orientations
     ):
         raise ObjectSceneAnchorPythonBridgeError(
-            "rank response differs from both exact child spaces"
+            "rank response differs from the exact ranked child spaces"
         )
-    children = _exact_children(first_version_space, second_version_space)
     by_origin = {
         (item.version_space_digest, item.orientation.value): item
         for item in children
@@ -467,6 +589,7 @@ def freeze_object_scene_anchor_python_bridge(
         "child_orientations": tuple(
             ObjectSceneAnchorOrientation(item) for item in rank_input.child_orientations
         ),
+        "omitted_version_space": omitted,
         "selected_origin_version_space_digest": selected_version.version_space_digest,
         "selected_origin_orientation": selected_version.orientation,
         "selected_candidate_digest": restored.selected_candidate_digest,
@@ -486,12 +609,12 @@ def cold_verify_object_scene_anchor_python_bridge(
     *,
     response: ObjectSceneAnchorRankResponse | None,
     first_version_space: ObjectSceneAnchorSupportVersionSpace,
-    second_version_space: ObjectSceneAnchorSupportVersionSpace,
+    second_version_space: ObjectSceneAnchorSupportVersionSpace | None = None,
     expected_bridge_digest: str,
     expected_response_digest: str,
     expected_rank_input_digest: str,
 ) -> ObjectSceneAnchorPythonBridgeArtifact:
-    """Rebuild the bridge from the rank response and both child spaces."""
+    """Rebuild the bridge from the response and every supplied child space."""
 
     if type(artifact) is not ObjectSceneAnchorPythonBridgeArtifact:
         raise TypeError("artifact must be exact ObjectSceneAnchorPythonBridgeArtifact")
@@ -511,11 +634,14 @@ def cold_verify_object_scene_anchor_python_bridge(
     )
     if restored != expected:
         raise ObjectSceneAnchorPythonBridgeError("bridge differs from cold replay")
+    _supplied, ranked, _omitted = _exact_supplied_spaces(
+        first_version_space, second_version_space
+    )
     cold_verify_object_scene_anchor_python_predicate(
         restored.predicate,
         version_space=next(
             item
-            for item in _exact_children(first_version_space, second_version_space)
+            for item in ranked
             if item.version_space_digest
             == restored.selected_origin_version_space_digest
         ),
