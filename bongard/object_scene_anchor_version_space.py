@@ -3,7 +3,7 @@
 Vision produces one side-label-free rectangular witness matrix: every frozen
 witness is judged on every eligible binding of every inventoried object.  This
 module alone introduces support roles.  It enumerates all positive atoms and
-all same-spec positive conjunctions of size two or three, requires an exact
+all same-spec positive conjunctions through size four, requires an exact
 cited binding on target panels, and uses an exhaustive all-object existential
 on contrast panels.
 
@@ -1235,7 +1235,7 @@ def _candidate_content(value: "ObjectSceneAnchorPredicateCandidate") -> dict[str
 
 @dataclass(frozen=True, slots=True)
 class ObjectSceneAnchorPredicateCandidate:
-    """One positive atom or sorted same-spec conjunction of up to three atoms."""
+    """One positive atom or sorted same-spec conjunction of up to four atoms."""
 
     algorithm_digest: str
     language_digest: str
