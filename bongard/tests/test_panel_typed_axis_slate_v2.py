@@ -446,6 +446,16 @@ def test_matrix_and_nomination_shape_fail_closed() -> None:
         )
     with pytest.raises(TypedAxisSlateError):
         TypedAxisCell.python_exact(Axis.COMPONENT_COUNT, True, PROTOCOL)
+    with pytest.raises(TypedAxisSlateError):
+        TypedAxisCell.python_exact(
+            Axis.TURNING_CONVEXITY, "concave_turning", PROTOCOL
+        )
+    assert (
+        TypedAxisCell.python_exact(
+            Axis.TURNING_CONVEXITY, "nonconvex_turning", PROTOCOL
+        ).possible_values
+        == ("nonconvex_turning",)
+    )
 
 
 def test_domains_source_and_algorithm_are_immutable_and_sealed() -> None:

@@ -36,19 +36,19 @@ PRIMARY_ROW_COUNT = 6
 CONTRAST_ROW_COUNT = 6
 SUPPORT_ROW_COUNT = PRIMARY_ROW_COUNT + CONTRAST_ROW_COUNT
 
-CELL_SCHEMA = "gkm.bongard-typed-axis-cell.v3"
-ROW_SCHEMA = "gkm.bongard-typed-axis-row.v3"
-MATRIX_SCHEMA = "gkm.bongard-typed-axis-support-matrix.v3"
-NOMINATION_SCHEMA = "gkm.bongard-typed-axis-nomination.v3"
-NOMINATION_SLATE_SCHEMA = "gkm.bongard-typed-axis-nomination-slate.v3"
-ATOM_SCHEMA = "gkm.bongard-typed-axis-equality-atom.v3"
-WITNESS_SCHEMA = "gkm.bongard-typed-axis-evidence-witness.v3"
-ROW_EVALUATION_SCHEMA = "gkm.bongard-typed-axis-formula-row-evaluation.v3"
-FORMULA_SCHEMA = "gkm.bongard-typed-axis-formula-evaluation.v3"
-EMPTY_GAP_SCHEMA = "gkm.bongard-typed-axis-empty-gap.v3"
-INVENTORY_SCHEMA = "gkm.bongard-typed-axis-inventory.v3"
-ALGORITHM_ID = "bongard.typed-axis/all-equalities-cross-axis-pairs-v3"
-ALGORITHM_SCHEMA = "gkm.bongard-typed-axis-algorithm.v3"
+CELL_SCHEMA = "gkm.bongard-typed-axis-cell.v4"
+ROW_SCHEMA = "gkm.bongard-typed-axis-row.v4"
+MATRIX_SCHEMA = "gkm.bongard-typed-axis-support-matrix.v4"
+NOMINATION_SCHEMA = "gkm.bongard-typed-axis-nomination.v4"
+NOMINATION_SLATE_SCHEMA = "gkm.bongard-typed-axis-nomination-slate.v4"
+ATOM_SCHEMA = "gkm.bongard-typed-axis-equality-atom.v4"
+WITNESS_SCHEMA = "gkm.bongard-typed-axis-evidence-witness.v4"
+ROW_EVALUATION_SCHEMA = "gkm.bongard-typed-axis-formula-row-evaluation.v4"
+FORMULA_SCHEMA = "gkm.bongard-typed-axis-formula-evaluation.v4"
+EMPTY_GAP_SCHEMA = "gkm.bongard-typed-axis-empty-gap.v4"
+INVENTORY_SCHEMA = "gkm.bongard-typed-axis-inventory.v4"
+ALGORITHM_ID = "bongard.typed-axis/all-equalities-cross-axis-pairs-v4"
+ALGORITHM_SCHEMA = "gkm.bongard-typed-axis-algorithm.v4"
 
 _ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _KEY = re.compile(r"[A-Za-z0-9][A-Za-z0-9_./:-]{0,255}\Z")
@@ -104,7 +104,7 @@ AXIS_DOMAINS: Mapping[Axis, tuple[AxisValue, ...]] = MappingProxyType({
     ),
     Axis.TURNING_CONVEXITY: (
         "convex_turning",
-        "concave_turning",
+        "nonconvex_turning",
         "mixed_turning",
         "not_applicable",
     ),
