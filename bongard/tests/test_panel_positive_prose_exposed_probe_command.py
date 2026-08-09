@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import inspect
+from io import BytesIO
 from pathlib import Path
 
 import pytest
+from PIL import Image, ImageDraw
 
 from bongard.evidence import Disposition
 from bongard.object_bongard_batch import ObjectBongardTaskPlan
@@ -12,9 +14,11 @@ from bongard.panel_positive_prose_exposed_probe_command import (
     _authorization,
     _component_conjunction_disposition,
     _cue,
+    _deterministic_ink_zoom,
     _interval,
     _load_componentwise_semantic_cue,
     _load_frozen_semantic_cue,
+    _load_ink_zoom_policy,
     _strict_component_observer_schema,
     run_positive_prose_exposed_probe,
 )
@@ -170,3 +174,61 @@ def test_componentwise_cue_scores_atoms_before_python_conjunction() -> None:
         )
         is Disposition.ERROR
     )
+
+
+def test_candidate_independent_ink_zoom_is_exact_and_binds_both_images() -> None:
+    policy_path = (
+        Path(__file__).parents[1]
+        / "data"
+        / "panel_positive_prose_ink_zoom_20260809_v1.json"
+    )
+    policy, policy_file_sha256 = _load_ink_zoom_policy(policy_path)
+    source = Image.new("RGB", (512, 512), "white")
+    ImageDraw.Draw(source).rectangle((230, 240, 270, 260), fill="black")
+    output = BytesIO()
+    source.save(output, format="PNG")
+    panel = output.getvalue()
+    view_1, result_1 = _deterministic_ink_zoom(panel, policy)
+    view_2, result_2 = _deterministic_ink_zoom(panel, policy)
+
+    assert view_1 == view_2
+    assert result_1 == result_2
+    assert result_1["ink_bbox"] == [230, 240, 271, 261]
+    assert result_1["source_png_sha256"] != result_1["observer_view_png_sha256"]
+    with Image.open(BytesIO(view_1)) as decoded:
+        assert decoded.size == (512, 512)
+        assert decoded.mode == "RGB"
+
+    cue_path = (
+        Path(__file__).parents[1]
+        / "data"
+        / "panel_positive_prose_componentwise_known_cue_20260809_v1.json"
+    )
+    cue, cue_file_sha256 = _load_componentwise_semantic_cue(cue_path)
+    task = ObjectBongardTaskPlan.create(
+        "hd_convex-has_four_straight_lines_0001",
+        seed_digest="sha256:" + "34" * 32,
+    )
+    ids = task.side_0_support_panel_ids + task.side_1_support_panel_ids
+    panels = (panel,) * 12
+    views = (view_1,) * 12
+    records = (result_1,) * 12
+    authorization, precommit = _authorization(
+        task,
+        ids,
+        panels,
+        "ab" * 32,
+        componentwise_cue_record=cue,
+        componentwise_cue_file_sha256=cue_file_sha256,
+        observer_panels=views,
+        ink_zoom_policy_record=policy,
+        ink_zoom_policy_file_sha256=policy_file_sha256,
+        ink_zoom_records=records,
+    )
+    assert authorization["candidate_independent_ink_zoom"] is True
+    assert authorization["support_png_sha256"][0] == result_1["source_png_sha256"]
+    assert (
+        authorization["observer_view_png_sha256"][0]
+        == result_1["observer_view_png_sha256"]
+    )
+    assert precommit["ink_zoom_policy_record_digest"] == policy["record_digest"]

@@ -20,11 +20,14 @@ _LOADED_SOURCE_SHA256 = capture_loaded_source(__name__, __file__)
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
+from io import BytesIO
 import json
 import os
 from pathlib import Path
 import re
 from typing import Any, Mapping, Sequence
+
+from PIL import Image
 
 from bongard.canonical import canonical_digest, canonical_json
 from bongard.evidence import Disposition
@@ -62,6 +65,7 @@ KNOWN_SEMANTIC_CUE_SCHEMA = (
 COMPONENTWISE_KNOWN_CUE_SCHEMA = (
     "gkm.bongard-positive-prose-componentwise-known-cue-preregistration.v1"
 )
+INK_ZOOM_POLICY_SCHEMA = "gkm.bongard-deterministic-ink-zoom-preregistration.v1"
 DEFAULT_OUTPUT_ROOT = Path(
     "downloads/ShapeBongard_V2_full/"
     "panel_positive_prose_exposed_probe_20260809_v2"
@@ -419,6 +423,138 @@ def _load_componentwise_semantic_cue(
     return value, hashlib.sha256(raw).hexdigest()
 
 
+def _load_ink_zoom_policy(path: str | Path) -> tuple[dict[str, Any], str]:
+    source = Path(os.path.abspath(os.fspath(path)))
+    if source.is_symlink() or not source.is_file():
+        raise PositiveProseExposedProbeError("ink zoom policy file is unsafe")
+    raw = source.read_bytes()
+    try:
+        value = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise PositiveProseExposedProbeError(
+            "ink zoom policy is not canonical JSON"
+        ) from exc
+    if type(value) is not dict or raw != canonical_json(value) + b"\n":
+        raise PositiveProseExposedProbeError(
+            "ink zoom policy bytes are not canonical"
+        )
+    body = dict(value)
+    digest = body.pop("record_digest", None)
+    if digest != "sha256:" + canonical_digest(body):
+        raise PositiveProseExposedProbeError("ink zoom policy digest differs")
+    expected = {
+        "schema": INK_ZOOM_POLICY_SCHEMA,
+        "algorithm_id": (
+            "gkm.bongard-deterministic-ink-square-zoom/python-pillow-v1"
+        ),
+        "accepted_input": {"format": "PNG", "width": 512, "height": 512},
+        "alpha_composite_background_rgb": [255, 255, 255],
+        "ink_mask": "minimum_rgb_channel_less_than_245",
+        "bounding_box_coordinates": (
+            "integer_left_top_inclusive_right_bottom_exclusive"
+        ),
+        "margin_pixels": "max(8,ceil(max(bbox_width,bbox_height)/8))",
+        "square_centering": (
+            "floor_divide_leftover_equally_with_extra_pixel_on_right_or_bottom"
+        ),
+        "out_of_source_padding_rgb": [255, 255, 255],
+        "resize": {
+            "width": 512,
+            "height": 512,
+            "resampler": "Pillow.Resampling.LANCZOS",
+        },
+        "output": {
+            "mode": "RGB",
+            "format": "PNG",
+            "compress_level": 9,
+            "optimize": False,
+            "metadata": "none",
+        },
+        "candidate_independent": True,
+        "same_transform_required_for_support_and_query": True,
+        "raw_and_transformed_png_digests_required": True,
+        "support_only_exposed_probe_authorized": True,
+        "query_pixels_authorized": False,
+        "target_support_or_query_pixels_authorized": False,
+        "engineering_only": True,
+        "scientific_benchmark": False,
+        "closed_slate_headless_selection_required_before_target": True,
+        "python_is_canonical_authority": True,
+        "lean_present": False,
+        "lean_required": False,
+        "lean_removable": True,
+    }
+    if any(value.get(name) != item for name, item in expected.items()):
+        raise PositiveProseExposedProbeError("ink zoom policy differs")
+    return value, hashlib.sha256(raw).hexdigest()
+
+
+def _deterministic_ink_zoom(
+    panel_png: bytes, policy: Mapping[str, Any]
+) -> tuple[bytes, dict[str, Any]]:
+    if policy.get("schema") != INK_ZOOM_POLICY_SCHEMA:
+        raise PositiveProseExposedProbeError("ink zoom policy schema differs")
+    try:
+        with Image.open(BytesIO(panel_png)) as decoded:
+            if decoded.format != "PNG" or decoded.size != (512, 512):
+                raise PositiveProseExposedProbeError(
+                    "ink zoom input is not an exact 512 by 512 PNG"
+                )
+            rgba = decoded.convert("RGBA")
+    except PositiveProseExposedProbeError:
+        raise
+    except Exception as exc:
+        raise PositiveProseExposedProbeError("ink zoom PNG decode failed") from exc
+    background = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
+    background.alpha_composite(rgba)
+    rgb = background.convert("RGB")
+    mask = Image.new("L", rgb.size, 0)
+    mask.putdata(
+        [255 if min(pixel) < 245 else 0 for pixel in tuple(rgb.getdata())]
+    )
+    bbox = mask.getbbox()
+    if bbox is None:
+        raise PositiveProseExposedProbeError("ink zoom found no visible ink")
+    width, height = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    margin = max(8, (max(width, height) + 7) // 8)
+    square_side = max(width, height) + 2 * margin
+    square_left = (bbox[0] + bbox[2] - square_side) // 2
+    square_top = (bbox[1] + bbox[3] - square_side) // 2
+    square_right = square_left + square_side
+    square_bottom = square_top + square_side
+    source_left, source_top = max(0, square_left), max(0, square_top)
+    source_right, source_bottom = min(512, square_right), min(512, square_bottom)
+    canvas = Image.new("RGB", (square_side, square_side), (255, 255, 255))
+    canvas.paste(
+        rgb.crop((source_left, source_top, source_right, source_bottom)),
+        (source_left - square_left, source_top - square_top),
+    )
+    transformed = canvas.resize((512, 512), Image.Resampling.LANCZOS)
+    output = BytesIO()
+    transformed.save(output, format="PNG", compress_level=9, optimize=False)
+    view_png = output.getvalue()
+    record = _record(
+        {
+            "schema": "gkm.bongard-deterministic-ink-zoom-result.v1",
+            "policy_record_digest": policy["record_digest"],
+            "source_png_sha256": hashlib.sha256(panel_png).hexdigest(),
+            "source_png_byte_count": len(panel_png),
+            "ink_bbox": list(bbox),
+            "margin_pixels": margin,
+            "square_source_bounds": [
+                square_left,
+                square_top,
+                square_right,
+                square_bottom,
+            ],
+            "observer_view_png_sha256": hashlib.sha256(view_png).hexdigest(),
+            "observer_view_png_byte_count": len(view_png),
+            "candidate_independent": True,
+        }
+    )
+    return view_png, record
+
+
 def _authorization(
     task,
     panel_ids,
@@ -429,6 +565,10 @@ def _authorization(
     frozen_cue_file_sha256: str | None = None,
     componentwise_cue_record: Mapping[str, Any] | None = None,
     componentwise_cue_file_sha256: str | None = None,
+    observer_panels: Sequence[bytes] | None = None,
+    ink_zoom_policy_record: Mapping[str, Any] | None = None,
+    ink_zoom_policy_file_sha256: str | None = None,
+    ink_zoom_records: Sequence[Mapping[str, Any]] | None = None,
 ):
     scalar_frozen = frozen_cue_record is not None
     componentwise = componentwise_cue_record is not None
@@ -441,6 +581,15 @@ def _authorization(
             "componentwise cue custody is incomplete"
         )
     frozen = scalar_frozen or componentwise
+    zoomed = ink_zoom_policy_record is not None
+    if zoomed != (ink_zoom_policy_file_sha256 is not None):
+        raise PositiveProseExposedProbeError("ink zoom policy custody is incomplete")
+    if zoomed != (ink_zoom_records is not None):
+        raise PositiveProseExposedProbeError("ink zoom result custody is incomplete")
+    if observer_panels is None:
+        observer_panels = panels
+    if len(observer_panels) != len(panels):
+        raise PositiveProseExposedProbeError("observer panel count differs")
     content: dict[str, Any] = {
             "schema": AUTHORIZATION_SCHEMA,
             "command_source_digest": positive_prose_exposed_probe_source_digest(),
@@ -469,6 +618,7 @@ def _authorization(
             "semantic_reuse": frozen,
             "closed_slate_headless_selection_required_before_target": frozen,
             "componentwise_python_conjunction": componentwise,
+            "candidate_independent_ink_zoom": zoomed,
         }
     if componentwise:
         content.update(
@@ -493,6 +643,21 @@ def _authorization(
                     _proposer_prompt().encode("utf-8")
                 ).hexdigest(),
                 "proposer_schema_digest": canonical_digest(_strict_proposer_schema()),
+            }
+        )
+    if zoomed:
+        if len(ink_zoom_records) != len(panels):
+            raise PositiveProseExposedProbeError("ink zoom record count differs")
+        content.update(
+            {
+                "ink_zoom_policy_record_digest": ink_zoom_policy_record[
+                    "record_digest"
+                ],
+                "ink_zoom_policy_file_sha256": ink_zoom_policy_file_sha256,
+                "observer_view_png_sha256": [
+                    hashlib.sha256(item).hexdigest() for item in observer_panels
+                ],
+                "ink_zoom_records": [dict(item) for item in ink_zoom_records],
             }
         )
     authorization = _record(content)
@@ -524,6 +689,10 @@ def _authorization(
             "negation_or_polarity_flip_allowed": False,
             "cue_origin": content["cue_origin"],
             "known_semantic_cue_cannot_authorize_target": frozen,
+            "candidate_independent_ink_zoom": zoomed,
+            "ink_zoom_policy_record_digest": (
+                ink_zoom_policy_record["record_digest"] if zoomed else None
+            ),
         }
     )
     return authorization, precommit
@@ -558,7 +727,17 @@ def _call(
 
 
 def _observe_one(
-    *, ordinal, task, panel, cue, root, authorization_digest, precommit_digest, runtime
+    *,
+    ordinal,
+    task,
+    panel,
+    cue,
+    root,
+    authorization_digest,
+    precommit_digest,
+    runtime,
+    source_panel=None,
+    ink_zoom_record=None,
 ):
     componentwise = cue.get("componentwise_python_conjunction") is True
     prompt = (
@@ -592,6 +771,11 @@ def _observe_one(
             "schema": OBSERVATION_SCHEMA,
             "ordinal": ordinal,
             "panel_png_sha256": hashlib.sha256(panel).hexdigest(),
+            "source_panel_png_sha256": hashlib.sha256(
+                panel if source_panel is None else source_panel
+            ).hexdigest(),
+            "observer_view_png_sha256": hashlib.sha256(panel).hexdigest(),
+            "ink_zoom_record": ink_zoom_record,
             "cue_digest": cue["record_digest"],
             "receipt_digest": receipt.receipt_digest,
             "threshold_chosen_by_python": True,
@@ -653,6 +837,7 @@ def run_positive_prose_exposed_probe(
     verbose: bool = False,
     frozen_cue_file: str | Path | None = None,
     componentwise_cue_file: str | Path | None = None,
+    ink_zoom_policy_file: str | Path | None = None,
 ) -> dict[str, Any]:
     if type(workers) is not int or not 1 <= workers <= 12:
         raise PositiveProseExposedProbeError("workers must lie in 1..12")
@@ -664,6 +849,10 @@ def run_positive_prose_exposed_probe(
     task, panel_ids, panels, source_digest = _read_source(source)
     if frozen_cue_file is not None and componentwise_cue_file is not None:
         raise PositiveProseExposedProbeError("multiple cue files supplied")
+    if ink_zoom_policy_file is not None and componentwise_cue_file is None:
+        raise PositiveProseExposedProbeError(
+            "ink zoom probe requires the componentwise cue"
+        )
     frozen_cue_record = None
     frozen_cue_file_sha256 = None
     componentwise_cue_record = None
@@ -676,6 +865,20 @@ def run_positive_prose_exposed_probe(
         componentwise_cue_record, componentwise_cue_file_sha256 = (
             _load_componentwise_semantic_cue(componentwise_cue_file)
         )
+    observer_panels = panels
+    ink_zoom_policy_record = None
+    ink_zoom_policy_file_sha256 = None
+    ink_zoom_records = None
+    if ink_zoom_policy_file is not None:
+        ink_zoom_policy_record, ink_zoom_policy_file_sha256 = (
+            _load_ink_zoom_policy(ink_zoom_policy_file)
+        )
+        transformed = tuple(
+            _deterministic_ink_zoom(panel, ink_zoom_policy_record)
+            for panel in panels
+        )
+        observer_panels = tuple(item[0] for item in transformed)
+        ink_zoom_records = tuple(item[1] for item in transformed)
     authorization, precommit = _authorization(
         task,
         panel_ids,
@@ -685,6 +888,10 @@ def run_positive_prose_exposed_probe(
         frozen_cue_file_sha256=frozen_cue_file_sha256,
         componentwise_cue_record=componentwise_cue_record,
         componentwise_cue_file_sha256=componentwise_cue_file_sha256,
+        observer_panels=observer_panels,
+        ink_zoom_policy_record=ink_zoom_policy_record,
+        ink_zoom_policy_file_sha256=ink_zoom_policy_file_sha256,
+        ink_zoom_records=ink_zoom_records,
     )
     _write_once_or_verify(root / "authorization.json", authorization)
     _write_once_or_verify(root / "execution_precommit.json", precommit)
@@ -803,8 +1010,12 @@ def run_positive_prose_exposed_probe(
                 authorization_digest=authorization["record_digest"],
                 precommit_digest=precommit["record_digest"],
                 runtime=runtime,
+                source_panel=panels[index],
+                ink_zoom_record=(
+                    None if ink_zoom_records is None else ink_zoom_records[index]
+                ),
             )
-            for index, panel in enumerate(panels)
+            for index, panel in enumerate(observer_panels)
         ]
         for future in as_completed(futures):
             index, observation, summary = future.result()
@@ -857,6 +1068,12 @@ def run_positive_prose_exposed_probe(
             "componentwise_python_conjunction": authorization[
                 "componentwise_python_conjunction"
             ],
+            "candidate_independent_ink_zoom": authorization[
+                "candidate_independent_ink_zoom"
+            ],
+            "ink_zoom_policy_record_digest": authorization.get(
+                "ink_zoom_policy_record_digest"
+            ),
             "python_is_canonical_authority": True,
             "lean_present": False,
             "lean_required": False,
@@ -880,6 +1097,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--frozen-cue-file")
     parser.add_argument("--componentwise-cue-file")
+    parser.add_argument("--ink-zoom-policy-file")
     args = parser.parse_args(argv)
     result = run_positive_prose_exposed_probe(
         source_archive=args.source_archive,
@@ -893,6 +1111,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         verbose=args.verbose,
         frozen_cue_file=args.frozen_cue_file,
         componentwise_cue_file=args.componentwise_cue_file,
+        ink_zoom_policy_file=args.ink_zoom_policy_file,
     )
     print(result["record_digest"])
     return 0
