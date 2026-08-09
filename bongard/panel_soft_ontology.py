@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from functools import cache
 from itertools import combinations, permutations
 import re
 from types import MappingProxyType
@@ -1031,6 +1032,7 @@ def feature_catalog_data() -> dict[str, object]:
     }
 
 
+@cache
 def feature_catalog_digest() -> str:
     return canonical_digest(feature_catalog_data())
 

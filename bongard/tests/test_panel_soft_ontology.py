@@ -288,6 +288,22 @@ def test_grid16_exact_types_and_nested_roundtrip() -> None:
         o.OwnerInventory.from_data(injected)
 
 
+def test_feature_catalog_digest_is_one_cached_object_independent_identity() -> None:
+    o.feature_catalog_digest.cache_clear()
+    first = o.feature_catalog_digest()
+    after_first = o.feature_catalog_digest.cache_info()
+    assert after_first.misses == 1
+
+    component = _first_spec(o.FeatureFamily.COMPONENT_COUNT)
+    gestalt = _first_spec(o.FeatureFamily.GESTALT_RESEMBLANCE)
+    assert component.to_data()["catalog_digest"] == first
+    assert gestalt.to_data()["catalog_digest"] == first
+    assert o.feature_catalog_digest() is first
+    after_objects = o.feature_catalog_digest.cache_info()
+    assert after_objects.misses == 1
+    assert after_objects.hits >= 3
+
+
 def test_inventory_is_candidate_independent_and_bindings_are_typed() -> None:
     inventory = _inventory()
     before = inventory.inventory_digest
