@@ -1,6 +1,8 @@
 """Finite Python predicates over the typed whole-panel feature ontology.
 
-The scientific lane consumes only calibrated :class:`Disposition` values.
+The scientific lane consumes only evidence-bound projection records created
+through the ontology's sealed calibration and custody verifiers; callers
+cannot submit naked :class:`Disposition` values.
 The engineering lane is deliberately separate: its enum and artifacts are
 marked uncalibrated and cannot be passed to scientific constructors.  Both
 lanes share only a closed positive ``AllOf`` language over typed feature
@@ -14,7 +16,7 @@ from bongard.runtime_source_snapshot import capture_loaded_source, verify_loaded
 
 _LOADED_SOURCE_SHA256 = capture_loaded_source(__name__, __file__)
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from itertools import combinations
 import re
@@ -23,16 +25,24 @@ from typing import Any, Mapping, NoReturn, Sequence
 from bongard.canonical import canonical_digest
 from bongard.evidence import Disposition
 from bongard.panel_soft_ontology import (
+    CalibrationCapability,
+    FeatureCalibrationAuthority,
     NativeOrientation,
     PanelFeatureSpec,
+    RawFeatureMeasurement,
+    RawMeasurementState,
     feature_catalog_digest,
+    project_raw_measurement,
 )
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 
 FEATURE_VOCABULARY_SCHEMA = "gkm.bongard-feature-vocabulary.v1"
-FEATURE_SUPPORT_CELL_SCHEMA = "gkm.bongard-feature-support-cell.v1"
-FEATURE_SUPPORT_TABLE_SCHEMA = "gkm.bongard-feature-support-table.v1"
+SCIENTIFIC_PROJECTION_RECORD_SCHEMA = (
+    "gkm.bongard-verified-scientific-feature-projection.v1"
+)
+FEATURE_SUPPORT_CELL_SCHEMA = "gkm.bongard-feature-support-cell.v2"
+FEATURE_SUPPORT_TABLE_SCHEMA = "gkm.bongard-feature-support-table.v2"
 ENGINEERING_SUPPORT_CELL_SCHEMA = "gkm.bongard-engineering-feature-support-cell.v1"
 ENGINEERING_SUPPORT_TABLE_SCHEMA = "gkm.bongard-engineering-feature-support-table.v1"
 ALL_OF_SCHEMA = "gkm.bongard-feature-all-of.v1"
@@ -199,6 +209,360 @@ def _vocabulary_content(value: "FeatureVocabulary") -> dict[str, object]:
     }
 
 
+_SCIENTIFIC_PROJECTION_SEAL = object()
+_TERMINAL_MEASUREMENT_STATES = {
+    RawMeasurementState.WITNESS_ASSERTED,
+    RawMeasurementState.EXHAUSTIVE_SEARCH_NEGATIVE,
+}
+
+
+def _projection_custody_data(
+    value: "ScientificFeatureProjectionRecord",
+) -> dict[str, object] | None:
+    if value.custody_measurement_digest is None:
+        return None
+    return {
+        "measurement_digest": value.custody_measurement_digest,
+        "inventory_digest": value.custody_inventory_digest,
+        "enumeration_receipt_digest": value.custody_enumeration_receipt_digest,
+        "evidence_receipt_digest": value.custody_evidence_receipt_digest,
+        "verifier_receipt_digest": value.custody_verifier_receipt_digest,
+    }
+
+
+def _scientific_projection_content(
+    value: "ScientificFeatureProjectionRecord",
+) -> dict[str, object]:
+    return {
+        "schema": SCIENTIFIC_PROJECTION_RECORD_SCHEMA,
+        "feature_catalog_digest": feature_catalog_digest(),
+        "panel_digest": value.panel_digest,
+        "spec": value.spec.to_data(),
+        "raw_measurement": value.raw_measurement.to_data(),
+        "calibration_authority": value.calibration_authority.to_data(),
+        "capability": value.capability.value,
+        "authority_digest": value.authority_digest,
+        "grant_digest": value.grant_digest,
+        "trusted_root_digest": value.trusted_root_digest,
+        "authority_verifier_receipt_digest": (
+            value.authority_verifier_receipt_digest
+        ),
+        "campaign_time_unix": value.campaign_time_unix,
+        "custody_verification": _projection_custody_data(value),
+        "projection_function": (
+            "bongard.panel_soft_ontology.project_raw_measurement-v1"
+        ),
+        "projection_receipt_digest": value.projection_receipt_digest,
+        "projected_disposition": value.disposition.value,
+        **_authority_data(),
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class ScientificFeatureProjectionRecord(_NoBool):
+    """Evidence-bound result of the ontology's sealed scientific projector.
+
+    The private seal is a process-bound protocol guard.  Cold decoding must
+    call :meth:`from_data_verified` with freshly verified ontology tokens;
+    serialized pins are never accepted as their own trust anchor.
+    """
+
+    panel_digest: str
+    spec: PanelFeatureSpec
+    raw_measurement: RawFeatureMeasurement
+    calibration_authority: FeatureCalibrationAuthority
+    capability: CalibrationCapability
+    authority_digest: str
+    grant_digest: str
+    trusted_root_digest: str
+    authority_verifier_receipt_digest: str
+    campaign_time_unix: int
+    custody_measurement_digest: str | None
+    custody_inventory_digest: str | None
+    custody_enumeration_receipt_digest: str | None
+    custody_evidence_receipt_digest: str | None
+    custody_verifier_receipt_digest: str | None
+    projection_receipt_digest: str
+    disposition: Disposition
+    projection_record_digest: str
+    _construction_seal: object = field(repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self._construction_seal is not _SCIENTIFIC_PROJECTION_SEAL:
+            raise PanelFeaturePredicateError(
+                "scientific projection records require verified ontology tokens"
+            )
+        _digest(self.panel_digest, "projection panel digest")
+        if type(self.spec) is not PanelFeatureSpec:
+            raise TypeError("scientific projection spec must be PanelFeatureSpec")
+        if type(self.raw_measurement) is not RawFeatureMeasurement:
+            raise TypeError("scientific projection requires RawFeatureMeasurement")
+        if type(self.calibration_authority) is not FeatureCalibrationAuthority:
+            raise TypeError(
+                "scientific projection requires FeatureCalibrationAuthority"
+            )
+        if type(self.capability) is not CalibrationCapability:
+            raise TypeError("scientific projection capability is not exact")
+        if type(self.disposition) is not Disposition:
+            raise TypeError("scientific projection result must be Disposition")
+        if (
+            self.raw_measurement.inventory.panel_digest != self.panel_digest
+            or self.raw_measurement.spec != self.spec
+        ):
+            raise PanelFeaturePredicateError(
+                "projection panel/spec differ from the raw measurement"
+            )
+        for label, item in (
+            ("projection authority digest", self.authority_digest),
+            ("projection grant digest", self.grant_digest),
+            ("projection trusted-root digest", self.trusted_root_digest),
+            (
+                "projection authority-verifier receipt",
+                self.authority_verifier_receipt_digest,
+            ),
+            ("projection receipt", self.projection_receipt_digest),
+        ):
+            _digest(item, label)
+        if type(self.campaign_time_unix) is not int or self.campaign_time_unix < 0:
+            raise PanelFeaturePredicateError(
+                "projection campaign time must be a non-negative exact int"
+            )
+        grant = (
+            self.calibration_authority.presence_grant
+            if self.capability is CalibrationCapability.PRESENCE
+            else self.calibration_authority.absence_grant
+        )
+        if (
+            self.calibration_authority.authority_digest != self.authority_digest
+            or self.calibration_authority.trust_root_digest
+            != self.trusted_root_digest
+            or grant is None
+            or grant.grant_digest != self.grant_digest
+        ):
+            raise PanelFeaturePredicateError(
+                "projection calibration authority/grant binding differs"
+            )
+        custody = (
+            self.custody_measurement_digest,
+            self.custody_inventory_digest,
+            self.custody_enumeration_receipt_digest,
+            self.custody_evidence_receipt_digest,
+            self.custody_verifier_receipt_digest,
+        )
+        if any(item is None for item in custody) and any(
+            item is not None for item in custody
+        ):
+            raise PanelFeaturePredicateError(
+                "projection custody binding must be wholly present or absent"
+            )
+        if self.raw_measurement.state in _TERMINAL_MEASUREMENT_STATES:
+            if any(item is None for item in custody):
+                raise PanelFeaturePredicateError(
+                    "terminal scientific measurements require verified custody"
+                )
+            for label, item in zip(
+                (
+                    "custody measurement digest",
+                    "custody inventory digest",
+                    "custody enumeration receipt",
+                    "custody evidence receipt",
+                    "custody verifier receipt",
+                ),
+                custody,
+                strict=True,
+            ):
+                _digest(item, label)
+            if (
+                self.custody_measurement_digest
+                != self.raw_measurement.measurement_digest
+                or self.custody_inventory_digest
+                != self.raw_measurement.inventory.inventory_digest
+                or self.custody_enumeration_receipt_digest
+                != self.raw_measurement.inventory.enumeration_receipt_digest
+            ):
+                raise PanelFeaturePredicateError(
+                    "projection custody does not bind the raw measurement"
+                )
+        elif any(item is not None for item in custody):
+            raise PanelFeaturePredicateError(
+                "nonterminal scientific measurements cannot claim evidence custody"
+            )
+        _digest(self.projection_record_digest, "scientific projection-record digest")
+        if self.projection_record_digest != canonical_digest(
+            _scientific_projection_content(self)
+        ):
+            raise PanelFeaturePredicateError(
+                "scientific projection-record digest differs"
+            )
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        panel_digest: str,
+        spec: PanelFeatureSpec,
+        raw_measurement: RawFeatureMeasurement,
+        verified_authority: object,
+        verified_custody: object | None,
+        projection_receipt_digest: str,
+    ) -> "ScientificFeatureProjectionRecord":
+        if type(spec) is not PanelFeatureSpec or type(raw_measurement) is not RawFeatureMeasurement:
+            raise TypeError(
+                "scientific projection creation requires typed spec and raw measurement"
+            )
+        panel = _digest(panel_digest, "projection panel digest")
+        receipt = _digest(projection_receipt_digest, "projection receipt")
+        if (
+            raw_measurement.inventory.panel_digest != panel
+            or raw_measurement.spec != spec
+        ):
+            raise PanelFeaturePredicateError(
+                "projection panel/spec differ from the raw measurement"
+            )
+        terminal = raw_measurement.state in _TERMINAL_MEASUREMENT_STATES
+        if terminal != (verified_custody is not None):
+            raise PanelFeaturePredicateError(
+                "terminal measurements require custody and nonterminal measurements forbid it"
+            )
+        disposition = project_raw_measurement(
+            raw_measurement, verified_authority, verified_custody
+        )
+        authority = verified_authority.authority
+        capability = verified_authority.capability
+        if (
+            raw_measurement.state is RawMeasurementState.WITNESS_ASSERTED
+            and capability is not CalibrationCapability.PRESENCE
+        ) or (
+            raw_measurement.state
+            is RawMeasurementState.EXHAUSTIVE_SEARCH_NEGATIVE
+            and capability is not CalibrationCapability.ABSENCE
+        ):
+            raise PanelFeaturePredicateError(
+                "terminal measurement and calibration capability differ"
+            )
+        custody = (
+            (None, None, None, None, None)
+            if verified_custody is None
+            else (
+                verified_custody.measurement_digest,
+                verified_custody.inventory_digest,
+                verified_custody.enumeration_receipt_digest,
+                verified_custody.evidence_receipt_digest,
+                verified_custody.verifier_receipt_digest,
+            )
+        )
+        values = {
+            "panel_digest": panel,
+            "spec": spec,
+            "raw_measurement": raw_measurement,
+            "calibration_authority": authority,
+            "capability": capability,
+            "authority_digest": verified_authority.authority_digest,
+            "grant_digest": verified_authority.grant_digest,
+            "trusted_root_digest": verified_authority.trust_root_digest,
+            "authority_verifier_receipt_digest": (
+                verified_authority.verifier_receipt_digest
+            ),
+            "campaign_time_unix": verified_authority.campaign_time_unix,
+            "custody_measurement_digest": custody[0],
+            "custody_inventory_digest": custody[1],
+            "custody_enumeration_receipt_digest": custody[2],
+            "custody_evidence_receipt_digest": custody[3],
+            "custody_verifier_receipt_digest": custody[4],
+            "projection_receipt_digest": receipt,
+            "disposition": disposition,
+        }
+        provisional = object.__new__(cls)
+        for name, item in values.items():
+            object.__setattr__(provisional, name, item)
+        return cls(
+            **values,
+            projection_record_digest=canonical_digest(
+                _scientific_projection_content(provisional)
+            ),
+            _construction_seal=_SCIENTIFIC_PROJECTION_SEAL,
+        )
+
+    def to_data(self) -> dict[str, object]:
+        return {
+            **_scientific_projection_content(self),
+            "projection_record_digest": self.projection_record_digest,
+        }
+
+    @classmethod
+    def from_data_verified(
+        cls,
+        value: object,
+        *,
+        verified_authority: object,
+        verified_custody: object | None,
+    ) -> "ScientificFeatureProjectionRecord":
+        raw = _fields(
+            value,
+            {
+                "schema",
+                "feature_catalog_digest",
+                "panel_digest",
+                "spec",
+                "raw_measurement",
+                "calibration_authority",
+                "capability",
+                "authority_digest",
+                "grant_digest",
+                "trusted_root_digest",
+                "authority_verifier_receipt_digest",
+                "campaign_time_unix",
+                "custody_verification",
+                "projection_function",
+                "projection_receipt_digest",
+                "projected_disposition",
+                *_authority_data(),
+                "projection_record_digest",
+            },
+            "verified scientific projection",
+        )
+        if (
+            raw["schema"] != SCIENTIFIC_PROJECTION_RECORD_SCHEMA
+            or raw["feature_catalog_digest"] != feature_catalog_digest()
+            or raw["projection_function"]
+            != "bongard.panel_soft_ontology.project_raw_measurement-v1"
+            or any(raw[key] != item for key, item in _authority_data().items())
+        ):
+            raise PanelFeaturePredicateError(
+                "verified scientific projection policy differs"
+            )
+        try:
+            spec = PanelFeatureSpec.from_data(raw["spec"])
+            measurement = RawFeatureMeasurement.from_data(raw["raw_measurement"])
+            embedded_authority = FeatureCalibrationAuthority.from_data(
+                raw["calibration_authority"]
+            )
+            capability = CalibrationCapability(raw["capability"])
+            disposition = Disposition(raw["projected_disposition"])
+        except (TypeError, ValueError) as exc:
+            raise PanelFeaturePredicateError(
+                "verified scientific projection value differs"
+            ) from exc
+        result = cls.create(
+            panel_digest=raw["panel_digest"],
+            spec=spec,
+            raw_measurement=measurement,
+            verified_authority=verified_authority,
+            verified_custody=verified_custody,
+            projection_receipt_digest=raw["projection_receipt_digest"],
+        )
+        if (
+            embedded_authority != result.calibration_authority
+            or capability is not result.capability
+            or disposition is not result.disposition
+            or result.to_data() != dict(raw)
+        ):
+            raise PanelFeaturePredicateError(
+                "verified scientific projection replay differs"
+            )
+        return result
+
+
 def _deduplicate_specs(specs: Sequence[PanelFeatureSpec]) -> tuple[PanelFeatureSpec, ...]:
     by_digest: dict[str, PanelFeatureSpec] = {}
     for spec in specs:
@@ -318,7 +682,8 @@ def _scientific_cell_content(value: "FeatureSupportCell") -> dict[str, object]:
         "panel_digest": value.panel_digest,
         "spec_digest": value.spec_digest,
         "disposition": value.disposition.value,
-        "semantics": "scientific-disposition",
+        "projection": value.projection.to_data(),
+        "semantics": "verified-scientific-projection",
         **_authority_data(),
     }
 
@@ -327,24 +692,46 @@ def _scientific_cell_content(value: "FeatureSupportCell") -> dict[str, object]:
 class FeatureSupportCell(_NoBool):
     panel_digest: str
     spec_digest: str
-    disposition: Disposition
+    projection: ScientificFeatureProjectionRecord
     cell_digest: str
 
     def __post_init__(self) -> None:
         _digest(self.panel_digest, "support panel digest")
         _digest(self.spec_digest, "support spec digest")
-        if type(self.disposition) is not Disposition:
-            raise TypeError("scientific support requires exact Disposition values")
+        if type(self.projection) is not ScientificFeatureProjectionRecord:
+            raise TypeError(
+                "scientific support requires a verified projection record"
+            )
+        if (
+            self.projection.panel_digest != self.panel_digest
+            or self.projection.spec.spec_digest != self.spec_digest
+        ):
+            raise PanelFeaturePredicateError(
+                "scientific support cell and projection panel/spec differ"
+            )
         _digest(self.cell_digest, "support cell digest")
         if self.cell_digest != canonical_digest(_scientific_cell_content(self)):
             raise PanelFeaturePredicateError("support cell digest differs")
 
+    @property
+    def disposition(self) -> Disposition:
+        return self.projection.disposition
+
     @classmethod
-    def create(cls, panel_digest: str, spec_digest: str, disposition: Disposition) -> "FeatureSupportCell":
+    def create(
+        cls,
+        panel_digest: str,
+        spec_digest: str,
+        projection: ScientificFeatureProjectionRecord,
+    ) -> "FeatureSupportCell":
+        if type(projection) is not ScientificFeatureProjectionRecord:
+            raise TypeError(
+                "scientific support requires a verified projection record"
+            )
         values = {
             "panel_digest": _digest(panel_digest, "support panel digest"),
             "spec_digest": _digest(spec_digest, "support spec digest"),
-            "disposition": disposition,
+            "projection": projection,
         }
         provisional = object.__new__(cls)
         for name, item in values.items():
@@ -355,21 +742,60 @@ class FeatureSupportCell(_NoBool):
         return {**_scientific_cell_content(self), "cell_digest": self.cell_digest}
 
     @classmethod
-    def from_data(cls, value: object) -> "FeatureSupportCell":
+    def from_data(
+        cls,
+        value: object,
+        *,
+        verified_projection_records: Mapping[
+            str, ScientificFeatureProjectionRecord
+        ],
+    ) -> "FeatureSupportCell":
         raw = _fields(
             value,
-            {"schema", "panel_digest", "spec_digest", "disposition", "semantics", *_authority_data(), "cell_digest"},
+            {
+                "schema",
+                "panel_digest",
+                "spec_digest",
+                "disposition",
+                "projection",
+                "semantics",
+                *_authority_data(),
+                "cell_digest",
+            },
             "feature support cell",
         )
-        if raw["schema"] != FEATURE_SUPPORT_CELL_SCHEMA or raw["semantics"] != "scientific-disposition" or any(
+        if raw["schema"] != FEATURE_SUPPORT_CELL_SCHEMA or raw["semantics"] != "verified-scientific-projection" or any(
             raw[key] != item for key, item in _authority_data().items()
         ):
             raise PanelFeaturePredicateError("support cell policy differs")
+        if not isinstance(verified_projection_records, Mapping) or not isinstance(
+            raw["projection"], Mapping
+        ):
+            raise TypeError(
+                "scientific support decoding requires verified projection records"
+            )
+        record_digest = raw["projection"].get("projection_record_digest")
+        _digest(record_digest, "support projection-record digest")
         try:
-            state = Disposition(raw["disposition"])
-        except (TypeError, ValueError) as exc:
-            raise PanelFeaturePredicateError("support disposition is unknown") from exc
-        result = cls(raw["panel_digest"], raw["spec_digest"], state, raw["cell_digest"])
+            projection = verified_projection_records[record_digest]
+        except KeyError as exc:
+            raise PanelFeaturePredicateError(
+                "support projection record has not been externally reverified"
+            ) from exc
+        if (
+            type(projection) is not ScientificFeatureProjectionRecord
+            or projection.to_data() != dict(raw["projection"])
+            or raw["disposition"] != projection.disposition.value
+        ):
+            raise PanelFeaturePredicateError(
+                "support projection record or disposition differs"
+            )
+        result = cls(
+            raw["panel_digest"],
+            raw["spec_digest"],
+            projection,
+            raw["cell_digest"],
+        )
         if result.to_data() != dict(raw):
             raise PanelFeaturePredicateError("support cell is not canonical")
         return result
@@ -404,6 +830,10 @@ class EngineeringSupportCell(_NoBool):
 
     @classmethod
     def create(cls, panel_digest: str, spec_digest: str, disposition: EngineeringDisposition) -> "EngineeringSupportCell":
+        if type(disposition) is not EngineeringDisposition:
+            raise TypeError(
+                "engineering support requires exact EngineeringDisposition values"
+            )
         values = {
             "panel_digest": _digest(panel_digest, "engineering panel digest"),
             "spec_digest": _digest(spec_digest, "engineering spec digest"),
@@ -452,7 +882,8 @@ def _table_content(value: object, *, engineering: bool) -> dict[str, object]:
     if engineering:
         result.update(_engineering_data())
     else:
-        result["semantics"] = "scientific-disposition"
+        result["semantics"] = "verified-scientific-projection"
+        result["projection_records_required"] = True
     return result
 
 
@@ -486,8 +917,30 @@ def _make_cells(vocabulary: FeatureVocabulary, panels: tuple[str, ...], values: 
     expected = {(panel, spec.spec_digest) for panel in panels for spec in vocabulary.specs}
     if set(values) != expected or any(type(key) is not tuple or len(key) != 2 for key in values):
         raise PanelFeaturePredicateError("support values must exactly cover every panel/spec key")
-    factory = EngineeringSupportCell.create if engineering else FeatureSupportCell.create
-    return tuple(factory(panel, spec.spec_digest, values[(panel, spec.spec_digest)]) for panel in panels for spec in vocabulary.specs)
+    if engineering:
+        return tuple(
+            EngineeringSupportCell.create(
+                panel, spec.spec_digest, values[(panel, spec.spec_digest)]
+            )
+            for panel in panels
+            for spec in vocabulary.specs
+        )
+    cells = []
+    for panel in panels:
+        for spec in vocabulary.specs:
+            projection = values[(panel, spec.spec_digest)]
+            if type(projection) is not ScientificFeatureProjectionRecord:
+                raise TypeError(
+                    "scientific support values must be verified projection records"
+                )
+            if projection.spec != spec:
+                raise PanelFeaturePredicateError(
+                    "scientific projection spec differs from the vocabulary"
+                )
+            cells.append(
+                FeatureSupportCell.create(panel, spec.spec_digest, projection)
+            )
+    return tuple(cells)
 
 
 @dataclass(frozen=True, slots=True)
@@ -504,11 +957,18 @@ class FeatureSupportTable(_NoBool):
             raise PanelFeaturePredicateError("support table digest differs")
 
     @classmethod
-    def create(cls, vocabulary: FeatureVocabulary, panel_digests: Sequence[str], values: Mapping[tuple[str, str], Disposition]) -> "FeatureSupportTable":
+    def create(
+        cls,
+        vocabulary: FeatureVocabulary,
+        panel_digests: Sequence[str],
+        projections: Mapping[
+            tuple[str, str], ScientificFeatureProjectionRecord
+        ],
+    ) -> "FeatureSupportTable":
         if type(vocabulary) is not FeatureVocabulary:
             raise TypeError("support table vocabulary must be FeatureVocabulary")
         panels = tuple(sorted(panel_digests))
-        cells = _make_cells(vocabulary, panels, values, engineering=False)
+        cells = _make_cells(vocabulary, panels, projections, engineering=False)
         values_ = {"vocabulary": vocabulary, "panel_digests": panels, "cells": cells}
         provisional = object.__new__(cls)
         for name, item in values_.items():
@@ -526,11 +986,33 @@ class FeatureSupportTable(_NoBool):
         return {**_table_content(self, engineering=False), "table_digest": self.table_digest}
 
     @classmethod
-    def from_data(cls, value: object) -> "FeatureSupportTable":
-        raw = _fields(value, {"schema", "vocabulary", "panel_digests", "cells", "cell_order", "complete_panel_spec_matrix", "semantics", *_authority_data(), "table_digest"}, "feature support table")
-        if raw["schema"] != FEATURE_SUPPORT_TABLE_SCHEMA or raw["cell_order"] != "panel-digest-then-spec-digest" or raw["complete_panel_spec_matrix"] is not True or raw["semantics"] != "scientific-disposition" or any(raw[key] != item for key, item in _authority_data().items()) or type(raw["panel_digests"]) is not list or type(raw["cells"]) is not list:
+    def from_data(
+        cls,
+        value: object,
+        *,
+        verified_projection_records: Mapping[
+            str, ScientificFeatureProjectionRecord
+        ],
+    ) -> "FeatureSupportTable":
+        raw = _fields(value, {"schema", "vocabulary", "panel_digests", "cells", "cell_order", "complete_panel_spec_matrix", "semantics", "projection_records_required", *_authority_data(), "table_digest"}, "feature support table")
+        if raw["schema"] != FEATURE_SUPPORT_TABLE_SCHEMA or raw["cell_order"] != "panel-digest-then-spec-digest" or raw["complete_panel_spec_matrix"] is not True or raw["semantics"] != "verified-scientific-projection" or raw["projection_records_required"] is not True or any(raw[key] != item for key, item in _authority_data().items()) or type(raw["panel_digests"]) is not list or type(raw["cells"]) is not list:
             raise PanelFeaturePredicateError("feature support table policy differs")
-        result = cls(FeatureVocabulary.from_data(raw["vocabulary"]), tuple(raw["panel_digests"]), tuple(FeatureSupportCell.from_data(item) for item in raw["cells"]), raw["table_digest"])
+        if not isinstance(verified_projection_records, Mapping):
+            raise TypeError(
+                "scientific support decoding requires verified projection records"
+            )
+        result = cls(
+            FeatureVocabulary.from_data(raw["vocabulary"]),
+            tuple(raw["panel_digests"]),
+            tuple(
+                FeatureSupportCell.from_data(
+                    item,
+                    verified_projection_records=verified_projection_records,
+                )
+                for item in raw["cells"]
+            ),
+            raw["table_digest"],
+        )
         if result.to_data() != dict(raw):
             raise PanelFeaturePredicateError("feature support table is not canonical")
         return result
@@ -906,7 +1388,14 @@ class FeatureVersionSpace(_NoBool):
         return {**_version_content(self, engineering=False), "version_space_digest": self.version_space_digest}
 
     @classmethod
-    def from_data(cls, value: object) -> "FeatureVersionSpace":
+    def from_data(
+        cls,
+        value: object,
+        *,
+        verified_projection_records: Mapping[
+            str, ScientificFeatureProjectionRecord
+        ],
+    ) -> "FeatureVersionSpace":
         expected = {"schema", "algorithm_id", "algorithm_digest", "support_table", "native_orientation", "side0_panel_digests", "side1_panel_digests", "formulas", "rows", "survivor_formula_digests", "support_rule", "gap", "semantics", *_language_data(), *_authority_data(), "version_space_digest"}
         raw = _fields(value, expected, "feature version space")
         if raw["schema"] != FEATURE_VERSION_SPACE_SCHEMA or raw["algorithm_id"] != PANEL_FEATURE_ALGORITHM_ID or raw["algorithm_digest"] != panel_feature_predicate_algorithm_digest() or raw["support_rule"] != "positive-on-all-six-native-and-negative-on-all-six-contrast" or raw["semantics"] != "scientific-disposition" or any(raw[key] != item for key, item in {**_language_data(), **_authority_data()}.items()) or any(type(raw[name]) is not list for name in ("side0_panel_digests", "side1_panel_digests", "formulas", "rows", "survivor_formula_digests")):
@@ -916,7 +1405,22 @@ class FeatureVersionSpace(_NoBool):
             rows = tuple(tuple(Disposition(item) for item in row) for row in raw["rows"])
         except (TypeError, ValueError) as exc:
             raise PanelFeaturePredicateError("scientific version-space enum differs") from exc
-        result = cls(FeatureSupportTable.from_data(raw["support_table"]), orientation, tuple(raw["side0_panel_digests"]), tuple(raw["side1_panel_digests"]), tuple(AllOf.from_data(item) for item in raw["formulas"]), rows, tuple(raw["survivor_formula_digests"]), None if raw["gap"] is None else FeatureSupportGap.from_data(raw["gap"]), raw["version_space_digest"])
+        result = cls(
+            FeatureSupportTable.from_data(
+                raw["support_table"],
+                verified_projection_records=verified_projection_records,
+            ),
+            orientation,
+            tuple(raw["side0_panel_digests"]),
+            tuple(raw["side1_panel_digests"]),
+            tuple(AllOf.from_data(item) for item in raw["formulas"]),
+            rows,
+            tuple(raw["survivor_formula_digests"]),
+            None
+            if raw["gap"] is None
+            else FeatureSupportGap.from_data(raw["gap"]),
+            raw["version_space_digest"],
+        )
         if result.to_data() != dict(raw):
             raise PanelFeaturePredicateError("scientific version space is not canonical")
         return result
@@ -1031,11 +1535,25 @@ class FrozenFeaturePredicate(_NoBool):
         return {**_predicate_content(self, engineering=False), "predicate_digest": self.predicate_digest}
 
     @classmethod
-    def from_data(cls, value: object) -> "FrozenFeaturePredicate":
+    def from_data(
+        cls,
+        value: object,
+        *,
+        verified_projection_records: Mapping[
+            str, ScientificFeatureProjectionRecord
+        ],
+    ) -> "FrozenFeaturePredicate":
         raw = _fields(value, {"schema", "version_space", "selected_formula_digest", "selection_rule", *_language_data(), *_authority_data(), "predicate_digest"}, "frozen scientific predicate")
         if raw["schema"] != FROZEN_FEATURE_PREDICATE_SCHEMA or raw["selection_rule"] != "minimum-atom-count-then-formula-digest" or any(raw[key] != item for key, item in {**_language_data(), **_authority_data()}.items()):
             raise PanelFeaturePredicateError("frozen scientific predicate policy differs")
-        result = cls(FeatureVersionSpace.from_data(raw["version_space"]), raw["selected_formula_digest"], raw["predicate_digest"])
+        result = cls(
+            FeatureVersionSpace.from_data(
+                raw["version_space"],
+                verified_projection_records=verified_projection_records,
+            ),
+            raw["selected_formula_digest"],
+            raw["predicate_digest"],
+        )
         if result.to_data() != dict(raw):
             raise PanelFeaturePredicateError("frozen scientific predicate is not canonical")
         return result
@@ -1125,11 +1643,28 @@ class FrozenFeaturePredicatePair(_NoBool):
         return {**_pair_content(self, engineering=False), "pair_digest": self.pair_digest}
 
     @classmethod
-    def from_data(cls, value: object) -> "FrozenFeaturePredicatePair":
+    def from_data(
+        cls,
+        value: object,
+        *,
+        verified_projection_records: Mapping[
+            str, ScientificFeatureProjectionRecord
+        ],
+    ) -> "FrozenFeaturePredicatePair":
         raw = _fields(value, {"schema", "side0_predicate", "side1_predicate", "two_native_orientations_required", *_language_data(), *_authority_data(), "pair_digest"}, "scientific predicate pair")
         if raw["schema"] != FROZEN_FEATURE_PAIR_SCHEMA or raw["two_native_orientations_required"] is not True or any(raw[key] != item for key, item in {**_language_data(), **_authority_data()}.items()):
             raise PanelFeaturePredicateError("scientific predicate pair policy differs")
-        result = cls(FrozenFeaturePredicate.from_data(raw["side0_predicate"]), FrozenFeaturePredicate.from_data(raw["side1_predicate"]), raw["pair_digest"])
+        result = cls(
+            FrozenFeaturePredicate.from_data(
+                raw["side0_predicate"],
+                verified_projection_records=verified_projection_records,
+            ),
+            FrozenFeaturePredicate.from_data(
+                raw["side1_predicate"],
+                verified_projection_records=verified_projection_records,
+            ),
+            raw["pair_digest"],
+        )
         if result.to_data() != dict(raw):
             raise PanelFeaturePredicateError("scientific predicate pair is not canonical")
         return result
@@ -1241,12 +1776,33 @@ class FeatureQueryDecision(_NoBool):
         return {**_query_content(self, engineering=False), "decision_digest": self.decision_digest}
 
     @classmethod
-    def from_data(cls, value: object) -> "FeatureQueryDecision":
+    def from_data(
+        cls,
+        value: object,
+        *,
+        verified_projection_records: Mapping[
+            str, ScientificFeatureProjectionRecord
+        ],
+    ) -> "FeatureQueryDecision":
         raw = _fields(value, {"schema", "predicate_pair", "query_table", "panel_digest", "side0_disposition", "side1_disposition", "outcome", "decision_rule", "nonmatch_alone_predicts_opposite", "semantics", *_authority_data(), "decision_digest"}, "scientific query decision")
         if raw["schema"] != FEATURE_QUERY_DECISION_SCHEMA or raw["decision_rule"] != "native-positive-and-other-native-negative" or raw["nonmatch_alone_predicts_opposite"] is not False or raw["semantics"] != "scientific-disposition" or any(raw[key] != item for key, item in _authority_data().items()):
             raise PanelFeaturePredicateError("scientific query policy differs")
         try:
-            result = cls(FrozenFeaturePredicatePair.from_data(raw["predicate_pair"]), FeatureSupportTable.from_data(raw["query_table"]), raw["panel_digest"], Disposition(raw["side0_disposition"]), Disposition(raw["side1_disposition"]), FeatureQueryOutcome(raw["outcome"]), raw["decision_digest"])
+            result = cls(
+                FrozenFeaturePredicatePair.from_data(
+                    raw["predicate_pair"],
+                    verified_projection_records=verified_projection_records,
+                ),
+                FeatureSupportTable.from_data(
+                    raw["query_table"],
+                    verified_projection_records=verified_projection_records,
+                ),
+                raw["panel_digest"],
+                Disposition(raw["side0_disposition"]),
+                Disposition(raw["side1_disposition"]),
+                FeatureQueryOutcome(raw["outcome"]),
+                raw["decision_digest"],
+            )
         except (TypeError, ValueError) as exc:
             if isinstance(exc, PanelFeaturePredicateError):
                 raise
@@ -1335,6 +1891,7 @@ __all__ = (
     "PANEL_FEATURE_MAX_CONJUNCTION",
     "PANEL_FEATURE_SUPPORTS_PER_SIDE",
     "PanelFeaturePredicateError",
+    "ScientificFeatureProjectionRecord",
     "enumerate_all_of",
     "evaluate_all_of",
     "evaluate_engineering_all_of",
