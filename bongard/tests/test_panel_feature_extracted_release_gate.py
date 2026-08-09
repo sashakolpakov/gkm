@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 import hashlib
 import json
@@ -18,6 +19,19 @@ from bongard.object_bongard_release_gate import (
     persist_object_bongard_task_freeze,
 )
 from bongard.official_extracted_panel_archive import OfficialExtractedPanelArchive
+from bongard.panel_batched_typed_codex_observer import (
+    BatchedFeatureAxisRequest,
+    complete_whole_panel_feature_axes,
+    observe_typed_panel_axes_batched,
+)
+from bongard.panel_feature_closed_catalog_inventory import (
+    ClosedCatalogSupportInventory,
+)
+from bongard.panel_feature_evidence_bundle import (
+    PanelFeatureEvidenceBundle,
+    PanelFeatureEvidencePanel,
+    PanelFeatureEvidencePhase,
+)
 from bongard.panel_feature_extracted_release_gate import (
     PanelFeatureExtractedExecutionPrecommit,
     PanelFeatureExtractedReleaseAuthorization,
@@ -28,6 +42,13 @@ from bongard.panel_feature_extracted_release_gate import (
     release_panel_feature_extracted_query_panel,
     release_panel_feature_extracted_support_panel,
     verify_prepared_panel_feature_extracted_release,
+)
+from bongard.panel_feature_primary_task_runner import (
+    PrimaryFormulaQueryDecision,
+    PrimaryFormulaSupportPhase,
+    PrimaryFormulaSupportStatus,
+    PrimaryFormulaTaskFreeze,
+    PrimaryFormulaTaskFreezeCommit,
 )
 from bongard.panel_feature_predicate import (
     EngineeringDisposition,
@@ -44,6 +65,12 @@ from bongard.panel_feature_targeted_drill_plan import (
     PanelFeatureTargetedDrillPlan,
     plan_panel_feature_targeted_drill,
 )
+from bongard.panel_feature_task_bound_inventory import (
+    TaskBoundClosedCatalogInventory,
+)
+from bongard.panel_typed_codex_observer import (
+    build_panel_only_observation_context,
+)
 from bongard.panel_soft_ontology import (
     ClosedCount,
     ComponentCountParameters,
@@ -54,6 +81,23 @@ from bongard.panel_soft_ontology import (
     SubjectScope,
 )
 from bongard.release import OfficialReleaseDescriptor
+from bongard.tests.test_panel_batched_typed_codex_observer import (
+    _transport as _batched_transport,
+)
+from bongard.tests.test_panel_feature_evidence_bundle import _proposer
+from bongard.tests.test_panel_feature_proposer import (
+    _payload as _proposer_payload,
+)
+from bongard.tests.test_panel_feature_task_bound_inventory import (
+    _support_payload,
+)
+from bongard.tests.test_prototype_scene_observer import (
+    EFFORT,
+    LAUNCHER_DIGEST,
+    MODEL,
+    NO_TOOLS_KWARGS,
+    _png,
+)
 
 
 SEMANTIC = "hd_convex-has_four_straight_lines"
@@ -84,14 +128,13 @@ class _Fixture:
 
 def _fixture(tmp_path: Path) -> _Fixture:
     root = (tmp_path / "ShapeBongard_V2").resolve()
-    for task_id in TASK_IDS:
+    for task_offset, task_id in enumerate(TASK_IDS):
         for side in ("0", "1"):
             directory = root / "hd" / "images" / task_id / side
             directory.mkdir(parents=True, exist_ok=True)
             for index in range(7):
-                payload = (
-                    PNG_SIGNATURE
-                    + f"{task_id}:{side}:{index}:authenticated".encode("ascii")
+                payload = _png(
+                    10_000 + task_offset * 100 + int(side) * 10 + index
                 )
                 (directory / f"{index}.png").write_bytes(payload)
 
@@ -278,6 +321,90 @@ def _commit(
     return PanelFeatureTaskFreezeCommit.seal(freeze, receipt)
 
 
+def _successor_bound_inventory(
+    prepared: PreparedPanelFeatureExtractedRelease,
+    fixture: _Fixture,
+) -> tuple[TaskBoundClosedCatalogInventory, list[dict[str, object]]]:
+    task = prepared.plan.tasks[0]
+    support_ids = task.side_0_support_panel_ids + task.side_1_support_panel_ids
+    support_pngs = []
+    for panel_id in support_ids:
+        released, _receipt = release_panel_feature_extracted_support_panel(
+            prepared=prepared,
+            archive=fixture.archive,
+            panel_id=panel_id,
+        )
+        support_pngs.append(released.exact_png_bytes)
+    panels = tuple(support_pngs)
+    proposer_artifact, proposer_result = _proposer(
+        panels, _proposer_payload()
+    )
+    axes = complete_whole_panel_feature_axes()
+    calls: list[dict[str, object]] = []
+    rows = []
+    for index, (panel_id, panel) in enumerate(
+        zip(support_ids, panels, strict=True)
+    ):
+        context = build_panel_only_observation_context(
+            panel,
+            model=MODEL,
+            reasoning_effort=EFFORT,
+            expected_launcher_digest=LAUNCHER_DIGEST,
+            **NO_TOOLS_KWARGS,
+        )
+        request = BatchedFeatureAxisRequest.build(context, axes)
+        artifact = observe_typed_panel_axes_batched(
+            panel,
+            axes=axes,
+            panel_only_context=context,
+            model=MODEL,
+            reasoning_effort=EFFORT,
+            expected_launcher_digest=LAUNCHER_DIGEST,
+            **NO_TOOLS_KWARGS,
+            transport=_batched_transport(
+                _support_payload(request, index), panel, calls
+            ),
+        )
+        rows.append(
+            PanelFeatureEvidencePanel.derive_from_batched_artifact(
+                phase=PanelFeatureEvidencePhase.SUPPORT,
+                phase_index=index,
+                panel_id=panel_id,
+                panel_png=panel,
+                batched_axis_artifact=artifact,
+            )
+        )
+    bundle = PanelFeatureEvidenceBundle.create(
+        proposer_artifact=proposer_artifact,
+        proposer_result=proposer_result,
+        observer_axes=axes,
+        panels=rows,
+    )
+    inventory = ClosedCatalogSupportInventory.create(
+        bundle.proposer_result,
+        bundle.observation_sets_for_phase(PanelFeatureEvidencePhase.SUPPORT),
+        primary_orientation=NativeOrientation.SIDE0_POSITIVE,
+    )
+    return TaskBoundClosedCatalogInventory.bind(task, bundle, inventory), calls
+
+
+def _successor_freeze(
+    prepared: PreparedPanelFeatureExtractedRelease,
+    fixture: _Fixture,
+) -> tuple[PrimaryFormulaTaskFreeze, TaskBoundClosedCatalogInventory]:
+    bound, calls = _successor_bound_inventory(prepared, fixture)
+    phase = PrimaryFormulaSupportPhase.create(bound)
+    assert len(calls) == 12
+    assert phase.status is PrimaryFormulaSupportStatus.UNIQUE_PRIMARY_SURVIVOR
+    return (
+        PrimaryFormulaTaskFreeze.seal(
+            support_phase=phase,
+            execution_precommit=prepared.precommit,
+        ),
+        bound,
+    )
+
+
 def test_support_waits_for_durable_exposure_and_never_claims_zip_custody(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -401,6 +528,224 @@ def test_both_queries_require_the_exact_durable_python_freeze_and_commit(
             archive=fixture.archive,
             panel_id=task.side_0_query_panel_id,
             task_freeze=freeze,
+            task_commit=commit,
+            task_freeze_receipt=freeze_receipt,
+            task_commit_receipt=commit_receipt,
+        )
+
+
+def test_successor_one_positive_freeze_commit_and_support_custody_gate_queries(
+    tmp_path: Path,
+) -> None:
+    fixture = _fixture(tmp_path)
+    prepared = _prepare(fixture)
+    task = prepared.plan.tasks[0]
+    freeze, bound = _successor_freeze(prepared, fixture)
+
+    assert freeze.resolve_selected_all_of() == freeze.selected_formula
+    assert freeze.support_phase.task_bound_inventory == bound
+    assert freeze.rank_artifact is None
+    assert freeze.rank_journal_terminal is None
+    assert freeze.sealed_query_panel_ids == (
+        task.side_0_query_panel_id,
+        task.side_1_query_panel_id,
+    )
+
+    swapped_query_ids = deepcopy(freeze.to_data())
+    swapped_query_ids["sealed_query_panel_ids"] = list(
+        reversed(swapped_query_ids["sealed_query_panel_ids"])
+    )
+    with pytest.raises(Exception):
+        PrimaryFormulaTaskFreeze.from_data(swapped_query_ids)
+
+    freeze_receipt = persist_object_bongard_task_freeze(
+        store=fixture.store,
+        freeze=freeze,
+    )
+    commit = PrimaryFormulaTaskFreezeCommit.seal(freeze, freeze_receipt)
+    commit_receipt = persist_object_bongard_task_commit(
+        store=fixture.store,
+        commit=commit,
+    )
+
+    with pytest.raises(TypeError, match="PrimaryFormulaTaskFreeze"):
+        release_panel_feature_extracted_query_panel(
+            prepared=prepared,
+            archive=fixture.archive,
+            panel_id=task.side_0_query_panel_id,
+            task_freeze=freeze.support_phase,  # type: ignore[arg-type]
+            task_commit=commit,
+            task_freeze_receipt=freeze_receipt,
+            task_commit_receipt=commit_receipt,
+        )
+
+    legacy_freeze = _freeze(prepared, fixture)
+    legacy_freeze_receipt = persist_object_bongard_task_freeze(
+        store=fixture.store,
+        freeze=legacy_freeze,
+    )
+    legacy_commit = _commit(legacy_freeze, legacy_freeze_receipt)
+    with pytest.raises(
+        TypeError, match="successor freeze requires exact PrimaryFormulaTaskFreezeCommit"
+    ):
+        release_panel_feature_extracted_query_panel(
+            prepared=prepared,
+            archive=fixture.archive,
+            panel_id=task.side_0_query_panel_id,
+            task_freeze=freeze,
+            task_commit=legacy_commit,  # type: ignore[arg-type]
+            task_freeze_receipt=freeze_receipt,
+            task_commit_receipt=commit_receipt,
+        )
+
+    released_ids = []
+    query_calls: list[dict[str, object]] = []
+    axes = complete_whole_panel_feature_axes()
+    for ordinal, panel_id in enumerate(freeze.sealed_query_panel_ids):
+        released, receipt = release_panel_feature_extracted_query_panel(
+            prepared=prepared,
+            archive=fixture.archive,
+            panel_id=panel_id,
+            task_freeze=freeze,
+            task_commit=commit,
+            task_freeze_receipt=freeze_receipt,
+            task_commit_receipt=commit_receipt,
+        )
+        released_ids.append(released.panel_id)
+        assert receipt.object_kind == "released-extracted-query-panel"
+        context = build_panel_only_observation_context(
+            released.exact_png_bytes,
+            model=MODEL,
+            reasoning_effort=EFFORT,
+            expected_launcher_digest=LAUNCHER_DIGEST,
+            **NO_TOOLS_KWARGS,
+        )
+        request = BatchedFeatureAxisRequest.build(context, axes)
+        artifact = observe_typed_panel_axes_batched(
+            released.exact_png_bytes,
+            axes=axes,
+            panel_only_context=context,
+            model=MODEL,
+            reasoning_effort=EFFORT,
+            expected_launcher_digest=LAUNCHER_DIGEST,
+            **NO_TOOLS_KWARGS,
+            transport=_batched_transport(
+                _support_payload(request, ordinal),
+                released.exact_png_bytes,
+                query_calls,
+            ),
+        )
+        evidence = PanelFeatureEvidencePanel.derive_from_batched_artifact(
+            phase=PanelFeatureEvidencePhase.QUERY,
+            phase_index=ordinal,
+            panel_id=panel_id,
+            panel_png=released.exact_png_bytes,
+            batched_axis_artifact=artifact,
+        )
+        if ordinal == 0:
+            swapped = PanelFeatureEvidencePanel.derive_from_batched_artifact(
+                phase=PanelFeatureEvidencePhase.QUERY,
+                phase_index=1,
+                panel_id=panel_id,
+                panel_png=released.exact_png_bytes,
+                batched_axis_artifact=artifact,
+            )
+            with pytest.raises(Exception, match="swapped"):
+                PrimaryFormulaQueryDecision.create(
+                    freeze,
+                    released_query_panel=released,
+                    query_release_store_receipt=receipt,
+                    query_evidence_panel=swapped,
+                )
+        decision = PrimaryFormulaQueryDecision.create(
+            freeze,
+            released_query_panel=released,
+            query_release_store_receipt=receipt,
+            query_evidence_panel=evidence,
+        )
+        assert decision.query_panel_id == panel_id
+        assert decision.query_evidence_panel == evidence
+    assert released_ids == list(freeze.sealed_query_panel_ids)
+    assert len(query_calls) == 2
+
+
+def test_successor_rejects_support_pixels_relabelled_between_panel_ids(
+    tmp_path: Path,
+) -> None:
+    fixture = _fixture(tmp_path)
+    prepared = _prepare(fixture)
+    task = prepared.plan.tasks[0]
+    bound, _calls = _successor_bound_inventory(prepared, fixture)
+    first, second, *rest = bound.evidence_bundle.panels
+    rows = (
+        PanelFeatureEvidencePanel.create(
+            phase=first.phase,
+            phase_index=first.phase_index,
+            panel_id=first.panel_id,
+            panel_png=second.panel_png,
+            owner_artifact=second.owner_artifact,
+            axis_artifacts=second.axis_artifacts,
+            batched_axis_artifact=second.batched_axis_artifact,
+            observation_set=second.observation_set,
+        ),
+        PanelFeatureEvidencePanel.create(
+            phase=second.phase,
+            phase_index=second.phase_index,
+            panel_id=second.panel_id,
+            panel_png=first.panel_png,
+            owner_artifact=first.owner_artifact,
+            axis_artifacts=first.axis_artifacts,
+            batched_axis_artifact=first.batched_axis_artifact,
+            observation_set=first.observation_set,
+        ),
+        *rest,
+    )
+    proposer_artifact, proposer_result = _proposer(
+        tuple(item.panel_png for item in rows), _proposer_payload()
+    )
+    relabelled_bundle = PanelFeatureEvidenceBundle.create(
+        proposer_artifact=proposer_artifact,
+        proposer_result=proposer_result,
+        observer_axes=bound.evidence_bundle.observer_axes,
+        panels=rows,
+    )
+    relabelled_inventory = ClosedCatalogSupportInventory.create(
+        relabelled_bundle.proposer_result,
+        relabelled_bundle.observation_sets_for_phase(
+            PanelFeatureEvidencePhase.SUPPORT
+        ),
+        primary_orientation=NativeOrientation.SIDE0_POSITIVE,
+    )
+    relabelled_bound = TaskBoundClosedCatalogInventory.bind(
+        task,
+        relabelled_bundle,
+        relabelled_inventory,
+    )
+    relabelled_freeze = PrimaryFormulaTaskFreeze.seal(
+        support_phase=PrimaryFormulaSupportPhase.create(relabelled_bound),
+        execution_precommit=prepared.precommit,
+    )
+    freeze_receipt = persist_object_bongard_task_freeze(
+        store=fixture.store,
+        freeze=relabelled_freeze,
+    )
+    commit = PrimaryFormulaTaskFreezeCommit.seal(
+        relabelled_freeze, freeze_receipt
+    )
+    commit_receipt = persist_object_bongard_task_commit(
+        store=fixture.store,
+        commit=commit,
+    )
+
+    with pytest.raises(
+        PanelFeatureExtractedReleaseGateError,
+        match="support evidence differs from the authenticated extracted manifest",
+    ):
+        release_panel_feature_extracted_query_panel(
+            prepared=prepared,
+            archive=fixture.archive,
+            panel_id=task.side_0_query_panel_id,
+            task_freeze=relabelled_freeze,
             task_commit=commit,
             task_freeze_receipt=freeze_receipt,
             task_commit_receipt=commit_receipt,

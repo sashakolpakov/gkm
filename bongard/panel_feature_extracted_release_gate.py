@@ -1483,7 +1483,82 @@ def _python_predicate_policy(data: Mapping[str, Any], label: str) -> None:
         )
 
 
-def _validate_freeze_bindings(
+def _one_positive_python_predicate_policy(
+    data: Mapping[str, Any], label: str
+) -> None:
+    """Require the successor's asymmetric, single-formula authority contract."""
+
+    _python_predicate_policy(data, label)
+    if (
+        data.get("one_positive_formula_only") is not True
+        or data.get("negative_formula_present") is not False
+        or data.get("complement_allowed") is not False
+        or data.get("primary_version_space_only_gate") is not True
+        or data.get("opposite_version_space_diagnostic_only") is not True
+    ):
+        raise PanelFeatureExtractedReleaseGateError(
+            f"{label} is not an exact one-positive Python predicate record"
+        )
+
+
+def _validate_successor_support_custody(
+    bound_inventory: object,
+    *,
+    task: ObjectBongardTaskPlan,
+    archive: OfficialExtractedPanelArchive,
+) -> object:
+    """Join successor evidence bytes to the authenticated extracted manifest."""
+
+    # Local imports keep the release boundary below the successor runner and
+    # avoid turning its gate import into a cycle.
+    from bongard.panel_feature_evidence_bundle import PanelFeatureEvidencePhase
+    from bongard.panel_feature_task_bound_inventory import (
+        TaskBoundClosedCatalogInventory,
+        cold_replay_task_bound_closed_catalog_inventory,
+    )
+
+    if type(bound_inventory) is not TaskBoundClosedCatalogInventory:
+        raise TypeError(
+            "successor freeze must contain exact "
+            "TaskBoundClosedCatalogInventory"
+        )
+    try:
+        bound = cold_replay_task_bound_closed_catalog_inventory(
+            bound_inventory,
+            expected_artifact_address=bound_inventory.artifact_address,
+        )
+    except (TypeError, ValueError, RuntimeError) as exc:
+        raise PanelFeatureExtractedReleaseGateError(
+            "successor support evidence/inventory replay differs"
+        ) from exc
+    support = bound.evidence_bundle.panels_for_phase(
+        PanelFeatureEvidencePhase.SUPPORT
+    )
+    expected_ids = task.side_0_support_panel_ids + task.side_1_support_panel_ids
+    if (
+        bound.task_plan != task
+        or tuple(item.panel_id for item in support) != expected_ids
+        or bound.sealed_query_panel_ids
+        != (task.side_0_query_panel_id, task.side_1_query_panel_id)
+    ):
+        raise PanelFeatureExtractedReleaseGateError(
+            "successor support evidence does not bind the released task roles"
+        )
+    for panel in support:
+        manifest_row = archive.panel_by_id.get(panel.panel_id)
+        if (
+            manifest_row is None
+            or manifest_row.sha256 != "sha256:" + panel.panel_png_digest
+            or manifest_row.size_bytes != len(panel.panel_png)
+        ):
+            raise PanelFeatureExtractedReleaseGateError(
+                "successor support evidence differs from the authenticated "
+                "extracted manifest"
+            )
+    return bound
+
+
+def _validate_legacy_freeze_bindings(
     freeze: ObjectBongardTaskFreezeProtocol,
     *,
     task: ObjectBongardTaskPlan,
@@ -1534,7 +1609,151 @@ def _validate_freeze_bindings(
     return data
 
 
-def _validate_commit_bindings(
+def _validate_successor_freeze_bindings(
+    freeze: object,
+    *,
+    task: ObjectBongardTaskPlan,
+    prepared: PreparedPanelFeatureExtractedRelease,
+    archive: OfficialExtractedPanelArchive,
+) -> dict[str, Any]:
+    from bongard.panel_feature_primary_task_runner import (
+        PrimaryFormulaRankJournalTerminal,
+        PrimaryFormulaSupportStatus,
+        PrimaryFormulaTaskFreeze,
+        verify_primary_formula_task_freeze,
+    )
+    from bongard.panel_feature_predicate import AllOf
+    from bongard.panel_soft_ontology import NativeOrientation
+
+    if type(freeze) is not PrimaryFormulaTaskFreeze:
+        raise TypeError("task freeze must be exact PrimaryFormulaTaskFreeze")
+    try:
+        replayed = verify_primary_formula_task_freeze(
+            freeze,
+            expected_record_digest=freeze.record_digest,
+        )
+    except (TypeError, ValueError, RuntimeError) as exc:
+        raise PanelFeatureExtractedReleaseGateError(
+            "successor task freeze replay differs"
+        ) from exc
+    data = _canonical_protocol_data(replayed, "successor task freeze")
+    _one_positive_python_predicate_policy(data, "successor task freeze")
+    bound = _validate_successor_support_custody(
+        replayed.support_phase.task_bound_inventory,
+        task=task,
+        archive=archive,
+    )
+    try:
+        formula = replayed.resolve_selected_all_of()
+    except (TypeError, ValueError, RuntimeError) as exc:
+        raise PanelFeatureExtractedReleaseGateError(
+            "successor selected formula replay differs"
+        ) from exc
+    space = bound.inventory.primary_version_space  # type: ignore[union-attr]
+    phase = replayed.support_phase
+    query_ids = (task.side_0_query_panel_id, task.side_1_query_panel_id)
+    if (
+        type(replayed.execution_precommit)
+        is not PanelFeatureExtractedExecutionPrecommit
+        or replayed.execution_precommit_kind
+        != "panel_feature_extracted_execution_precommit_v1"
+        or replayed.execution_precommit != prepared.precommit
+        or replayed.execution_precommit_digest
+        != prepared.precommit.record_digest
+        or replayed.task_id != task.task_id
+        or replayed.task_plan_digest != task.record_digest
+        or replayed.version_space_digest != space.version_space_digest
+        or replayed.support_version_space_digest
+        != replayed.version_space_digest
+        or type(formula) is not AllOf
+        or formula != replayed.selected_formula
+        or formula.formula_digest != replayed.selected_predicate_digest
+        or formula.formula_digest not in space.survivor_formula_digests
+        or formula.native_orientation is not NativeOrientation.SIDE0_POSITIVE
+        or replayed.sealed_query_panel_ids != query_ids
+        or data.get("sealed_query_panel_ids") != list(query_ids)
+        or data.get("query_bytes_included") is not False
+        or data.get("query_observations_included") is not False
+        or data.get(
+            "query_release_authorized_only_after_exact_durable_commit"
+        )
+        is not True
+        or phase.gap is not None
+    ):
+        raise PanelFeatureExtractedReleaseGateError(
+            "successor task/precommit/query/formula bindings differ"
+        )
+    survivor_count = len(space.survivor_formulas)
+    if phase.status is PrimaryFormulaSupportStatus.UNIQUE_PRIMARY_SURVIVOR:
+        if (
+            survivor_count != 1
+            or replayed.selection_mode != "unique_primary_support_survivor"
+            or replayed.rank_artifact is not None
+            or replayed.rank_journal_terminal is not None
+        ):
+            raise PanelFeatureExtractedReleaseGateError(
+                "unique successor freeze contains rank authority"
+            )
+    elif phase.status is PrimaryFormulaSupportStatus.RANK_REQUIRED:
+        terminal = replayed.rank_journal_terminal
+        if (
+            survivor_count <= 1
+            or replayed.selection_mode
+            != "verified_rank_with_durable_journal_terminal"
+            or terminal is None
+            or type(terminal) is not PrimaryFormulaRankJournalTerminal
+            or PrimaryFormulaRankJournalTerminal.from_data(terminal.to_data())
+            != terminal
+            or replayed.rank_artifact is None
+            or terminal.rank_artifact != replayed.rank_artifact
+            or terminal.authorization_digest
+            != prepared.authorization.record_digest
+            or terminal.execution_precommit_digest
+            != prepared.precommit.record_digest
+            or terminal.task_id != task.task_id
+        ):
+            raise PanelFeatureExtractedReleaseGateError(
+                "successor rank terminal does not bind this release"
+            )
+    else:
+        raise PanelFeatureExtractedReleaseGateError(
+            "typed primary support gap cannot authorize query release"
+        )
+    return data
+
+
+def _validate_freeze_bindings(
+    freeze: ObjectBongardTaskFreezeProtocol,
+    *,
+    task: ObjectBongardTaskPlan,
+    prepared: PreparedPanelFeatureExtractedRelease,
+    archive: OfficialExtractedPanelArchive,
+) -> dict[str, Any]:
+    # Both imports are local: the successor runner imports this gate for its
+    # exact extracted-precommit branch.
+    from bongard.panel_feature_primary_task_runner import PrimaryFormulaTaskFreeze
+    from bongard.panel_feature_task_runner import PanelFeatureTaskFreeze
+
+    if type(freeze) is PanelFeatureTaskFreeze:
+        return _validate_legacy_freeze_bindings(
+            freeze,
+            task=task,
+            prepared=prepared,
+        )
+    if type(freeze) is PrimaryFormulaTaskFreeze:
+        return _validate_successor_freeze_bindings(
+            freeze,
+            task=task,
+            prepared=prepared,
+            archive=archive,
+        )
+    raise TypeError(
+        "task freeze must be exact PanelFeatureTaskFreeze or "
+        "PrimaryFormulaTaskFreeze"
+    )
+
+
+def _validate_legacy_commit_bindings(
     commit: ObjectBongardTaskCommitProtocol,
     *,
     freeze: ObjectBongardTaskFreezeProtocol,
@@ -1576,6 +1795,100 @@ def _validate_commit_bindings(
     return data
 
 
+def _validate_successor_commit_bindings(
+    commit: object,
+    *,
+    freeze: object,
+    freeze_receipt: ObjectBongardWriteOnceReceipt,
+) -> dict[str, Any]:
+    from bongard.panel_feature_primary_task_runner import (
+        PrimaryFormulaTaskFreeze,
+        PrimaryFormulaTaskFreezeCommit,
+        verify_primary_formula_task_commit,
+    )
+
+    if type(freeze) is not PrimaryFormulaTaskFreeze:
+        raise TypeError("successor commit needs exact PrimaryFormulaTaskFreeze")
+    if type(commit) is not PrimaryFormulaTaskFreezeCommit:
+        raise TypeError("task commit must be exact PrimaryFormulaTaskFreezeCommit")
+    try:
+        replayed = verify_primary_formula_task_commit(
+            commit,
+            expected_record_digest=commit.record_digest,
+        )
+    except (TypeError, ValueError, RuntimeError) as exc:
+        raise PanelFeatureExtractedReleaseGateError(
+            "successor task commit replay differs"
+        ) from exc
+    data = _canonical_protocol_data(replayed, "successor task commit")
+    _one_positive_python_predicate_policy(data, "successor task commit")
+    if (
+        replayed.task_freeze != freeze
+        or replayed.task_freeze_store_receipt != freeze_receipt
+        or data.get("durably_persisted_and_reloaded_before_query_release")
+        is not True
+        or data.get("exact_canonical_freeze_bytes_bound") is not True
+        or replayed.task_id != freeze.task_id
+        or replayed.task_plan_digest != freeze.task_plan_digest
+        or replayed.execution_precommit_digest
+        != freeze.execution_precommit_digest
+        or replayed.version_space_digest != freeze.version_space_digest
+        or replayed.support_version_space_digest
+        != freeze.support_version_space_digest
+        or replayed.rank_response_digest != freeze.rank_response_digest
+        or replayed.selected_predicate_digest
+        != freeze.selected_predicate_digest
+        or replayed.task_freeze_digest != freeze.record_digest
+        or replayed.exact_freeze_payload_digest != freeze_receipt.payload_digest
+        or replayed.task_freeze_store_receipt_digest
+        != freeze_receipt.record_digest
+    ):
+        raise PanelFeatureExtractedReleaseGateError(
+            "successor decision commit does not bind the exact durable freeze"
+        )
+    return data
+
+
+def _validate_commit_bindings(
+    commit: ObjectBongardTaskCommitProtocol,
+    *,
+    freeze: ObjectBongardTaskFreezeProtocol,
+    freeze_receipt: ObjectBongardWriteOnceReceipt,
+) -> dict[str, Any]:
+    from bongard.panel_feature_primary_task_runner import (
+        PrimaryFormulaTaskFreeze,
+        PrimaryFormulaTaskFreezeCommit,
+    )
+    from bongard.panel_feature_task_runner import (
+        PanelFeatureTaskFreeze,
+        PanelFeatureTaskFreezeCommit,
+    )
+
+    if type(freeze) is PanelFeatureTaskFreeze:
+        if type(commit) is not PanelFeatureTaskFreezeCommit:
+            raise TypeError(
+                "legacy freeze requires exact PanelFeatureTaskFreezeCommit"
+            )
+        return _validate_legacy_commit_bindings(
+            commit,
+            freeze=freeze,
+            freeze_receipt=freeze_receipt,
+        )
+    if type(freeze) is PrimaryFormulaTaskFreeze:
+        if type(commit) is not PrimaryFormulaTaskFreezeCommit:
+            raise TypeError(
+                "successor freeze requires exact PrimaryFormulaTaskFreezeCommit"
+            )
+        return _validate_successor_commit_bindings(
+            commit,
+            freeze=freeze,
+            freeze_receipt=freeze_receipt,
+        )
+    raise TypeError(
+        "commit binding needs an exact legacy or successor task freeze"
+    )
+
+
 def release_panel_feature_extracted_query_panel(
     *,
     prepared: PreparedPanelFeatureExtractedRelease,
@@ -1602,6 +1915,7 @@ def release_panel_feature_extracted_query_panel(
         task_freeze,
         task=task,
         prepared=prepared,
+        archive=archive,
     )
     commit_data = _validate_commit_bindings(
         task_commit,
