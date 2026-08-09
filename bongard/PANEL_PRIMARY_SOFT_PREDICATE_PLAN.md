@@ -67,6 +67,19 @@ inventory, observer, and runner integration remains unfinished.  Supplying an
 arbitrary digest is not a calibration receipt and cannot enable scientific
 `present` or `certified_absent` states.
 
+The first replacement observation layer is now additive and Python-native.
+It does not ask vision a candidate-relative yes/no question.  For each
+``(family, scope, reference frame)`` axis, it freezes the complete closed
+variant set reported for every eligible owner binding; only afterward does
+Python compare a candidate ``FeatureSpec`` with those sets.  An operational
+nonmatch requires a complete owner inventory and a complete result for every
+eligible binding.  Any unresolved binding remains indeterminate and any failed
+binding remains an error.  The resulting values are named
+``EngineeringFeatureDisposition`` and are explicitly uncalibrated; they cannot
+be parsed as scientific ``Disposition`` values.  Exact component and segment
+counts can be derived directly from a complete frozen owner graph, without
+asking the vision model to affirm a target number.
+
 The first typed core is intentionally conservative.  It admits sixteen closed
 feature families, candidate-independent owners, exact unary/ordered/unordered
 subject bindings, typed witness payloads, exact derived Grid16 search regions,
