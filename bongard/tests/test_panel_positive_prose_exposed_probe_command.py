@@ -232,3 +232,15 @@ def test_candidate_independent_ink_zoom_is_exact_and_binds_both_images() -> None
         == result_1["observer_view_png_sha256"]
     )
     assert precommit["ink_zoom_policy_record_digest"] == policy["record_digest"]
+
+
+def test_corrected_straight_action_cue_explicitly_allows_curved_sections() -> None:
+    cue_path = (
+        Path(__file__).parents[1]
+        / "data"
+        / "panel_positive_prose_componentwise_known_cue_20260809_v2.json"
+    )
+    cue, _digest = _load_componentwise_semantic_cue(cue_path)
+    assert cue["exposed_positive_support_straight_action_counts"] == [4] * 6
+    assert cue["exposed_positive_support_arc_action_counts"] == [0, 0, 0, 4, 0, 0]
+    assert "additional curved carrier sections may be present" in cue["component_2"]

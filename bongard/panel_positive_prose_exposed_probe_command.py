@@ -65,6 +65,9 @@ KNOWN_SEMANTIC_CUE_SCHEMA = (
 COMPONENTWISE_KNOWN_CUE_SCHEMA = (
     "gkm.bongard-positive-prose-componentwise-known-cue-preregistration.v1"
 )
+COMPONENTWISE_KNOWN_CUE_SCHEMA_V2 = (
+    "gkm.bongard-positive-prose-componentwise-known-cue-preregistration.v2"
+)
 INK_ZOOM_POLICY_SCHEMA = "gkm.bongard-deterministic-ink-zoom-preregistration.v1"
 DEFAULT_OUTPUT_ROOT = Path(
     "downloads/ShapeBongard_V2_full/"
@@ -384,8 +387,12 @@ def _load_componentwise_semantic_cue(
         raise PositiveProseExposedProbeError(
             "componentwise cue record digest differs"
         )
+    if value.get("schema") not in {
+        COMPONENTWISE_KNOWN_CUE_SCHEMA,
+        COMPONENTWISE_KNOWN_CUE_SCHEMA_V2,
+    }:
+        raise PositiveProseExposedProbeError("componentwise cue schema differs")
     expected = {
-        "schema": COMPONENTWISE_KNOWN_CUE_SCHEMA,
         "component_observations_independent": True,
         "model_returns_component_score_intervals_only": True,
         "component_error_precedence": True,
@@ -409,6 +416,32 @@ def _load_componentwise_semantic_cue(
     }
     if any(value.get(name) != item for name, item in expected.items()):
         raise PositiveProseExposedProbeError("componentwise cue policy differs")
+    if value["schema"] == COMPONENTWISE_KNOWN_CUE_SCHEMA_V2:
+        v2_expected = {
+            "parent_componentwise_cue_record_digest": (
+                "sha256:3d317f39140353e49b27ad51204e230f34e24df78f7a447b260f1b70c75e2de3"
+            ),
+            "parent_zoomed_probe_completion_digest": (
+                "sha256:0f05850dbefd10d3b149aebf0a513869a7ffe7eaca425e8f13aa2095f3337395"
+            ),
+            "official_action_program_file_sha256": (
+                "190f3f850d98fa9df0f85cbbafa05fbbaf6d8845586c186ce062af8812ba7e7c"
+            ),
+            "exposed_support_action_program_digest": (
+                "sha256:e5b00c9e86152c05bf6a3538ce2fb3206ca1272154a20865747571725a374909"
+            ),
+            "exposed_positive_support_straight_action_counts": [4] * 6,
+            "exposed_positive_support_arc_action_counts": [0, 0, 0, 4, 0, 0],
+            "exposed_contrast_support_straight_action_counts": [3, 4, 2, 4, 5, 5],
+            "exposed_contrast_support_arc_action_counts": [0, 0, 1, 0, 0, 0],
+            "ink_zoom_policy_record_digest": (
+                "sha256:25a602455aab02b0d5cbcb05f18bd283e9b7ce43e88c343933ab2a4b2798d564"
+            ),
+        }
+        if any(value.get(name) != item for name, item in v2_expected.items()):
+            raise PositiveProseExposedProbeError(
+                "componentwise v2 semantic evidence differs"
+            )
     if value.get("physical_call_plan") != {
         "positive_proposer": 0,
         "support_component_observers": 12,
