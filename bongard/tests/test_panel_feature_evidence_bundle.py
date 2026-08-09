@@ -18,12 +18,14 @@ from bongard.panel_feature_evidence_bundle import (
     PanelFeatureEvidencePanel,
     PanelFeatureEvidencePhase,
     cold_replay_panel_feature_evidence_bundle,
+    _vocabulary_axes,
 )
 from bongard.panel_feature_observation import FeatureAxis, PanelFeatureObservationSet
 from bongard.panel_feature_observer_protocol import FeatureAxisObservationView
 from bongard.panel_feature_proposer import (
     PANEL_FEATURE_BLOCKS,
     PANEL_FEATURE_SLOTS_PER_DIRECTION,
+    PanelFeatureProposerResult,
 )
 from bongard.panel_soft_ontology import (
     FeatureFamily,
@@ -78,6 +80,18 @@ def _proposer(panels: tuple[bytes, ...], payload: dict[str, object]):
     )
     result = invoke_receipted_panel_feature_proposer(panels, call=call)
     return call.artifact, result
+
+
+def test_typed_empty_proposer_outcome_does_not_erase_fixed_observer_evidence() -> None:
+    result = PanelFeatureProposerResult(
+        "0" * 64,
+        "1" * 64,
+        (),
+        (),
+        (),
+        None,
+    )
+    assert _vocabulary_axes(result) == ()
 
 
 def _whole_panel_bundle() -> PanelFeatureEvidenceBundle:

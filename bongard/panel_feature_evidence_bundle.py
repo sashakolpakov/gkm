@@ -460,10 +460,19 @@ def _rebuild_proposer_result(
 def _vocabulary_axes(
     result: PanelFeatureProposerResult,
 ) -> tuple[str, ...]:
-    if result.observer_vocabulary is None or not result.observer_vocabulary.specs:
-        raise PanelFeatureEvidenceBundleError(
-            "full-receipt bundle requires a nonempty observer vocabulary"
-        )
+    # A typed language/nomination gap is itself a valid receipted outcome.
+    # The fixed observer catalog is independent of proposer candidates, so its
+    # full panel evidence must remain archivable even when no vocabulary was
+    # admitted.  Synthesis still fails closed later; custody must not erase the
+    # evidence explaining why.
+    if result.observer_vocabulary is None:
+        if result.nominations:
+            raise PanelFeatureEvidenceBundleError(
+                "proposer nominations lack their observer vocabulary"
+            )
+        return ()
+    if not result.observer_vocabulary.specs:
+        raise PanelFeatureEvidenceBundleError("observer vocabulary is empty")
     return tuple(
         sorted(
             {

@@ -496,22 +496,52 @@ def run_exposed_support_smoke(
         observer_axes=axes,
         panels=evidence_panels,
     )
-    derivation = derive_panel_feature_support(
-        task,
-        panels,
-        proposer_result,
-        tuple(item.observation_set for item in evidence_panels),
-    )
     _write_once_or_verify(root / "evidence_bundle.json", bundle.to_data())
-    _write_once_or_verify(root / "support_derivation.json", derivation.to_data())
+
+    derivation: PanelFeatureSupportDerivation | None
+    if proposer_result.observer_vocabulary is None:
+        derivation = None
+        proposer_gap = _record(
+            {
+                "schema": "gkm.bongard-panel-feature-proposer-language-gap.v1",
+                "proposer_result_digest": proposer_result.result_digest,
+                "language_gaps": [item.to_data() for item in proposer_result.language_gaps],
+                "nomination_gaps": [
+                    item.to_data() for item in proposer_result.nomination_gaps
+                ],
+                "observer_vocabulary_present": False,
+                "support_version_space_constructed": False,
+                "failed_or_uncertain_evidence_counted_as_negative": False,
+                "rank_or_freeze_permitted": False,
+                "query_permitted": False,
+            }
+        )
+        _write_once_or_verify(root / "proposer_language_gap.json", proposer_gap)
+    else:
+        derivation = derive_panel_feature_support(
+            task,
+            panels,
+            proposer_result,
+            tuple(item.observation_set for item in evidence_panels),
+        )
+        _write_once_or_verify(root / "support_derivation.json", derivation.to_data())
 
     rank_artifact: PanelFeatureRankArtifact | None = None
     rank_summary: dict[str, Any] | None = None
     counts = (
-        len(derivation.side0_version_space.survivor_formula_digests),
-        len(derivation.side1_version_space.survivor_formula_digests),
+        (0, 0)
+        if derivation is None
+        else (
+            len(derivation.side0_version_space.survivor_formula_digests),
+            len(derivation.side1_version_space.survivor_formula_digests),
+        )
     )
-    if 0 not in counts and counts != (1, 1) and sum(counts) <= PANEL_FEATURE_MAX_RANK_CANDIDATES:
+    if (
+        derivation is not None
+        and 0 not in counts
+        and counts != (1, 1)
+        and sum(counts) <= PANEL_FEATURE_MAX_RANK_CANDIDATES
+    ):
         rank_input = PanelFeatureRankInput.freeze(
             derivation.side0_version_space,
             derivation.side1_version_space,
@@ -549,7 +579,8 @@ def run_exposed_support_smoke(
     cold_replay_panel_feature_evidence_bundle(
         bundle, expected_bundle_address=bundle.bundle_address
     )
-    PanelFeatureSupportDerivation.from_data(derivation.to_data())
+    if derivation is not None:
+        PanelFeatureSupportDerivation.from_data(derivation.to_data())
     completion = _record(
         {
             "schema": SMOKE_SCHEMA,
@@ -561,8 +592,14 @@ def run_exposed_support_smoke(
             "proposer_artifact_digest": proposer_artifact.artifact_digest,
             "proposer_result_digest": proposer_result.result_digest,
             "evidence_bundle_address": bundle.bundle_address,
-            "support_derivation_address": derivation.artifact_address,
-            "support_derivation_status": derivation.status.value,
+            "support_derivation_address": (
+                None if derivation is None else derivation.artifact_address
+            ),
+            "support_derivation_status": (
+                "proposer_language_gap"
+                if derivation is None
+                else derivation.status.value
+            ),
             "survivor_counts": list(counts),
             "rank_artifact_digest": (
                 None if rank_artifact is None else rank_artifact.artifact_digest
