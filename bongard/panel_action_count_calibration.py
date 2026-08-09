@@ -4,8 +4,12 @@ The vision model is allowed to emit only raw inclusive integer intervals for
 straight and arc carrier-action counts.  This module never calls a model.  It
 derives one expansion radius per axis from an independently frozen calibration
 cohort by taking the maximum residual over every panel of every task.  Errors
-fail calibration closed.  The resulting grant is then the sole authority for
-mapping future raw intervals to the four dispositions used by Python formulas.
+fail calibration closed.  Under exchangeability of whole tasks, the maximum of
+twenty calibration-task scores is a split-conformal order statistic with
+finite-sample marginal task coverage of at least 20/21.  It is not a
+deterministic proof about a future image.  The resulting grant is then the sole
+authority for mapping future raw intervals to the four dispositions used by
+Python formulas.
 
 The deliberately conservative task-maximum rule protects a zero-contradiction
 support gate.  It may make an observer non-decisive; calibration is not allowed
@@ -38,11 +42,14 @@ RAW_OBSERVATION_SCHEMA = "gkm.bongard-raw-action-count-observation.v1"
 CALIBRATION_PANEL_SCHEMA = "gkm.bongard-action-count-calibration-panel.v1"
 CALIBRATION_TASK_SCHEMA = "gkm.bongard-action-count-calibration-task.v1"
 CALIBRATION_INPUT_SCHEMA = "gkm.bongard-action-count-calibration-input.v1"
-CALIBRATION_ARTIFACT_SCHEMA = "gkm.bongard-action-count-calibration-artifact.v1"
+CALIBRATION_ARTIFACT_SCHEMA = "gkm.bongard-action-count-calibration-artifact.v2"
 CALIBRATED_OBSERVATION_SCHEMA = "gkm.bongard-calibrated-action-count-observation.v1"
 CALIBRATION_ALGORITHM_ID = (
-    "bongard.action-count-calibration/task-max-zero-omission-radius-v1"
+    "bongard.action-count-calibration/task-max-split-conformal-radius-v2"
 )
+SPLIT_CONFORMAL_ORDER_STATISTIC_RANK = CALIBRATION_TASK_COUNT
+FINITE_SAMPLE_TASK_COVERAGE_NUMERATOR = CALIBRATION_TASK_COUNT
+FINITE_SAMPLE_TASK_COVERAGE_DENOMINATOR = CALIBRATION_TASK_COUNT + 1
 
 _ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _KEY = re.compile(r"[A-Za-z0-9][A-Za-z0-9_./:-]{0,511}\Z")
@@ -563,6 +570,19 @@ class ActionCountCalibrationArtifact:
             "straight_task_max_residuals": list(self.straight_task_max_residuals),
             "arc_task_max_residuals": list(self.arc_task_max_residuals),
             "radius_rule": "maximum_residual_over_every_panel_of_every_calibration_task",
+            "calibration_unit": "maximum_residual_over_one_fourteen_panel_task",
+            "split_conformal_order_statistic_rank": (
+                SPLIT_CONFORMAL_ORDER_STATISTIC_RANK
+            ),
+            "finite_sample_marginal_task_coverage_numerator": (
+                FINITE_SAMPLE_TASK_COVERAGE_NUMERATOR
+            ),
+            "finite_sample_marginal_task_coverage_denominator": (
+                FINITE_SAMPLE_TASK_COVERAGE_DENOMINATOR
+            ),
+            "whole_task_exchangeability_required": True,
+            "deterministic_future_correctness_claimed": False,
+            "calibrated_absence_is_probabilistic_not_formal_truth": True,
             "zero_calibration_omission_required": True,
             "error_rows_fail_calibration_closed": True,
             "stratified_or_target_count_radius_selection": False,
@@ -595,6 +615,13 @@ class ActionCountCalibrationArtifact:
                 "straight_task_max_residuals",
                 "arc_task_max_residuals",
                 "radius_rule",
+                "calibration_unit",
+                "split_conformal_order_statistic_rank",
+                "finite_sample_marginal_task_coverage_numerator",
+                "finite_sample_marginal_task_coverage_denominator",
+                "whole_task_exchangeability_required",
+                "deterministic_future_correctness_claimed",
+                "calibrated_absence_is_probabilistic_not_formal_truth",
                 "zero_calibration_omission_required",
                 "error_rows_fail_calibration_closed",
                 "stratified_or_target_count_radius_selection",
@@ -614,6 +641,18 @@ class ActionCountCalibrationArtifact:
             != panel_action_count_calibration_source_digest()
             or raw["radius_rule"]
             != "maximum_residual_over_every_panel_of_every_calibration_task"
+            or raw["calibration_unit"]
+            != "maximum_residual_over_one_fourteen_panel_task"
+            or raw["split_conformal_order_statistic_rank"]
+            != SPLIT_CONFORMAL_ORDER_STATISTIC_RANK
+            or raw["finite_sample_marginal_task_coverage_numerator"]
+            != FINITE_SAMPLE_TASK_COVERAGE_NUMERATOR
+            or raw["finite_sample_marginal_task_coverage_denominator"]
+            != FINITE_SAMPLE_TASK_COVERAGE_DENOMINATOR
+            or raw["whole_task_exchangeability_required"] is not True
+            or raw["deterministic_future_correctness_claimed"] is not False
+            or raw["calibrated_absence_is_probabilistic_not_formal_truth"]
+            is not True
             or raw["zero_calibration_omission_required"] is not True
             or raw["error_rows_fail_calibration_closed"] is not True
             or raw["stratified_or_target_count_radius_selection"] is not False

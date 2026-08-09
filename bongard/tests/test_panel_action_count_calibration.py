@@ -80,6 +80,13 @@ def test_task_max_zero_omission_grant_is_conservative_and_cold_replays() -> None
     assert max(artifact.straight_task_max_residuals) == 8
     assert max(artifact.arc_task_max_residuals) == 3
     assert artifact.to_data()["model_calls_for_derivation_or_replay"] == 0
+    assert artifact.to_data()["split_conformal_order_statistic_rank"] == 20
+    assert (
+        artifact.to_data()["finite_sample_marginal_task_coverage_numerator"],
+        artifact.to_data()["finite_sample_marginal_task_coverage_denominator"],
+    ) == (20, 21)
+    assert artifact.to_data()["whole_task_exchangeability_required"] is True
+    assert artifact.to_data()["deterministic_future_correctness_claimed"] is False
 
     restored = cold_replay_action_count_calibration(
         artifact, expected_artifact_address=artifact.artifact_address
@@ -165,6 +172,11 @@ def test_round_trip_and_tamper_checks_bind_exact_policy_and_inputs() -> None:
 
     changed = copy.deepcopy(artifact.to_data())
     changed["stratified_or_target_count_radius_selection"] = True
+    with pytest.raises(ActionCountCalibrationError):
+        ActionCountCalibrationArtifact.from_data(changed)
+
+    changed = copy.deepcopy(artifact.to_data())
+    changed["finite_sample_marginal_task_coverage_denominator"] = 20
     with pytest.raises(ActionCountCalibrationError):
         ActionCountCalibrationArtifact.from_data(changed)
 
