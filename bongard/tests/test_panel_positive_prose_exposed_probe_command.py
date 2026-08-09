@@ -16,6 +16,13 @@ from bongard.panel_positive_prose_exposed_probe_command import (
 
 
 def test_positive_cue_and_fixed_interval_projection() -> None:
+    estimates = {
+        **{f"group_a_{index:02d}_estimate": "supports" for index in range(6)},
+        **{
+            f"group_b_{index:02d}_estimate": "does_not_support"
+            for index in range(6)
+        },
+    }
     cue = _cue(
         {
             "cue_text": (
@@ -23,6 +30,7 @@ def test_positive_cue_and_fixed_interval_projection() -> None:
             ),
             "component_1": "A convex closed structural carrier",
             "component_2": "Exactly four structural straight carrier sides",
+            **estimates,
         }
     )
     assert cue["component_1"].startswith("A convex")
@@ -36,6 +44,7 @@ def test_positive_cue_and_fixed_interval_projection() -> None:
                 "cue_text": "The positive group has four sides",
                 "component_1": "A convex carrier",
                 "component_2": "Four straight carrier sides",
+                **estimates,
             }
         )
     with pytest.raises(PositiveProseExposedProbeError):
@@ -66,4 +75,3 @@ def test_probe_precommit_has_no_query_or_negative_predicate_surface() -> None:
         "query" not in name
         for name in inspect.signature(run_positive_prose_exposed_probe).parameters
     )
-

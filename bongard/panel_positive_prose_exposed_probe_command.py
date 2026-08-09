@@ -49,17 +49,22 @@ from bongard import prototype_scene_observer as _scene_runtime
 from bongard.transport import run_codex_named_images_structured
 
 
-PROBE_SCHEMA = "gkm.bongard-positive-prose-exposed-support-probe.v1"
+PROBE_SCHEMA = "gkm.bongard-positive-prose-exposed-support-probe.v2"
 AUTHORIZATION_SCHEMA = (
-    "gkm.bongard-positive-prose-exposed-support-authorization.v1"
+    "gkm.bongard-positive-prose-exposed-support-authorization.v2"
 )
-PRECOMMIT_SCHEMA = "gkm.bongard-positive-prose-exposed-support-precommit.v1"
-CUE_SCHEMA = "gkm.bongard-positive-conjunction-cue.v1"
+PRECOMMIT_SCHEMA = "gkm.bongard-positive-prose-exposed-support-precommit.v2"
+CUE_SCHEMA = "gkm.bongard-positive-conjunction-cue.v2"
 OBSERVATION_SCHEMA = "gkm.bongard-positive-prose-panel-observation.v1"
 DEFAULT_OUTPUT_ROOT = Path(
     "downloads/ShapeBongard_V2_full/"
-    "panel_positive_prose_exposed_probe_20260809_v1"
+    "panel_positive_prose_exposed_probe_20260809_v2"
 )
+
+_GROUP_A_ESTIMATES = tuple(f"group_a_{index:02d}_estimate" for index in range(6))
+_GROUP_B_ESTIMATES = tuple(f"group_b_{index:02d}_estimate" for index in range(6))
+_ESTIMATE_FIELDS = _GROUP_A_ESTIMATES + _GROUP_B_ESTIMATES
+_ESTIMATE_VALUES = ["supports", "does_not_support", "unclear"]
 
 _FORBIDDEN_CUE = re.compile(
     r"\b(?:group|class|label|positive|negative|target|foil|query|support|"
@@ -79,14 +84,21 @@ def positive_prose_exposed_probe_source_digest() -> str:
 
 
 def _strict_proposer_schema() -> dict[str, object]:
+    properties: dict[str, object] = {
+        "cue_text": {"type": "string"},
+        "component_1": {"type": "string"},
+        "component_2": {"type": "string"},
+    }
+    properties.update(
+        {
+            name: {"type": "string", "enum": _ESTIMATE_VALUES}
+            for name in _ESTIMATE_FIELDS
+        }
+    )
     return {
         "type": "object",
-        "properties": {
-            "cue_text": {"type": "string"},
-            "component_1": {"type": "string"},
-            "component_2": {"type": "string"},
-        },
-        "required": ["cue_text", "component_1", "component_2"],
+        "properties": properties,
+        "required": list(properties),
         "additionalProperties": False,
     }
 
@@ -103,13 +115,23 @@ def _proposer_prompt() -> str:
         "concept. Therefore do not invent a coherent Group B concept, complement, "
         "negative predicate, polarity flip, or disjunction.\n\n"
         "Return exactly one positive cue_text and exactly two independently visible "
-        "positive components. The cue must require both components on the same "
+        "and nonredundant positive components. The cue must require both components on the same "
         "complete coherent figure. Describe latent structural carrier geometry, not "
         "incidental rendering texture: zigzags, dots, circles, squares, triangles, "
         "or changes between them can decorate one underlying carrier run. Use bounded "
         "plain visual prose only. Do not mention groups, labels, examples, support, "
         "queries, rules, predicates, formulas, negation, or code. Do not describe "
-        "what is absent. Counts must be written as words."
+        "what is absent. Counts must be written as words.\n\n"
+        "Also return one estimate for every image using these exact fields: "
+        "group_a_00_estimate through group_a_05_estimate correspond in order to "
+        + names_a + "; group_b_00_estimate through group_b_05_estimate correspond "
+        "in order to " + names_b + ". Each estimate is supports, does_not_support, "
+        "or unclear for the full conjunction. Check discrimination before answering: "
+        "an admissible cue has supports for all six Group A images, "
+        "does_not_support for at least five Group B images, supports for at most one "
+        "Group B image, and at most one unclear estimate overall. Python enforces "
+        "this mechanically. If the components are redundant or merely describe a "
+        "property shared by most Group B images, revise them before returning."
     )
 
 
@@ -157,9 +179,8 @@ def _observer_prompt(cue: Mapping[str, str]) -> str:
 
 
 def _cue(payload: object) -> dict[str, str]:
-    if not isinstance(payload, Mapping) or set(payload) != {
-        "cue_text", "component_1", "component_2"
-    }:
+    expected = {"cue_text", "component_1", "component_2", *_ESTIMATE_FIELDS}
+    if not isinstance(payload, Mapping) or set(payload) != expected:
         raise PositiveProseExposedProbeError("positive cue payload fields differ")
     result: dict[str, str] = {}
     for name in ("cue_text", "component_1", "component_2"):
@@ -179,6 +200,22 @@ def _cue(payload: object) -> dict[str, str]:
         result[name] = value
     if result["component_1"] == result["component_2"]:
         raise PositiveProseExposedProbeError("positive cue components are identical")
+    for name in _ESTIMATE_FIELDS:
+        value = payload[name]
+        if value not in _ESTIMATE_VALUES:
+            raise PositiveProseExposedProbeError("positive cue estimate differs")
+        result[name] = value
+    native = tuple(result[name] for name in _GROUP_A_ESTIMATES)
+    contrast = tuple(result[name] for name in _GROUP_B_ESTIMATES)
+    if (
+        native != ("supports",) * 6
+        or contrast.count("does_not_support") < 5
+        or contrast.count("supports") > 1
+        or (native + contrast).count("unclear") > 1
+    ):
+        raise PositiveProseExposedProbeError(
+            "positive cue fails its declared support admission profile"
+        )
     return result
 
 
@@ -236,6 +273,8 @@ def _authorization(task, panel_ids, panels, source_digest):
             "certified_absent_when_upper_at_most": 1,
             "otherwise": Disposition.INDETERMINATE.value,
             "minimum_decisive_per_side": 5,
+            "proposer_native_supports_required": 6,
+            "proposer_contrast_nonsupports_required": 5,
             "contradictions_allowed_per_side": 0,
             "errors_allowed": 0,
             "cue_frozen_before_panel_observation_calls": True,
