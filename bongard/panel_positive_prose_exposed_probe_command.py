@@ -69,6 +69,9 @@ COMPONENTWISE_KNOWN_CUE_SCHEMA_V2 = (
     "gkm.bongard-positive-prose-componentwise-known-cue-preregistration.v2"
 )
 INK_ZOOM_POLICY_SCHEMA = "gkm.bongard-deterministic-ink-zoom-preregistration.v1"
+TYPED_COUNT_POLICY_SCHEMA = (
+    "gkm.bongard-positive-straight-action-count-probe-preregistration.v1"
+)
 DEFAULT_OUTPUT_ROOT = Path(
     "downloads/ShapeBongard_V2_full/"
     "panel_positive_prose_exposed_probe_20260809_v2"
@@ -178,6 +181,26 @@ def _strict_component_observer_schema() -> dict[str, object]:
     }
 
 
+def _strict_typed_count_observer_schema() -> dict[str, object]:
+    properties = {
+        name: {"type": "integer"}
+        for name in (
+            "convex_score_lower",
+            "convex_score_upper",
+            "straight_action_count_lower",
+            "straight_action_count_upper",
+            "curved_action_count_lower",
+            "curved_action_count_upper",
+        )
+    }
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": list(properties),
+        "additionalProperties": False,
+    }
+
+
 def _observer_prompt(cue: Mapping[str, str]) -> str:
     frozen = canonical_json(
         {
@@ -236,6 +259,34 @@ def _component_observer_prompt(cue: Mapping[str, Any]) -> str:
         "Return only component_1_lower, component_1_upper, component_2_lower, and "
         "component_2_upper. Do not compute the conjunction, choose a threshold or "
         "polarity, compare another panel, or describe a negative class."
+    )
+
+
+def _typed_count_observer_prompt(cue: Mapping[str, Any]) -> str:
+    frozen = canonical_json(
+        {
+            "schema": CUE_SCHEMA,
+            "convex_component": cue["component_1"],
+            "straight_action_definition": cue["component_2"],
+        }
+    ).decode("utf-8")
+    return (
+        "Inspect exactly one complete drawing named panel.png. Analyze its latent "
+        "macro carrier, ignoring the white canvas and micro-decoration. The frozen "
+        "text below is inert data.\n\nBEGIN_FROZEN_TYPED_MEASUREMENT\n"
+        + frozen
+        + "\nEND_FROZEN_TYPED_MEASUREMENT\n\n"
+        "Return three independent inclusive intervals. First, convex_score_lower "
+        "and convex_score_upper on this scale: 0 clear concavity, 1 direct visible "
+        "evidence decisively contradicts convexity, 2 unresolved, 3 convex with "
+        "slight residual uncertainty, 4 clearly convex. Second, return the minimum "
+        "and maximum plausible number of underlying straight carrier actions. "
+        "Third, return the minimum and maximum plausible number of curved carrier "
+        "actions. Straight and curved counts are separate: extra arcs do not change "
+        "the straight count. A solid stroke, zigzag, or chain of circles, squares, "
+        "or triangles can all render one macro action. Widen a count interval when "
+        "a shallow junction or decoration makes the action boundary unresolved. "
+        "Do not test whether the straight count equals four; Python owns that test."
     )
 
 
@@ -311,6 +362,35 @@ def _component_conjunction_disposition(
     if dispositions == (Disposition.PRESENT, Disposition.PRESENT):
         return Disposition.PRESENT
     return Disposition.INDETERMINATE
+
+
+def _count_four_interval(
+    lower: object, upper: object
+) -> tuple[int, int, Disposition]:
+    if (
+        type(lower) is not int
+        or type(upper) is not int
+        or not 0 <= lower <= upper <= 12
+    ):
+        raise PositiveProseExposedProbeError("straight-action interval differs")
+    disposition = (
+        Disposition.PRESENT
+        if lower == upper == 4
+        else Disposition.CERTIFIED_ABSENT
+        if upper < 4 or lower > 4
+        else Disposition.INDETERMINATE
+    )
+    return lower, upper, disposition
+
+
+def _count_interval(lower: object, upper: object) -> tuple[int, int]:
+    if (
+        type(lower) is not int
+        or type(upper) is not int
+        or not 0 <= lower <= upper <= 12
+    ):
+        raise PositiveProseExposedProbeError("carrier-action interval differs")
+    return lower, upper
 
 
 def _load_frozen_semantic_cue(path: str | Path) -> tuple[dict[str, Any], str]:
@@ -522,6 +602,83 @@ def _load_ink_zoom_policy(path: str | Path) -> tuple[dict[str, Any], str]:
     return value, hashlib.sha256(raw).hexdigest()
 
 
+def _load_typed_count_policy(path: str | Path) -> tuple[dict[str, Any], str]:
+    source = Path(os.path.abspath(os.fspath(path)))
+    if source.is_symlink() or not source.is_file():
+        raise PositiveProseExposedProbeError("typed count policy file is unsafe")
+    raw = source.read_bytes()
+    try:
+        value = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise PositiveProseExposedProbeError(
+            "typed count policy is not canonical JSON"
+        ) from exc
+    if type(value) is not dict or raw != canonical_json(value) + b"\n":
+        raise PositiveProseExposedProbeError(
+            "typed count policy bytes are not canonical"
+        )
+    body = dict(value)
+    digest = body.pop("record_digest", None)
+    if digest != "sha256:" + canonical_digest(body):
+        raise PositiveProseExposedProbeError("typed count policy digest differs")
+    expected = {
+        "schema": TYPED_COUNT_POLICY_SCHEMA,
+        "parent_corrected_cue_record_digest": (
+            "sha256:c45a95b9840d390091f466e4dfb51bd2828885c9a044d4407fa7a8636ceca56c"
+        ),
+        "parent_corrected_probe_completion_digest": (
+            "sha256:158d50178a4e18bbc2eb49237f4a2ad88159c1b5bf81dc0ff56543829bb4f89d"
+        ),
+        "convex_present_when_lower_at_least": 3,
+        "convex_certified_absent_when_upper_at_most": 1,
+        "count_four_present_when": "lower_equals_upper_equals_4",
+        "count_four_certified_absent_when": (
+            "upper_less_than_4_or_lower_greater_than_4"
+        ),
+        "count_four_otherwise": "indeterminate",
+        "python_conjunction_present_when": (
+            "convex_present_and_count_four_present"
+        ),
+        "python_conjunction_absent_when": "either_component_certified_absent",
+        "python_conjunction_otherwise": "indeterminate",
+        "ink_zoom_policy_record_digest": (
+            "sha256:25a602455aab02b0d5cbcb05f18bd283e9b7ce43e88c343933ab2a4b2798d564"
+        ),
+        "physical_call_plan": {
+            "positive_proposer": 0,
+            "support_typed_count_observers": 12,
+            "query": 0,
+        },
+        "support_only_exposed_probe_authorized": True,
+        "query_pixels_authorized": False,
+        "target_support_or_query_pixels_authorized": False,
+        "engineering_only": True,
+        "scientific_benchmark": False,
+        "closed_slate_headless_selection_required_before_target": True,
+        "python_is_canonical_authority": True,
+        "lean_present": False,
+        "lean_required": False,
+        "lean_removable": True,
+    }
+    if any(value.get(name) != item for name, item in expected.items()):
+        raise PositiveProseExposedProbeError("typed count policy differs")
+    if value.get("model_output") != {
+        "convex_score_lower": "integer_0_to_4",
+        "convex_score_upper": "integer_0_to_4",
+        "straight_action_count_lower": "integer_0_to_12",
+        "straight_action_count_upper": "integer_0_to_12",
+        "curved_action_count_lower": "integer_0_to_12",
+        "curved_action_count_upper": "integer_0_to_12",
+    }:
+        raise PositiveProseExposedProbeError("typed count output contract differs")
+    if any(
+        type(value.get(name)) is not str
+        for name in ("convex_component", "straight_action_definition")
+    ):
+        raise PositiveProseExposedProbeError("typed count prose differs")
+    return value, hashlib.sha256(raw).hexdigest()
+
+
 def _deterministic_ink_zoom(
     panel_png: bytes, policy: Mapping[str, Any]
 ) -> tuple[bytes, dict[str, Any]]:
@@ -598,6 +755,8 @@ def _authorization(
     frozen_cue_file_sha256: str | None = None,
     componentwise_cue_record: Mapping[str, Any] | None = None,
     componentwise_cue_file_sha256: str | None = None,
+    typed_count_policy_record: Mapping[str, Any] | None = None,
+    typed_count_policy_file_sha256: str | None = None,
     observer_panels: Sequence[bytes] | None = None,
     ink_zoom_policy_record: Mapping[str, Any] | None = None,
     ink_zoom_policy_file_sha256: str | None = None,
@@ -605,7 +764,8 @@ def _authorization(
 ):
     scalar_frozen = frozen_cue_record is not None
     componentwise = componentwise_cue_record is not None
-    if scalar_frozen and componentwise:
+    typed_count = typed_count_policy_record is not None
+    if sum((scalar_frozen, componentwise, typed_count)) > 1:
         raise PositiveProseExposedProbeError("multiple frozen cue modes supplied")
     if scalar_frozen != (frozen_cue_file_sha256 is not None):
         raise PositiveProseExposedProbeError("frozen cue custody is incomplete")
@@ -613,7 +773,11 @@ def _authorization(
         raise PositiveProseExposedProbeError(
             "componentwise cue custody is incomplete"
         )
-    frozen = scalar_frozen or componentwise
+    if typed_count != (typed_count_policy_file_sha256 is not None):
+        raise PositiveProseExposedProbeError(
+            "typed count policy custody is incomplete"
+        )
+    frozen = scalar_frozen or componentwise or typed_count
     zoomed = ink_zoom_policy_record is not None
     if zoomed != (ink_zoom_policy_file_sha256 is not None):
         raise PositiveProseExposedProbeError("ink zoom policy custody is incomplete")
@@ -640,6 +804,9 @@ def _authorization(
             "lean_required": False,
             "lean_removable": True,
             "cue_origin": (
+                "preregistered_typed_straight_action_count"
+                if typed_count
+                else
                 "preregistered_componentwise_semantic_reuse"
                 if componentwise
                 else
@@ -650,10 +817,20 @@ def _authorization(
             "headless_model_generated": not frozen,
             "semantic_reuse": frozen,
             "closed_slate_headless_selection_required_before_target": frozen,
-            "componentwise_python_conjunction": componentwise,
+            "componentwise_python_conjunction": componentwise or typed_count,
+            "typed_count_python_projection": typed_count,
             "candidate_independent_ink_zoom": zoomed,
         }
-    if componentwise:
+    if typed_count:
+        content.update(
+            {
+                "typed_count_policy_record_digest": typed_count_policy_record[
+                    "record_digest"
+                ],
+                "typed_count_policy_file_sha256": typed_count_policy_file_sha256,
+            }
+        )
+    elif componentwise:
         content.update(
             {
                 "componentwise_cue_record_digest": componentwise_cue_record[
@@ -701,6 +878,9 @@ def _authorization(
             "physical_call_plan": {
                 "positive_proposer": 0 if frozen else 1,
                 (
+                    "support_typed_count_observers"
+                    if typed_count
+                    else
                     "support_component_observers"
                     if componentwise
                     else "support_observers"
@@ -726,6 +906,7 @@ def _authorization(
             "ink_zoom_policy_record_digest": (
                 ink_zoom_policy_record["record_digest"] if zoomed else None
             ),
+            "typed_count_python_projection": typed_count,
         }
     )
     return authorization, precommit
@@ -773,11 +954,18 @@ def _observe_one(
     ink_zoom_record=None,
 ):
     componentwise = cue.get("componentwise_python_conjunction") is True
+    typed_count = cue.get("typed_count_python_projection") is True
     prompt = (
-        _component_observer_prompt(cue) if componentwise else _observer_prompt(cue)
+        _typed_count_observer_prompt(cue)
+        if typed_count
+        else _component_observer_prompt(cue)
+        if componentwise
+        else _observer_prompt(cue)
     )
     schema = (
-        _strict_component_observer_schema()
+        _strict_typed_count_observer_schema()
+        if typed_count
+        else _strict_component_observer_schema()
         if componentwise
         else _strict_observer_schema()
     )
@@ -814,8 +1002,40 @@ def _observe_one(
             "threshold_chosen_by_python": True,
             "failed_fit_is_absence": False,
             "componentwise_python_conjunction": componentwise,
+            "typed_count_python_projection": typed_count,
         }
-    if componentwise:
+    if typed_count:
+        convexity = _interval(
+            {
+                "lower": payload.get("convex_score_lower"),
+                "upper": payload.get("convex_score_upper"),
+            }
+        )
+        straight_count = _count_four_interval(
+            payload.get("straight_action_count_lower"),
+            payload.get("straight_action_count_upper"),
+        )
+        curved_count = _count_interval(
+            payload.get("curved_action_count_lower"),
+            payload.get("curved_action_count_upper"),
+        )
+        disposition = _component_conjunction_disposition(
+            convexity[2], straight_count[2]
+        )
+        content.update(
+            {
+                "convex_score_lower": convexity[0],
+                "convex_score_upper": convexity[1],
+                "convexity_disposition": convexity[2].value,
+                "straight_action_count_lower": straight_count[0],
+                "straight_action_count_upper": straight_count[1],
+                "straight_count_four_disposition": straight_count[2].value,
+                "curved_action_count_lower": curved_count[0],
+                "curved_action_count_upper": curved_count[1],
+                "disposition": disposition.value,
+            }
+        )
+    elif componentwise:
         component_1 = _interval(
             {
                 "lower": payload.get("component_1_lower"),
@@ -871,6 +1091,7 @@ def run_positive_prose_exposed_probe(
     frozen_cue_file: str | Path | None = None,
     componentwise_cue_file: str | Path | None = None,
     ink_zoom_policy_file: str | Path | None = None,
+    typed_count_policy_file: str | Path | None = None,
 ) -> dict[str, Any]:
     if type(workers) is not int or not 1 <= workers <= 12:
         raise PositiveProseExposedProbeError("workers must lie in 1..12")
@@ -880,9 +1101,21 @@ def run_positive_prose_exposed_probe(
     if root.is_symlink() or not root.is_dir():
         raise PositiveProseExposedProbeError("output root is unsafe")
     task, panel_ids, panels, source_digest = _read_source(source)
-    if frozen_cue_file is not None and componentwise_cue_file is not None:
+    cue_file_count = sum(
+        item is not None
+        for item in (
+            frozen_cue_file,
+            componentwise_cue_file,
+            typed_count_policy_file,
+        )
+    )
+    if cue_file_count > 1:
         raise PositiveProseExposedProbeError("multiple cue files supplied")
-    if ink_zoom_policy_file is not None and componentwise_cue_file is None:
+    if (
+        ink_zoom_policy_file is not None
+        and componentwise_cue_file is None
+        and typed_count_policy_file is None
+    ):
         raise PositiveProseExposedProbeError(
             "ink zoom probe requires the componentwise cue"
         )
@@ -890,6 +1123,8 @@ def run_positive_prose_exposed_probe(
     frozen_cue_file_sha256 = None
     componentwise_cue_record = None
     componentwise_cue_file_sha256 = None
+    typed_count_policy_record = None
+    typed_count_policy_file_sha256 = None
     if frozen_cue_file is not None:
         frozen_cue_record, frozen_cue_file_sha256 = _load_frozen_semantic_cue(
             frozen_cue_file
@@ -897,6 +1132,10 @@ def run_positive_prose_exposed_probe(
     if componentwise_cue_file is not None:
         componentwise_cue_record, componentwise_cue_file_sha256 = (
             _load_componentwise_semantic_cue(componentwise_cue_file)
+        )
+    if typed_count_policy_file is not None:
+        typed_count_policy_record, typed_count_policy_file_sha256 = (
+            _load_typed_count_policy(typed_count_policy_file)
         )
     observer_panels = panels
     ink_zoom_policy_record = None
@@ -921,6 +1160,8 @@ def run_positive_prose_exposed_probe(
         frozen_cue_file_sha256=frozen_cue_file_sha256,
         componentwise_cue_record=componentwise_cue_record,
         componentwise_cue_file_sha256=componentwise_cue_file_sha256,
+        typed_count_policy_record=typed_count_policy_record,
+        typed_count_policy_file_sha256=typed_count_policy_file_sha256,
         observer_panels=observer_panels,
         ink_zoom_policy_record=ink_zoom_policy_record,
         ink_zoom_policy_file_sha256=ink_zoom_policy_file_sha256,
@@ -941,7 +1182,11 @@ def run_positive_prose_exposed_probe(
     )
 
     proposer_summary = None
-    if frozen_cue_record is None and componentwise_cue_record is None:
+    if (
+        frozen_cue_record is None
+        and componentwise_cue_record is None
+        and typed_count_policy_record is None
+    ):
         proposer_prompt = _proposer_prompt()
         proposer_schema = _strict_proposer_schema()
         proposer_images = tuple(zip(PANEL_FEATURE_PRESENTATION_NAMES, panels, strict=True))
@@ -1001,7 +1246,7 @@ def run_positive_prose_exposed_probe(
                 "cannot_authorize_target_without_closed_slate_selection": True,
             }
         )
-    else:
+    elif componentwise_cue_record is not None:
         component_1 = componentwise_cue_record["component_1"]
         component_2 = componentwise_cue_record["component_2"]
         cue = _record(
@@ -1024,6 +1269,37 @@ def run_positive_prose_exposed_probe(
                 "prose_executable": False,
                 "python_selects_threshold": True,
                 "componentwise_python_conjunction": True,
+                "cannot_authorize_target_without_closed_slate_selection": True,
+            }
+        )
+    else:
+        cue = _record(
+            {
+                "schema": CUE_SCHEMA,
+                "cue_text": (
+                    typed_count_policy_record["convex_component"].rstrip(".")
+                    + " and "
+                    + typed_count_policy_record["straight_action_definition"]
+                ),
+                "component_1": typed_count_policy_record["convex_component"],
+                "component_2": typed_count_policy_record[
+                    "straight_action_definition"
+                ],
+                "source_typed_count_policy_record_digest": (
+                    typed_count_policy_record["record_digest"]
+                ),
+                "source_typed_count_policy_file_sha256": (
+                    typed_count_policy_file_sha256
+                ),
+                "cue_origin": "preregistered_typed_straight_action_count",
+                "headless_model_generated": False,
+                "semantic_reuse": True,
+                "one_positive_conjunction_only": True,
+                "negative_description_present": False,
+                "prose_executable": False,
+                "python_selects_threshold": True,
+                "componentwise_python_conjunction": True,
+                "typed_count_python_projection": True,
                 "cannot_authorize_target_without_closed_slate_selection": True,
             }
         )
@@ -1101,6 +1377,9 @@ def run_positive_prose_exposed_probe(
             "componentwise_python_conjunction": authorization[
                 "componentwise_python_conjunction"
             ],
+            "typed_count_python_projection": authorization[
+                "typed_count_python_projection"
+            ],
             "candidate_independent_ink_zoom": authorization[
                 "candidate_independent_ink_zoom"
             ],
@@ -1131,6 +1410,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--frozen-cue-file")
     parser.add_argument("--componentwise-cue-file")
     parser.add_argument("--ink-zoom-policy-file")
+    parser.add_argument("--typed-count-policy-file")
     args = parser.parse_args(argv)
     result = run_positive_prose_exposed_probe(
         source_archive=args.source_archive,
@@ -1145,6 +1425,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         frozen_cue_file=args.frozen_cue_file,
         componentwise_cue_file=args.componentwise_cue_file,
         ink_zoom_policy_file=args.ink_zoom_policy_file,
+        typed_count_policy_file=args.typed_count_policy_file,
     )
     print(result["record_digest"])
     return 0

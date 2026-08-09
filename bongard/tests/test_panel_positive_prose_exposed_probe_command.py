@@ -13,13 +13,16 @@ from bongard.panel_positive_prose_exposed_probe_command import (
     PositiveProseExposedProbeError,
     _authorization,
     _component_conjunction_disposition,
+    _count_four_interval,
     _cue,
     _deterministic_ink_zoom,
     _interval,
     _load_componentwise_semantic_cue,
     _load_frozen_semantic_cue,
     _load_ink_zoom_policy,
+    _load_typed_count_policy,
     _strict_component_observer_schema,
+    _strict_typed_count_observer_schema,
     run_positive_prose_exposed_probe,
 )
 from bongard.transport import validate_codex_strict_output_schema
@@ -244,3 +247,38 @@ def test_corrected_straight_action_cue_explicitly_allows_curved_sections() -> No
     assert cue["exposed_positive_support_straight_action_counts"] == [4] * 6
     assert cue["exposed_positive_support_arc_action_counts"] == [0, 0, 0, 4, 0, 0]
     assert "additional curved carrier sections may be present" in cue["component_2"]
+
+
+def test_typed_count_interval_is_projected_by_python() -> None:
+    validate_codex_strict_output_schema(_strict_typed_count_observer_schema())
+    policy_path = (
+        Path(__file__).parents[1]
+        / "data"
+        / "panel_positive_straight_action_count_probe_20260809_v1.json"
+    )
+    policy, policy_file_sha256 = _load_typed_count_policy(policy_path)
+    assert _count_four_interval(4, 4)[2] is Disposition.PRESENT
+    assert _count_four_interval(2, 3)[2] is Disposition.CERTIFIED_ABSENT
+    assert _count_four_interval(5, 6)[2] is Disposition.CERTIFIED_ABSENT
+    assert _count_four_interval(3, 5)[2] is Disposition.INDETERMINATE
+
+    task = ObjectBongardTaskPlan.create(
+        "hd_convex-has_four_straight_lines_0001",
+        seed_digest="sha256:" + "34" * 32,
+    )
+    ids = task.side_0_support_panel_ids + task.side_1_support_panel_ids
+    panels = tuple(b"support" + bytes([index]) for index in range(12))
+    authorization, precommit = _authorization(
+        task,
+        ids,
+        panels,
+        "ab" * 32,
+        typed_count_policy_record=policy,
+        typed_count_policy_file_sha256=policy_file_sha256,
+    )
+    assert authorization["typed_count_python_projection"] is True
+    assert precommit["physical_call_plan"] == {
+        "positive_proposer": 0,
+        "support_typed_count_observers": 12,
+        "query": 0,
+    }
