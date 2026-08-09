@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -102,9 +103,8 @@ def test_bd_singleton_alias_is_exact_fail_closed_and_auditable() -> None:
     with pytest.raises(TypeError):
         binding.raw_label_by_name["direct_shape"] = "0"  # type: ignore[index]
     with pytest.raises(TypeError):
-        binding.alias_by_signature[next(iter(binding.alias_by_signature))] = (  # type: ignore[index]
-            "direct_shape"
-        )
+        alias_signature = next(iter(binding.alias_by_signature))
+        binding.alias_by_signature[alias_signature] = "direct_shape"  # type: ignore[index]
     with pytest.raises(TypeError):
         binding.alias_proofs[0]["raw_convexity_label"] = "0"  # type: ignore[index]
     with pytest.raises(TypeError):
@@ -175,3 +175,37 @@ def test_checked_in_live_audit_is_self_consistent_and_source_bound() -> None:
         "thin_rec_right_triangle",
     }
     assert value["claim_limits"]["catalog_unresolved_downstream_disposition"] == "GAP"
+
+
+def test_v2_cohort_audit_is_bound_without_opening_sealed_labels() -> None:
+    repository = Path(__file__).resolve().parents[2]
+    path = (
+        repository
+        / "bongard/data/panel_convexity_catalog_v2_cohort_audit_20260810_v1.json"
+    )
+    value = json.loads(path.read_bytes())
+    record_digest = value.pop("record_digest")
+    assert record_digest == "sha256:" + canonical_digest(value)
+
+    plan_path = repository / value["v2_preregistration_binding"]["path"]
+    plan_raw = plan_path.read_bytes()
+    assert value["v2_preregistration_binding"]["raw_sha256"] == (
+        "sha256:" + hashlib.sha256(plan_raw).hexdigest()
+    )
+    plan = json.loads(plan_raw)
+    assert value["v2_preregistration_binding"]["record_digest"] == plan["record_digest"]
+    for cohort_name, audit in value["cohorts"].items():
+        assert audit["combined_rows_digest_matches_v2_plan"] is True
+        assert audit["combined_action_and_catalog_rows_digest"] == plan["cohorts"][
+            cohort_name
+        ]["action_and_catalog_label_rows_digest"]
+        assert audit["all_14_catalog_labelled_with_compatibility_task_count"] == audit[
+            "task_count"
+        ]
+    assert value["custody"] == {
+        "calibration_or_evaluation_sealed_label_payloads_read_for_this_independent_audit": False,
+        "new_panel_png_bytes_read": 0,
+        "official_validation_or_test_pixels_read": False,
+        "target_family_pixels_read": False,
+        "v2_selected_panel_png_bytes_read": 0,
+    }

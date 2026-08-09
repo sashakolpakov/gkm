@@ -1,0 +1,252 @@
+{
+  "authority_bindings": {
+    "catalog_algorithm_digest": "sha256:42a0307bcf04cf52b889dae132013aab8e2a850e4a64fa5f294929e7d0e1c419",
+    "catalog_audit_raw_sha256": "sha256:b221ec3efc440e4eec37e628df4254b37456cd1324594327812b77368d2710b3",
+    "catalog_audit_record_digest": "sha256:333a6cf4cbdf135484cbacf42ddb20aaf9fad482f70430583f36e60f3198f971",
+    "catalog_authority_commit": "e381fcee08dca4487f897cb98dce45dc03371307",
+    "catalog_authority_source_sha256": "sha256:0652589108c0f77ec86550a84eeeac3e65edffb81969c61fc9705571cb1c5286"
+  },
+  "cohorts": {
+    "calibration": {
+      "all_14_binary_0_or_1_task_count": 0,
+      "all_14_catalog_labelled_with_compatibility_task_count": 100,
+      "all_14_direct_exact_signature_task_count": 93,
+      "catalog_label_counts": {
+        "catalog_unresolved": 1034,
+        "convex": 146,
+        "nonconvex": 220
+      },
+      "catalog_label_rows_digest": "sha256:76f825e255e0d855f573ffe4f59c8569f1060aedd52165585c0ad0f711c2cc2e",
+      "combined_action_and_catalog_rows_digest": "sha256:fe66355cc5c088d467fca0346d995d0d0b7cb1e280238ae50d56053d3ec12a5d",
+      "combined_rows_digest_matches_v2_plan": true,
+      "compatibility_alias_panel_count": 7,
+      "count4_catalog_label_counts": {
+        "catalog_unresolved": 126,
+        "convex": 65,
+        "nonconvex": 35
+      },
+      "count4_noarc_catalog_label_counts": {
+        "catalog_unresolved": 74,
+        "convex": 59,
+        "nonconvex": 15
+      },
+      "known_binary_panel_count": 366,
+      "panel_count": 1400,
+      "task_composition_counts": {
+        "has_all_three_classes": 57,
+        "has_catalog_unresolved": 100,
+        "has_known_binary": 90,
+        "uses_compatibility_alias": 7
+      },
+      "task_count": 100,
+      "unique_catalog_shape_name_counts": {
+        "catalog_unresolved": 336,
+        "convex": 56,
+        "nonconvex": 103
+      }
+    },
+    "evaluation": {
+      "all_14_binary_0_or_1_task_count": 0,
+      "all_14_catalog_labelled_with_compatibility_task_count": 100,
+      "all_14_direct_exact_signature_task_count": 92,
+      "catalog_label_counts": {
+        "catalog_unresolved": 1004,
+        "convex": 127,
+        "nonconvex": 269
+      },
+      "catalog_label_rows_digest": "sha256:4bbabe1f8ac6b4587096ff1fa8c4fc79bfd9b6d512854ef57c900d888a1b7f4d",
+      "combined_action_and_catalog_rows_digest": "sha256:60f738ff556869dbd2c2f4e7fa99b8f3da2be4afb2dc238055a6d7d377e5c488",
+      "combined_rows_digest_matches_v2_plan": true,
+      "compatibility_alias_panel_count": 8,
+      "count4_catalog_label_counts": {
+        "catalog_unresolved": 120,
+        "convex": 55,
+        "nonconvex": 36
+      },
+      "count4_noarc_catalog_label_counts": {
+        "catalog_unresolved": 59,
+        "convex": 48,
+        "nonconvex": 15
+      },
+      "known_binary_panel_count": 396,
+      "panel_count": 1400,
+      "task_composition_counts": {
+        "has_all_three_classes": 50,
+        "has_catalog_unresolved": 100,
+        "has_known_binary": 90,
+        "uses_compatibility_alias": 8
+      },
+      "task_count": 100,
+      "unique_catalog_shape_name_counts": {
+        "catalog_unresolved": 350,
+        "convex": 63,
+        "nonconvex": 123
+      }
+    },
+    "train": {
+      "all_14_binary_0_or_1_task_count": 0,
+      "all_14_catalog_labelled_with_compatibility_task_count": 800,
+      "all_14_direct_exact_signature_task_count": 726,
+      "catalog_label_counts": {
+        "catalog_unresolved": 7982,
+        "convex": 1180,
+        "nonconvex": 2038
+      },
+      "catalog_label_rows_digest": "sha256:068da58efa4fed0ac2ed3ee6994b29015ba797040c7fedc42dd165e0718d6781",
+      "combined_action_and_catalog_rows_digest": "sha256:cc77e92aeb9679d5ed1f23d828bdc985459625730bd2e0f99a5023638a60e673",
+      "combined_rows_digest_matches_v2_plan": true,
+      "compatibility_alias_panel_count": 81,
+      "count4_catalog_label_counts": {
+        "catalog_unresolved": 940,
+        "convex": 408,
+        "nonconvex": 201
+      },
+      "count4_noarc_catalog_label_counts": {
+        "catalog_unresolved": 504,
+        "convex": 349,
+        "nonconvex": 60
+      },
+      "known_binary_panel_count": 3218,
+      "panel_count": 11200,
+      "task_composition_counts": {
+        "has_all_three_classes": 470,
+        "has_catalog_unresolved": 800,
+        "has_known_binary": 731,
+        "uses_compatibility_alias": 74
+      },
+      "task_count": 800,
+      "unique_catalog_shape_name_counts": {
+        "catalog_unresolved": 400,
+        "convex": 75,
+        "nonconvex": 152
+      }
+    },
+    "validation": {
+      "all_14_binary_0_or_1_task_count": 0,
+      "all_14_catalog_labelled_with_compatibility_task_count": 100,
+      "all_14_direct_exact_signature_task_count": 88,
+      "catalog_label_counts": {
+        "catalog_unresolved": 1005,
+        "convex": 131,
+        "nonconvex": 264
+      },
+      "catalog_label_rows_digest": "sha256:2221044704cb2ebf5bd53e116fa1d78da884958e66bbbbc2d516edb951a3359a",
+      "combined_action_and_catalog_rows_digest": "sha256:56927feb74721f2c56605690aec8adc786fa16ec6d441dd5d2792a7bf1119463",
+      "combined_rows_digest_matches_v2_plan": true,
+      "compatibility_alias_panel_count": 13,
+      "count4_catalog_label_counts": {
+        "catalog_unresolved": 113,
+        "convex": 45,
+        "nonconvex": 30
+      },
+      "count4_noarc_catalog_label_counts": {
+        "catalog_unresolved": 63,
+        "convex": 40,
+        "nonconvex": 6
+      },
+      "known_binary_panel_count": 395,
+      "panel_count": 1400,
+      "task_composition_counts": {
+        "has_all_three_classes": 56,
+        "has_catalog_unresolved": 100,
+        "has_known_binary": 90,
+        "uses_compatibility_alias": 12
+      },
+      "task_count": 100,
+      "unique_catalog_shape_name_counts": {
+        "catalog_unresolved": 341,
+        "convex": 62,
+        "nonconvex": 111
+      }
+    }
+  },
+  "conformal_assessment": {
+    "alpha": 0.05,
+    "calibration_catalog_label_counts": {
+      "catalog_unresolved": 1034,
+      "convex": 146,
+      "nonconvex": 220
+    },
+    "calibration_task_count": 100,
+    "calibration_tasks_all_14_catalog_labelled": 100,
+    "calibration_tasks_all_14_direct_exact": 93,
+    "canonical_joint_score": "maximum_over_all_14_panels_and_all_three_heads_of_1_minus_p_true",
+    "feasible": true,
+    "finite_sample_marginal_whole_task_coverage_fraction_under_exchangeability": "96/101",
+    "finite_sample_marginal_whole_task_coverage_lower_bound": 0.9504950495049505,
+    "order_statistic_one_indexed": 96,
+    "target_family_transfer_formally_authorized": false,
+    "zero_miss_maximum_used": false
+  },
+  "custody": {
+    "calibration_or_evaluation_sealed_label_payloads_read_for_this_independent_audit": false,
+    "new_panel_png_bytes_read": 0,
+    "official_validation_or_test_pixels_read": false,
+    "target_family_pixels_read": false,
+    "v2_selected_panel_png_bytes_read": 0
+  },
+  "identity_transfer": {
+    "claim": "new_task_render_style_pose_transfer_over_catalog_shape_identities_seen_in_training_not_unseen-shape_generalization",
+    "counts": {
+      "calibration": {
+        "seen_in_train": {
+          "catalog_unresolved": 336,
+          "convex": 56,
+          "nonconvex": 103
+        },
+        "unseen_from_train": {
+          "catalog_unresolved": 0,
+          "convex": 0,
+          "nonconvex": 0
+        }
+      },
+      "evaluation": {
+        "seen_in_train": {
+          "catalog_unresolved": 350,
+          "convex": 63,
+          "nonconvex": 123
+        },
+        "unseen_from_train": {
+          "catalog_unresolved": 0,
+          "convex": 0,
+          "nonconvex": 0
+        }
+      },
+      "validation": {
+        "seen_in_train": {
+          "catalog_unresolved": 341,
+          "convex": 62,
+          "nonconvex": 111
+        },
+        "unseen_from_train": {
+          "catalog_unresolved": 0,
+          "convex": 0,
+          "nonconvex": 0
+        }
+      }
+    }
+  },
+  "record_digest": "sha256:177a02f0dda5b567927fd056f632de7f44711efce46c3a1ace6b6bf687e54756",
+  "schema": "gkm.bongard-panel-convexity-v2-cohort-audit.v1",
+  "selection_checks": {
+    "cohort_task_overlap_count": 0,
+    "official_train_task_count": 1100,
+    "selected_task_count": 1100,
+    "semantic_excluded_task_count_selected": 0
+  },
+  "v2_preregistration_binding": {
+    "commit": "ad15906b9966a32df27f99454ac908a1972d67c7",
+    "path": "bongard/data/panel_action_count_cnn_preregistration_20260810_v2.json",
+    "raw_sha256": "sha256:b38fd75badd5090dc03fe8cecb34053d4045bc9a47e3a4b9ad2b7e433aa0ca5b",
+    "record_digest": "sha256:0de57e610763a7fb77adbcaeb2be21b20864a02eb5af0656b76c291ef5b0a3a8",
+    "source_path": "bongard/panel_action_count_cnn_preregister_v2.py",
+    "source_sha256": "sha256:a57b685cdcdb312585c96b0fe46ffb0424612d235f4fe2d9c67c11f49673296c"
+  },
+  "warnings": {
+    "all_calibration_tasks_contain_catalog_unresolved": true,
+    "catalog_unresolved_calibration_fraction": 0.7385714285714285,
+    "catalog_unresolved_is_typed_gap_not_semantic_not_applicable": true,
+    "mixed_turning_catalog_supervision_available": false,
+    "whole_task_coverage_is_exchangeability_conditional_not_deterministic_truth": true
+  }
+}
