@@ -89,6 +89,24 @@ _FORBIDDEN_POLICY = re.compile(
 _COMPARATIVE_POLICY = re.compile(
     r"\b(?:more|less|fewer|most|least|common|frequent|usually|typically|always)\b"
 )
+_BOUND_OBJECT_LOCAL_LOWER_BOUND = re.compile(
+    r"\bthe bound (?:form|shape|object|entity|figure|path|outline|contour|marking|stroke) "
+    r"(?:has|contains|carries|shows|includes|exhibits|forms|makes) at least "
+    r"(?:"
+    r"one (?:(?:clearly|visually|distinct|pronounced|visible|separate|internal|"
+    r"external|rounded|sharp|angular|curved|straight|short|long|small|large|"
+    r"broad|narrow|connected|disconnected) ){0,4}"
+    r"(?:bend|corner|arm|mark|stroke|loop|turn|hole|lobe|tip|point|prong|branch|"
+    r"segment|notch|cusp|endpoint|intersection|dot|stripe|spot)"
+    r"|(?:two|three|four|five|six|seven|eight) "
+    r"(?:(?:clearly|visually|distinct|pronounced|visible|separate|internal|"
+    r"external|rounded|sharp|angular|curved|straight|short|long|small|large|"
+    r"broad|narrow|connected|disconnected) ){0,4}"
+    r"(?:bends|corners|arms|marks|strokes|loops|turns|holes|lobes|tips|points|"
+    r"prongs|branches|segments|notches|cusps|endpoints|intersections|dots|"
+    r"stripes|spots)"
+    r")\b"
+)
 _PANEL_GLOBAL_RELATION = re.compile(
     r"\b(?:between|among|across) (?:objects|entities|figures)\b|"
     r"\banother (?:object|entity|figure)\b"
@@ -135,9 +153,12 @@ def _sequence(value: object, label: str) -> tuple[object, ...]:
 
 
 def _policy_local(value: str, label: str) -> str:
+    comparative_view = _BOUND_OBJECT_LOCAL_LOWER_BOUND.sub(
+        "the bound form has several local features", value
+    )
     if (
         _FORBIDDEN_POLICY.search(value)
-        or _COMPARATIVE_POLICY.search(value)
+        or _COMPARATIVE_POLICY.search(comparative_view)
         or _PANEL_GLOBAL_RELATION.search(value)
     ):
         raise ObjectSceneAnchorCardError(f"{label} is not anchor-local prose")

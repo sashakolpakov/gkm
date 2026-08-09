@@ -111,14 +111,44 @@ def _raw_payload() -> dict[str, object]:
                 "angular peaked form",
                 "the bound form has one angular peaked contour",
                 tuple(f"panel_{index:03d}" for index in range(6)),
-            )
+            ),
+            card(
+                "pointed upper contour",
+                "the bound form carries a sharply pointed upper contour",
+                tuple(f"panel_{index:03d}" for index in range(6)),
+            ),
+            card(
+                "wide angular base",
+                "the bound form extends along one wide angular base",
+                tuple(f"panel_{index:03d}" for index in range(6)),
+            ),
+            card(
+                "paired angular lobes",
+                "the bound form contains paired angular outer lobes",
+                tuple(f"panel_{index:03d}" for index in range(6)),
+            ),
         ],
         "side1_positive": [
             card(
                 "compact enclosed form",
                 "the bound form carries a compact enclosed outline",
                 tuple(f"panel_{index:03d}" for index in range(6, 12)),
-            )
+            ),
+            card(
+                "rounded upper contour",
+                "the bound form has one smoothly rounded upper contour",
+                tuple(f"panel_{index:03d}" for index in range(6, 12)),
+            ),
+            card(
+                "narrow tapered base",
+                "the bound form extends into one narrow tapered base",
+                tuple(f"panel_{index:03d}" for index in range(6, 12)),
+            ),
+            card(
+                "paired curved lobes",
+                "the bound form contains paired curved outer lobes",
+                tuple(f"panel_{index:03d}" for index in range(6, 12)),
+            ),
         ],
     }
 
@@ -179,8 +209,8 @@ def test_one_call_builds_committed_proposal_and_cold_replays() -> None:
     assert transport.calls == artifact.physical_call_count == 1
     assert artifact.status == "success"
     assert artifact.proposal is not None
-    assert len(artifact.proposal.side0_positive) == 1
-    assert len(artifact.proposal.side1_positive) == 1
+    assert len(artifact.proposal.side0_positive) == 4
+    assert len(artifact.proposal.side1_positive) == 4
     assert artifact.proposal.dropped_cards == ()
     assert ObjectSceneAnchorCardProposerArtifact.from_data(artifact.to_data()) == artifact
     assert verify_object_scene_anchor_card_proposer_artifact(
@@ -225,8 +255,46 @@ def test_prompt_has_full_layout_and_every_object_anchor_legend() -> None:
     assert "must all hold on one same cited binding" in prompt
     assert "bird-like silhouette or strongly oblique edges" in prompt
     assert "it is never a negation, absence, failure, or complement" in prompt
+    assert "Produce exactly four distinct cards per orientation" in prompt
+    assert "distinct locally decidable witness bundles" in prompt
     schema = object_scene_anchor_card_proposer_output_schema(frozen)
     assert set(schema["properties"]) == {"side0_positive", "side1_positive"}
+
+
+def test_redundant_raw_cards_allow_committed_builder_drops() -> None:
+    payload = _raw_payload()
+    for card in payload["side0_positive"][:3]:  # type: ignore[index]
+        card["required_witnesses"][0]["statement"] = (  # type: ignore[index]
+            "the bound form is not locally decidable"
+        )
+    transport = _Transport(payload)
+    artifact, _ = _call(transport)
+
+    assert artifact.status == "success"
+    assert artifact.proposal is not None
+    assert len(artifact.proposal.side0_positive) == 1
+    assert len(artifact.proposal.side1_positive) == 4
+    assert len(artifact.proposal.dropped_cards) == 3
+    assert {item.reason_code for item in artifact.proposal.dropped_cards} == {
+        "witness_policy"
+    }
+
+
+def test_raw_card_buckets_are_exactly_four_and_need_one_usable_card() -> None:
+    underfilled = _raw_payload()
+    underfilled["side0_positive"].pop()  # type: ignore[union-attr]
+    underfilled_artifact, _ = _call(_Transport(underfilled))
+    assert underfilled_artifact.status == "parser_error"
+    assert underfilled_artifact.proposal is None
+
+    unusable = _raw_payload()
+    for card in unusable["side0_positive"]:  # type: ignore[union-attr]
+        card["required_witnesses"][0]["statement"] = (  # type: ignore[index]
+            "the bound form is not locally decidable"
+        )
+    unusable_artifact, _ = _call(_Transport(unusable))
+    assert unusable_artifact.status == "parser_error"
+    assert unusable_artifact.proposal is None
 
 
 def test_parser_and_transport_failures_are_typed_and_select_no_proposal() -> None:

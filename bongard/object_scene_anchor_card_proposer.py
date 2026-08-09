@@ -519,8 +519,10 @@ def object_scene_anchor_card_proposer_prompt(
         "tile, with no whole-sheet counts or cross-object comparison. Soft but "
         "visually grounded descriptions such as bird-like silhouette or strongly "
         "oblique edges are allowed when the cited tiles support them consistently. "
-        "Produce one to four cards per orientation and exactly six citations per "
-        "card in panel-alias order. A card uses one anchor_kind. "
+        "Produce exactly four distinct cards per orientation and exactly six "
+        "citations per card in panel-alias order. The four cards are redundant "
+        "fallbacks, so give them distinct locally decidable witness bundles. A "
+        "card uses one anchor_kind. "
         "For entity or part set frame_lower=frame_upper=0. For frame use an "
         "inclusive interval within 3..8. Write lowercase affirmative atomic prose; "
         "use empty accepted_variants and near_miss_boundaries unless their strict "
@@ -618,7 +620,7 @@ def _translate_raw_payload(
         ("side1_positive", proposer_input.panel_aliases[6:]),
     ):
         rows = _list(raw[orientation], f"{orientation} cards")
-        if not 1 <= len(rows) <= OBJECT_SCENE_ANCHOR_MAX_CARDS_PER_ORIENTATION:
+        if len(rows) != OBJECT_SCENE_ANCHOR_MAX_CARDS_PER_ORIENTATION:
             raise ObjectSceneAnchorCardProposerError("raw card bucket capacity differs")
         output: list[dict[str, object]] = []
         for row in rows:
@@ -685,14 +687,6 @@ def _translate_raw_payload(
         side0_panel_manifests=proposer_input.side0_panel_manifests,
         side1_panel_manifests=proposer_input.side1_panel_manifests,
     )
-    if (
-        proposal.dropped_cards
-        or len(proposal.side0_positive) != len(translated["side0_positive"])
-        or len(proposal.side1_positive) != len(translated["side1_positive"])
-    ):
-        raise ObjectSceneAnchorCardProposerError(
-            "committed card builder rejected one or more raw cards"
-        )
     return proposal
 
 

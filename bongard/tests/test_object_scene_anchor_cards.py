@@ -218,6 +218,64 @@ def test_canonicalization_is_input_order_independent(panel_sets) -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "statement",
+    (
+        "the bound path has at least two visually distinct pronounced bends",
+        "the bound form contains at least one loop",
+        "the bound object carries at least three visible marks",
+        "the bound figure shows at least four separate arms",
+        "the bound contour makes at least two sharp turns",
+        "the bound shape includes at least two straight strokes",
+        "the bound outline has at least three angular corners",
+    ),
+)
+def test_explicit_bound_object_local_feature_lower_bounds_are_allowed(
+    statement,
+) -> None:
+    witness = ObjectSceneAnchorCardWitness.create(
+        "witness_00", "part_topology", statement
+    )
+    assert witness.statement == statement
+
+
+@pytest.mark.parametrize(
+    "statement",
+    (
+        "the bound form contains at least two visible objects",
+        "the bound object contains at least two distinct entities",
+        "the bound figure contains at least two separate figures",
+        "the bound form is at least two times larger",
+        "the bound form has at least two times larger loops",
+        "at least two bends define the bound path",
+        "the path has at least two bends",
+        "the bound path has at least nine bends",
+    ),
+)
+def test_nonlocal_or_comparative_lower_bounds_are_rejected(statement) -> None:
+    with pytest.raises(ObjectSceneAnchorCardError, match="anchor-local prose"):
+        ObjectSceneAnchorCardWitness.create(
+            "witness_00",
+            "part_topology",
+            statement,
+        )
+
+
+def test_superlative_and_cross_object_comparisons_remain_rejected() -> None:
+    with pytest.raises(ObjectSceneAnchorCardError, match="anchor-local prose"):
+        ObjectSceneAnchorCardWitness.create(
+            "witness_00",
+            "shape_appearance",
+            "the bound form has the least curved outline",
+        )
+    with pytest.raises(ObjectSceneAnchorCardError, match="anchor-local prose"):
+        ObjectSceneAnchorCardWitness.create(
+            "witness_00",
+            "part_topology",
+            "the bound path has at least two bends across objects",
+        )
+
+
 def test_malformed_optional_card_is_dropped_without_payload_identity(panel_sets) -> None:
     side0, side1 = panel_sets
     payload = _payload(side0, side1)
@@ -327,4 +385,3 @@ def test_strict_from_data_rejects_resealed_binding_spec_mismatch(panel_sets) -> 
     )
     with pytest.raises(ObjectSceneAnchorCardError, match="shared binding spec"):
         ObjectSceneAnchorCardProposal.from_data(data)
-
