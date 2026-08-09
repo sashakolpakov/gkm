@@ -6,6 +6,12 @@ byte strings in semantic side-0-then-side-1 order, a receipted canonical
 per support panel.  It builds the two native positive-only engineering version
 spaces without compiling prose or accepting arbitrary predicate code.
 
+The deployed observer catalog is the batch adapter's exact, canonically
+ordered, complete whole-panel axis tuple.  It is preregistered by Python and
+never selected from proposer nominations.  Nominated owner-local features are
+retained in the vocabulary, but evaluate deterministically as indeterminate
+because their axes are outside this deployment catalog.
+
 Exactly one survivor per orientation is required.  Multiple survivors are a
 typed selection gap; this runner never chooses one by digest order.  The sole
 pair is sealed in a content-addressed task-freeze object implementing the
@@ -56,6 +62,9 @@ from bongard.panel_feature_observation import (
     FeatureAxis,
     PanelFeatureObservationSet,
 )
+from bongard.panel_batched_typed_codex_observer import (
+    complete_whole_panel_feature_axes,
+)
 from bongard.panel_feature_predicate import (
     EngineeringDisposition,
     EngineeringFeatureVersionSpace,
@@ -80,7 +89,6 @@ from bongard.panel_feature_proposer import (
     panel_feature_proposer_contract_digest,
 )
 from bongard.panel_soft_ontology import (
-    FAMILY_CONTRACTS,
     LanguageGapArtifact,
     NativeFeatureProposal,
     NativeOrientation,
@@ -91,18 +99,18 @@ from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 
 PANEL_FEATURE_TASK_RUNNER_ID = (
-    "bongard.panel-feature-task/unlabelled-observe-durable-freeze-python-v2"
+    "bongard.panel-feature-task/complete-whole-panel-batch-durable-freeze-python-v3"
 )
-PANEL_FEATURE_TASK_ARCHIVE_SCHEMA = "gkm.bongard-panel-feature-task-archive.v2"
+PANEL_FEATURE_TASK_ARCHIVE_SCHEMA = "gkm.bongard-panel-feature-task-archive.v3"
 PANEL_FEATURE_TASK_SUPPORT_GAP_SCHEMA = (
-    "gkm.bongard-panel-feature-task-support-gap.v2"
+    "gkm.bongard-panel-feature-task-support-gap.v3"
 )
 PANEL_FEATURE_TASK_SELECTION_GAP_SCHEMA = (
-    "gkm.bongard-panel-feature-task-selection-gap.v1"
+    "gkm.bongard-panel-feature-task-selection-gap.v2"
 )
-PANEL_FEATURE_TASK_FREEZE_SCHEMA = "gkm.bongard-panel-feature-task-freeze.v1"
+PANEL_FEATURE_TASK_FREEZE_SCHEMA = "gkm.bongard-panel-feature-task-freeze.v2"
 PANEL_FEATURE_TASK_FREEZE_COMMIT_SCHEMA = (
-    "gkm.bongard-panel-feature-task-freeze-commit.v1"
+    "gkm.bongard-panel-feature-task-freeze-commit.v2"
 )
 PANEL_FEATURE_SUPPORT_PANEL_COUNT = 12
 PANEL_FEATURE_QUERY_PANEL_COUNT = 2
@@ -191,18 +199,18 @@ def _support_ids(task: ObjectBongardTaskPlan) -> tuple[str, ...]:
     return (*task.side_0_support_panel_ids, *task.side_1_support_panel_ids)
 
 
-def panel_feature_axis_catalog() -> tuple[FeatureAxis, ...]:
-    """Return every registered neutral axis, independent of any proposal."""
+def _deployment_axis_catalog_data() -> list[dict[str, object]]:
+    return [item.to_data() for item in complete_whole_panel_feature_axes()]
 
-    return tuple(
-        sorted(
-            (
-                FeatureAxis(family, scope, frame)
-                for family, contract in FAMILY_CONTRACTS.items()
-                for scope, frame in contract.allowed_scope_frames
-            ),
-            key=lambda item: item.axis_digest,
-        )
+
+def _deployment_axis_catalog_digest() -> str:
+    return canonical_digest(
+        {
+            "schema": "gkm.bongard-panel-feature-deployment-axis-catalog.v1",
+            "axes": _deployment_axis_catalog_data(),
+            "complete_whole_panel_catalog": True,
+            "caller_or_candidate_selected": False,
+        }
     )
 
 
@@ -622,14 +630,19 @@ def _derive_vocabulary_and_verify_provenance(
 def _canonical_observation(value: object) -> PanelFeatureObservationSet:
     if type(value) is not PanelFeatureObservationSet:
         raise TypeError("panel observation must be exact PanelFeatureObservationSet")
-    restored = PanelFeatureObservationSet.from_data(value.to_data())
+    try:
+        restored = PanelFeatureObservationSet.from_data(value.to_data())
+    except (TypeError, ValueError) as exc:
+        raise PanelFeatureTaskRunnerError(
+            "panel observation canonical reload failed"
+        ) from exc
     if restored != value:
         raise PanelFeatureTaskRunnerError("panel observation canonical reload differs")
     return restored
 
 
-def _all_axis_digests() -> tuple[str, ...]:
-    return tuple(item.axis_digest for item in panel_feature_axis_catalog())
+def _deployment_axis_digests() -> tuple[str, ...]:
+    return tuple(item.axis_digest for item in complete_whole_panel_feature_axes())
 
 
 def _verify_observation_batch(
@@ -645,7 +658,7 @@ def _verify_observation_batch(
     values = tuple(_canonical_observation(item) for item in observations)
     if len(values) != len(pngs):
         raise PanelFeatureTaskRunnerError(f"{label} observation count differs")
-    required_axes = _all_axis_digests()
+    required_axes = _deployment_axis_digests()
     for index, (observation, panel) in enumerate(zip(values, pngs, strict=True)):
         if observation.panel_digest != hashlib.sha256(panel).hexdigest():
             raise PanelFeatureTaskRunnerError(
@@ -656,7 +669,8 @@ def _verify_observation_batch(
         )
         if actual_axes != required_axes:
             raise PanelFeatureTaskRunnerError(
-                f"{label} observation {index} is not the exact fixed full-axis table"
+                f"{label} observation {index} is not the exact fixed complete "
+                "whole-panel deployment catalog"
             )
     contract = values[0].observer_contract_digest
     protocol = values[0].measurement_protocol_digest
@@ -1113,6 +1127,9 @@ def _freeze_content(value: "PanelFeatureTaskFreeze") -> dict[str, object]:
         "predicate_pair": value.predicate_pair.to_data(),
         "selected_predicate_digest": value.selected_predicate_digest,
         "sealed_query_panel_ids": list(value.sealed_query_panel_ids),
+        "deployment_observer_axis_catalog_digest": (
+            _deployment_axis_catalog_digest()
+        ),
         "query_bytes_included": False,
         "query_observations_included": False,
         "implicit_survivor_selection_used": False,
@@ -1256,6 +1273,7 @@ class PanelFeatureTaskFreeze:
                 "predicate_pair",
                 "selected_predicate_digest",
                 "sealed_query_panel_ids",
+                "deployment_observer_axis_catalog_digest",
                 "query_bytes_included",
                 "query_observations_included",
                 "implicit_survivor_selection_used",
@@ -1268,6 +1286,8 @@ class PanelFeatureTaskFreeze:
         if (
             raw["schema"] != PANEL_FEATURE_TASK_FREEZE_SCHEMA
             or raw["runner_id"] != PANEL_FEATURE_TASK_RUNNER_ID
+            or raw["deployment_observer_axis_catalog_digest"]
+            != _deployment_axis_catalog_digest()
             or raw["query_bytes_included"] is not False
             or raw["query_observations_included"] is not False
             or raw["implicit_survivor_selection_used"] is not False
@@ -1484,6 +1504,12 @@ def _archive_content(value: "PanelFeatureTaskArchive") -> dict[str, object]:
     return {
         "schema": PANEL_FEATURE_TASK_ARCHIVE_SCHEMA,
         "runner_id": PANEL_FEATURE_TASK_RUNNER_ID,
+        "deployment_observer_axes": _deployment_axis_catalog_data(),
+        "deployment_observer_axis_catalog_digest": (
+            _deployment_axis_catalog_digest()
+        ),
+        "deployment_observer_axis_subset_permitted": False,
+        "deployment_observer_catalog_caller_or_candidate_selected": False,
         "task_plan": value.task_plan.to_data(),
         "execution_precommit_digest": value.execution_precommit_digest,
         "exposure_successor_digest": value.exposure_successor_digest,
@@ -1784,6 +1810,10 @@ class PanelFeatureTaskArchive:
             {
                 "schema",
                 "runner_id",
+                "deployment_observer_axes",
+                "deployment_observer_axis_catalog_digest",
+                "deployment_observer_axis_subset_permitted",
+                "deployment_observer_catalog_caller_or_candidate_selected",
                 "task_plan",
                 "execution_precommit_digest",
                 "exposure_successor_digest",
@@ -1829,6 +1859,14 @@ class PanelFeatureTaskArchive:
         if (
             raw["schema"] != PANEL_FEATURE_TASK_ARCHIVE_SCHEMA
             or raw["runner_id"] != PANEL_FEATURE_TASK_RUNNER_ID
+            or raw["deployment_observer_axes"]
+            != _deployment_axis_catalog_data()
+            or raw["deployment_observer_axis_catalog_digest"]
+            != _deployment_axis_catalog_digest()
+            or raw["deployment_observer_axis_subset_permitted"] is not False
+            or raw[
+                "deployment_observer_catalog_caller_or_candidate_selected"
+            ] is not False
             or raw[
                 "query_release_called_only_after_exact_task_freeze_commit_reload"
             ] is not True
@@ -2029,11 +2067,11 @@ def _observe_unlabelled_panels(
     pngs: Sequence[bytes],
     observer: PanelObserverCallback,
 ) -> tuple[PanelFeatureObservationSet, ...]:
-    """Observe panels in digest order with opaque names and a fixed axis catalog."""
+    """Observe panels with opaque names and the preregistered batch catalog."""
 
     if not callable(observer):
         raise TypeError("panel observer must be callable")
-    axes = panel_feature_axis_catalog()
+    axes = complete_whole_panel_feature_axes()
     order = tuple(
         sorted(
             range(len(pngs)),
@@ -2064,7 +2102,8 @@ def run_panel_feature_task(
 
     Pixel release and observation are deliberately split.  The zero-argument
     release callback cannot receive a formula, and the observer receives only
-    an opaque token, exact bytes, and the fixed full axis catalog.  This
+    an opaque token, exact bytes, and the fixed complete whole-panel deployment
+    catalog.  This
     injected-callback lane remains non-benchmark-authoritative; use
     :func:`run_panel_feature_task_with_official_release` for the existing
     release-gate-backed production path.
@@ -2249,11 +2288,14 @@ def run_panel_feature_task_with_support_callbacks(
     query_release_callback: QueryReleaseCallback | None,
     query_observation_callback: QueryObserverCallback | None,
 ) -> PanelFeatureTaskArchive:
-    """Observe support through the same proposal-independent full-axis API.
+    """Run one proposer call, then twelve independent support batch calls.
 
     The proposer still receives the required two contrastive blocks.  The
     observer does not: its calls are reordered by pixel digest and contain no
-    side, block, position, candidate spec, formula, or orientation.
+    side, block, position, candidate spec, formula, or orientation.  Every
+    observer receives the exact preregistered complete whole-panel tuple.
+    Query release and its two batch calls remain forbidden until after the
+    selected predicate freeze and commit have been durably reloaded.
     """
 
     task = _task(task_plan)
@@ -2597,7 +2639,6 @@ __all__ = (
     "SupportProposerCallback",
     "cold_replay_panel_feature_task",
     "engineering_disposition_from_observation",
-    "panel_feature_axis_catalog",
     "run_panel_feature_task",
     "run_panel_feature_task_with_official_release",
     "run_panel_feature_task_with_support_callbacks",

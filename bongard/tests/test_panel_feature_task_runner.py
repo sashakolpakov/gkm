@@ -33,6 +33,9 @@ from bongard.panel_feature_observation import (
     derive_inventory_count_observation,
     eligible_axis_bindings,
 )
+from bongard.panel_batched_typed_codex_observer import (
+    complete_whole_panel_feature_axes,
+)
 from bongard.panel_feature_predicate import (
     EngineeringDisposition,
     EngineeringQueryOutcome,
@@ -53,11 +56,11 @@ from bongard.panel_feature_task_runner import (
     PanelFeatureTaskRunnerError,
     cold_replay_panel_feature_task,
     engineering_disposition_from_observation,
-    panel_feature_axis_catalog,
     run_panel_feature_task,
     run_panel_feature_task_with_support_callbacks,
 )
 from bongard.panel_soft_ontology import (
+    FAMILY_CONTRACTS,
     ClosedCount,
     ComponentCountParameters,
     EnumerationResolution,
@@ -118,6 +121,28 @@ def _gestalt_spec(kind: GestaltKind) -> PanelFeatureSpec:
     )
 
 
+def _local_gestalt_spec(kind: GestaltKind) -> PanelFeatureSpec:
+    return PanelFeatureSpec(
+        FeatureFamily.GESTALT_RESEMBLANCE,
+        SubjectScope.ONE_COHERENT_FIGURE,
+        ReferenceFrame.NONE,
+        GestaltResemblanceParameters(kind),
+    )
+
+
+def _all_scope_axes() -> tuple[FeatureAxis, ...]:
+    return tuple(
+        sorted(
+            (
+                FeatureAxis(family, scope, frame)
+                for family, contract in FAMILY_CONTRACTS.items()
+                for scope, frame in contract.allowed_scope_frames
+            ),
+            key=lambda item: item.axis_digest,
+        )
+    )
+
+
 def _candidate(
     spec: PanelFeatureSpec, *, native_block: str, suffix: str
 ) -> dict[str, object]:
@@ -137,17 +162,20 @@ def _candidate(
     return result
 
 
-def _payload(*, multiple: bool = False) -> dict[str, object]:
+def _payload(*, multiple: bool = False, local: bool = False) -> dict[str, object]:
     result: dict[str, object] = {}
     for block_index, block in enumerate(PANEL_FEATURE_BLOCKS):
         count = ClosedCount.ONE if block_index == 0 else ClosedCount.FIVE
         gestalt = GestaltKind.BIRD_LIKE if block_index == 0 else GestaltKind.ANIMAL_LIKE
         for slot in range(PANEL_FEATURE_SLOTS_PER_DIRECTION):
-            spec = (
-                _gestalt_spec(gestalt)
-                if multiple and slot % 2
-                else _count_spec(count)
-            )
+            if local:
+                spec = _local_gestalt_spec(gestalt)
+            else:
+                spec = (
+                    _gestalt_spec(gestalt)
+                    if multiple and slot % 2
+                    else _count_spec(count)
+                )
             result[f"{block}_candidate_{slot}"] = _candidate(
                 spec,
                 native_block=block,
@@ -175,9 +203,10 @@ def _proposer(
     pngs: tuple[bytes, ...],
     *,
     multiple: bool = False,
+    local: bool = False,
 ):
     return parse_panel_feature_proposer_payload(
-        _payload(multiple=multiple),
+        _payload(multiple=multiple, local=local),
         proposer_receipt_digest=_RECEIPT,
         support_set_digest=_presentation_digest(pngs),
         task_context_digest=task.record_digest.split(":", 1)[1],
@@ -280,10 +309,12 @@ def _observation(
     contract: str = _CONTRACT,
     protocol: str = _PROTOCOL,
     observed_gestalt: GestaltKind | None = None,
+    axes: tuple[FeatureAxis, ...] | None = None,
 ) -> PanelFeatureObservationSet:
     inventory = _inventory(panel, count, complete=complete)
     rows: list[PanelAxisObservation] = []
-    for axis in panel_feature_axis_catalog():
+    axis_catalog = complete_whole_panel_feature_axes() if axes is None else axes
+    for axis in axis_catalog:
         if axis.family in {
             FeatureFamily.COMPONENT_COUNT,
             FeatureFamily.EXACT_SEGMENT_COUNT,
@@ -445,7 +476,7 @@ def _query_callbacks(
     def observe(token: str, panel: bytes, axes: tuple[FeatureAxis, ...]):
         events.append("observe")
         assert token.startswith("panel_")
-        assert axes == panel_feature_axis_catalog()
+        assert axes == complete_whole_panel_feature_axes()
         assert all(type(item) is FeatureAxis for item in axes)
         return _observation(panel, 1 if panel == panels[0] else 5)
 
@@ -553,8 +584,11 @@ def test_support_observer_gets_no_candidate_specs_labels_or_positions(
     task, support_pngs, proposer, _, store, releases = _fixture(tmp_path)
     calls: list[tuple[str, tuple[FeatureAxis, ...]]] = []
     events: list[str] = []
+    proposer_calls = 0
 
     def propose(panels: tuple[bytes, ...], task_digest: str):
+        nonlocal proposer_calls
+        proposer_calls += 1
         assert panels == support_pngs
         assert task_digest == task.record_digest.split(":", 1)[1]
         return proposer
@@ -578,9 +612,11 @@ def test_support_observer_gets_no_candidate_specs_labels_or_positions(
         query_observation_callback=query_observer,
     )
     assert archive.status is PanelFeatureTaskRunStatus.COMPLETE
+    assert proposer_calls == 1
+    assert len(calls) == 12
     assert [item[0] for item in calls] == [f"panel_{index:03d}" for index in range(12)]
     assert all("side" not in token and "block" not in token for token, _ in calls)
-    assert all(axes == panel_feature_axis_catalog() for _, axes in calls)
+    assert all(axes == complete_whole_panel_feature_axes() for _, axes in calls)
     assert all(not isinstance(axis, PanelFeatureSpec) for _, axes in calls for axis in axes)
 
 
@@ -683,7 +719,9 @@ def test_mislabeled_pixels_and_release_receipts_reject(tmp_path: Path) -> None:
         ReleasedOfficialPanel.from_data(raw)
 
 
-def test_observation_requires_fixed_full_axis_catalog(tmp_path: Path) -> None:
+def test_observation_requires_fixed_complete_whole_panel_catalog(
+    tmp_path: Path,
+) -> None:
     task, _, proposer, observations, _, releases = _fixture(tmp_path)
     missing = PanelFeatureObservationSet(
         observations[0].panel_digest,
@@ -691,7 +729,7 @@ def test_observation_requires_fixed_full_axis_catalog(tmp_path: Path) -> None:
         observations[0].measurement_protocol_digest,
         observations[0].axis_observations[1:],
     )
-    with pytest.raises(PanelFeatureTaskRunnerError, match="fixed full-axis"):
+    with pytest.raises(PanelFeatureTaskRunnerError, match="complete whole-panel"):
         run_panel_feature_task(
             task,
             releases,
@@ -704,6 +742,90 @@ def test_observation_requires_fixed_full_axis_catalog(tmp_path: Path) -> None:
             query_release_callback=None,
             query_observation_callback=None,
         )
+
+
+def test_observation_rejects_old_all_scope_catalog_and_reordered_rows(
+    tmp_path: Path,
+) -> None:
+    task, _, proposer, observations, _, releases = _fixture(tmp_path)
+    old_all_scope = _observation(
+        _png(0), 1, axes=_all_scope_axes()
+    )
+    assert len(old_all_scope.axis_observations) > len(
+        complete_whole_panel_feature_axes()
+    )
+    with pytest.raises(PanelFeatureTaskRunnerError, match="complete whole-panel"):
+        run_panel_feature_task(
+            task,
+            releases,
+            proposer,
+            (old_all_scope, *observations[1:]),
+            execution_precommit_digest=_PRECOMMIT,
+            exposure_successor_digest=_EXPOSURE,
+            rank_response_digest=_RANK,
+            freeze_persist_reload=None,
+            query_release_callback=None,
+            query_observation_callback=None,
+        )
+
+    first = observations[0]
+    reordered = object.__new__(PanelFeatureObservationSet)
+    object.__setattr__(reordered, "panel_digest", first.panel_digest)
+    object.__setattr__(
+        reordered, "observer_contract_digest", first.observer_contract_digest
+    )
+    object.__setattr__(
+        reordered, "measurement_protocol_digest", first.measurement_protocol_digest
+    )
+    object.__setattr__(
+        reordered, "axis_observations", tuple(reversed(first.axis_observations))
+    )
+    with pytest.raises(PanelFeatureTaskRunnerError, match="canonical reload"):
+        run_panel_feature_task(
+            task,
+            releases,
+            proposer,
+            (reordered, *observations[1:]),
+            execution_precommit_digest=_PRECOMMIT,
+            exposure_successor_digest=_EXPOSURE,
+            rank_response_digest=_RANK,
+            freeze_persist_reload=None,
+            query_release_callback=None,
+            query_observation_callback=None,
+        )
+
+
+def test_local_nominations_are_retained_and_evaluate_indeterminate(
+    tmp_path: Path,
+) -> None:
+    task, support_pngs, _, observations, _, releases = _fixture(tmp_path)
+    proposer = _proposer(task, support_pngs, local=True)
+
+    def forbidden(*_args):
+        raise AssertionError("local-only support gap invoked a callback")
+
+    archive = run_panel_feature_task(
+        task,
+        releases,
+        proposer,
+        observations,
+        execution_precommit_digest=_PRECOMMIT,
+        exposure_successor_digest=_EXPOSURE,
+        rank_response_digest=_RANK,
+        freeze_persist_reload=forbidden,
+        query_release_callback=forbidden,
+        query_observation_callback=forbidden,
+    )
+    assert archive.status is PanelFeatureTaskRunStatus.SUPPORT_GAP
+    assert archive.vocabulary.specs == proposer.observer_vocabulary.specs
+    assert all(
+        cell.disposition is EngineeringDisposition.INDETERMINATE
+        for cell in archive.support_table.cells
+    )
+    assert archive.support_gap is not None
+    assert archive.support_gap.indeterminate_cell_count == len(
+        archive.support_table.cells
+    )
 
 
 def test_proposer_provenance_and_disposition_mapping_remain_fail_closed(
