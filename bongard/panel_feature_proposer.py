@@ -39,16 +39,16 @@ from bongard.transport import validate_codex_strict_output_schema
 
 
 PANEL_FEATURE_PROPOSER_PROTOCOL_ID = (
-    "bongard.panel-feature-proposer/two-neutral-blocks-contrastive-v1"
+    "bongard.panel-feature-proposer/two-neutral-blocks-contrastive-v2"
 )
 PANEL_FEATURE_PROPOSER_RESULT_SCHEMA = (
-    "gkm.bongard-panel-feature-proposer-result.v1"
+    "gkm.bongard-panel-feature-proposer-result.v2"
 )
 PANEL_FEATURE_PROPOSER_NOMINATION_SCHEMA = (
-    "gkm.bongard-panel-feature-nomination.v1"
+    "gkm.bongard-panel-feature-nomination.v2"
 )
 PANEL_FEATURE_PROPOSER_NOMINATION_GAP_SCHEMA = (
-    "gkm.bongard-panel-feature-nomination-gap.v1"
+    "gkm.bongard-panel-feature-nomination-gap.v2"
 )
 PANEL_FEATURE_OBSERVER_VOCABULARY_SCHEMA = (
     "gkm.bongard-panel-feature-observer-vocabulary.v1"
@@ -68,7 +68,10 @@ PANEL_FEATURE_PRESENTATION_NAMES = tuple(
 PANEL_FEATURE_ESTIMATES = ("supports", "does_not_support", "unclear")
 PANEL_FEATURE_NONE = "unset"
 PANEL_FEATURE_MIN_NATIVE_SUPPORT = 5
-PANEL_FEATURE_MAX_CONTRAST_SUPPORT = 2
+PANEL_FEATURE_MAX_NATIVE_UNCLEAR = 1
+PANEL_FEATURE_MIN_CONTRAST_NONSUPPORT = 5
+PANEL_FEATURE_MAX_CONTRAST_SUPPORT = 1
+PANEL_FEATURE_MAX_CONTRAST_UNCLEAR = 1
 PANEL_FEATURE_MIN_MARGIN = 3
 
 _DIGEST_CHARS = frozenset("0123456789abcdef")
@@ -88,6 +91,7 @@ class PanelFeatureNominationGapCode(str, Enum):
     CONTRASTIVE_ADMISSION_REJECTED = "contrastive_admission_rejected"
     INVALID_ARCHIVAL_NARRATION = "invalid_archival_narration"
     DUPLICATE_NATIVE_SPEC = "duplicate_native_spec"
+    GLOBAL_SPEC_CONTRADICTION = "global_spec_contradiction"
     MISSING_NATIVE_ORIENTATION = "missing_native_orientation"
 
 
@@ -266,7 +270,9 @@ def panel_feature_proposer_prompt() -> str:
         "the block_a slots nominate registered affirmative visual features recurring "
         "in block_a and uncommon in block_b; the block_b slots do the reverse. Inspect "
         "all twelve images for every slot. Prefer a candidate estimated as supported by "
-        "at least five images in its native block and at most two in the other block. "
+        "at least five images in its native block and explicitly does_not_support on at "
+        "least five images in the other block. Use unclear for missing evidence; unclear "
+        "does not count as does_not_support, and at most one image per block may be unclear. "
         "Do not encode comparison, absence, a complement, a task label, a class label, "
         "a path, or an image role in the feature fields. Select semantics only from the "
         "closed catalog. If the needed visual concept is outside the catalog, emit a "
@@ -285,7 +291,7 @@ def panel_feature_proposer_prompt() -> str:
 def panel_feature_proposer_contract_digest() -> str:
     return canonical_digest(
         {
-            "schema": "gkm.bongard-panel-feature-proposer-contract.v1",
+            "schema": "gkm.bongard-panel-feature-proposer-contract.v2",
             "protocol_id": PANEL_FEATURE_PROPOSER_PROTOCOL_ID,
             "feature_catalog_digest": feature_catalog_digest(),
             "prompt_digest": hashlib.sha256(
@@ -300,7 +306,12 @@ def panel_feature_proposer_contract_digest() -> str:
             "estimates_per_slot": len(PANEL_FEATURE_PRESENTATION_NAMES),
             "admission": {
                 "minimum_native_support": PANEL_FEATURE_MIN_NATIVE_SUPPORT,
+                "maximum_native_unclear": PANEL_FEATURE_MAX_NATIVE_UNCLEAR,
+                "minimum_contrast_does_not_support": (
+                    PANEL_FEATURE_MIN_CONTRAST_NONSUPPORT
+                ),
                 "maximum_contrast_support": PANEL_FEATURE_MAX_CONTRAST_SUPPORT,
+                "maximum_contrast_unclear": PANEL_FEATURE_MAX_CONTRAST_UNCLEAR,
                 "minimum_margin": PANEL_FEATURE_MIN_MARGIN,
             },
             "typed_specs_only": True,
@@ -388,15 +399,25 @@ class PanelFeatureEstimateVector:
         ):
             raise PanelFeatureProposerError("candidate estimate vector differs")
 
-    def counts_for_block(self, block: str) -> tuple[int, int, int]:
+    def counts_for_block(self, block: str) -> tuple[int, int, int, int, int, int]:
         if block not in PANEL_FEATURE_BLOCKS:
             raise PanelFeatureProposerError("candidate block differs")
         split = PANEL_FEATURE_PANELS_PER_BLOCK
         native = self.values[:split] if block == "block_a" else self.values[split:]
         contrast = self.values[split:] if block == "block_a" else self.values[:split]
         native_support = native.count("supports")
+        native_unclear = native.count("unclear")
         contrast_support = contrast.count("supports")
-        return native_support, contrast_support, native_support - contrast_support
+        contrast_nonsupport = contrast.count("does_not_support")
+        contrast_unclear = contrast.count("unclear")
+        return (
+            native_support,
+            native_unclear,
+            contrast_support,
+            contrast_nonsupport,
+            contrast_unclear,
+            native_support - contrast_support,
+        )
 
     def to_data(self) -> list[str]:
         return list(self.values)
@@ -439,7 +460,10 @@ class PanelFeatureNomination:
     proposal: NativeFeatureProposal
     estimates: PanelFeatureEstimateVector
     native_support_count: int
+    native_unclear_count: int
     contrast_support_count: int
+    contrast_does_not_support_count: int
+    contrast_unclear_count: int
     support_margin: int
 
     def __post_init__(self) -> None:
@@ -454,13 +478,20 @@ class PanelFeatureNomination:
         expected = self.estimates.counts_for_block(self.source_block)
         if expected != (
             self.native_support_count,
+            self.native_unclear_count,
             self.contrast_support_count,
+            self.contrast_does_not_support_count,
+            self.contrast_unclear_count,
             self.support_margin,
         ):
             raise PanelFeatureProposerError("nomination admission counts differ")
         if not (
             self.native_support_count >= PANEL_FEATURE_MIN_NATIVE_SUPPORT
+            and self.native_unclear_count <= PANEL_FEATURE_MAX_NATIVE_UNCLEAR
             and self.contrast_support_count <= PANEL_FEATURE_MAX_CONTRAST_SUPPORT
+            and self.contrast_does_not_support_count
+            >= PANEL_FEATURE_MIN_CONTRAST_NONSUPPORT
+            and self.contrast_unclear_count <= PANEL_FEATURE_MAX_CONTRAST_UNCLEAR
             and self.support_margin >= PANEL_FEATURE_MIN_MARGIN
         ):
             raise PanelFeatureProposerError("unadmitted candidate became a nomination")
@@ -485,9 +516,16 @@ class PanelFeatureNomination:
             "proposal": self.proposal.to_data(),
             "estimates_in_presentation_order": self.estimates.to_data(),
             "native_support_count": self.native_support_count,
+            "native_unclear_count": self.native_unclear_count,
             "contrast_support_count": self.contrast_support_count,
+            "contrast_does_not_support_count": self.contrast_does_not_support_count,
+            "contrast_unclear_count": self.contrast_unclear_count,
             "support_margin": self.support_margin,
-            "admission_rule": "native-at-least-five-contrast-at-most-two-margin-at-least-three",
+            "admission_rule": (
+                "native-support-at-least-five-native-unclear-at-most-one-"
+                "contrast-does-not-support-at-least-five-contrast-support-at-most-one-"
+                "contrast-unclear-at-most-one-margin-at-least-three"
+            ),
             "narration_executable": False,
         }
 
@@ -544,6 +582,13 @@ class PanelFeatureProposerResult:
             type(item) is not PanelFeatureNominationGap for item in self.nomination_gaps
         ):
             raise TypeError("proposer nomination gaps have the wrong type")
+        nomination_spec_digests = tuple(
+            item.spec.spec_digest for item in self.nominations
+        )
+        if len(nomination_spec_digests) != len(set(nomination_spec_digests)):
+            raise PanelFeatureProposerError(
+                "proposer result retains a globally duplicated feature spec"
+            )
         if self.observer_vocabulary is None:
             if self.nominations:
                 raise PanelFeatureProposerError("nominations lack an observer vocabulary")
@@ -628,10 +673,9 @@ def parse_panel_feature_proposer_payload(
     }
     root = _fields(frozen, expected_root, "panel feature proposer payload")
     contract_digest = panel_feature_proposer_contract_digest()
-    nominations: list[PanelFeatureNomination] = []
+    provisional_nominations: list[tuple[PanelFeatureNomination, str]] = []
     language_gaps: list[LanguageGapArtifact] = []
     nomination_gaps: list[PanelFeatureNominationGap] = []
-    seen_native: set[tuple[NativeOrientation, str]] = set()
 
     for block_index, block in enumerate(PANEL_FEATURE_BLOCKS):
         orientation = block_orientations[block_index]
@@ -722,10 +766,21 @@ def parse_panel_feature_proposer_payload(
                     )
                 )
                 continue
-            native_count, contrast_count, margin = estimates.counts_for_block(block)
+            (
+                native_count,
+                native_unclear_count,
+                contrast_count,
+                contrast_nonsupport_count,
+                contrast_unclear_count,
+                margin,
+            ) = estimates.counts_for_block(block)
             if not (
                 native_count >= PANEL_FEATURE_MIN_NATIVE_SUPPORT
+                and native_unclear_count <= PANEL_FEATURE_MAX_NATIVE_UNCLEAR
                 and contrast_count <= PANEL_FEATURE_MAX_CONTRAST_SUPPORT
+                and contrast_nonsupport_count
+                >= PANEL_FEATURE_MIN_CONTRAST_NONSUPPORT
+                and contrast_unclear_count <= PANEL_FEATURE_MAX_CONTRAST_UNCLEAR
                 and margin >= PANEL_FEATURE_MIN_MARGIN
             ):
                 code = (
@@ -737,18 +792,6 @@ def parse_panel_feature_proposer_payload(
                     PanelFeatureNominationGap(orientation, slot, code, candidate_digest)
                 )
                 continue
-            native_key = (orientation, spec.spec_digest)
-            if native_key in seen_native:
-                nomination_gaps.append(
-                    PanelFeatureNominationGap(
-                        orientation,
-                        slot,
-                        PanelFeatureNominationGapCode.DUPLICATE_NATIVE_SPEC,
-                        candidate_digest,
-                    )
-                )
-                continue
-            seen_native.add(native_key)
             provenance = NativeProposalProvenance(
                 orientation,
                 contract_digest,
@@ -756,17 +799,59 @@ def parse_panel_feature_proposer_payload(
                 support_digest,
                 task_digest,
             )
-            nominations.append(
-                PanelFeatureNomination(
-                    block,
-                    slot,
-                    NativeFeatureProposal(spec, narration, provenance),
-                    estimates,
-                    native_count,
-                    contrast_count,
-                    margin,
+            provisional_nominations.append(
+                (
+                    PanelFeatureNomination(
+                        block,
+                        slot,
+                        NativeFeatureProposal(spec, narration, provenance),
+                        estimates,
+                        native_count,
+                        native_unclear_count,
+                        contrast_count,
+                        contrast_nonsupport_count,
+                        contrast_unclear_count,
+                        margin,
+                    ),
+                    candidate_digest,
                 )
             )
+
+    grouped: dict[str, list[tuple[PanelFeatureNomination, str]]] = {}
+    for item in provisional_nominations:
+        grouped.setdefault(item[0].spec.spec_digest, []).append(item)
+    nominations: list[PanelFeatureNomination] = []
+    for spec_digest in sorted(grouped):
+        group = sorted(
+            grouped[spec_digest],
+            key=lambda item: (
+                PANEL_FEATURE_BLOCKS.index(item[0].source_block),
+                item[0].raw_slot,
+            ),
+        )
+        orientations = {item.native_orientation for item, _ in group}
+        estimate_vectors = {item.estimates.values for item, _ in group}
+        if len(orientations) > 1 or len(estimate_vectors) > 1:
+            nomination_gaps.extend(
+                PanelFeatureNominationGap(
+                    item.native_orientation,
+                    item.raw_slot,
+                    PanelFeatureNominationGapCode.GLOBAL_SPEC_CONTRADICTION,
+                    candidate_digest,
+                )
+                for item, candidate_digest in group
+            )
+            continue
+        nominations.append(group[0][0])
+        nomination_gaps.extend(
+            PanelFeatureNominationGap(
+                item.native_orientation,
+                item.raw_slot,
+                PanelFeatureNominationGapCode.DUPLICATE_NATIVE_SPEC,
+                candidate_digest,
+            )
+            for item, candidate_digest in group[1:]
+        )
 
     present_orientations = {item.native_orientation for item in nominations}
     absent_payload_digest = canonical_digest(
@@ -923,6 +1008,9 @@ __all__ = (
     "PANEL_FEATURE_BLOCKS",
     "PANEL_FEATURE_ESTIMATES",
     "PANEL_FEATURE_MAX_CONTRAST_SUPPORT",
+    "PANEL_FEATURE_MAX_CONTRAST_UNCLEAR",
+    "PANEL_FEATURE_MAX_NATIVE_UNCLEAR",
+    "PANEL_FEATURE_MIN_CONTRAST_NONSUPPORT",
     "PANEL_FEATURE_MIN_MARGIN",
     "PANEL_FEATURE_MIN_NATIVE_SUPPORT",
     "PANEL_FEATURE_NONE",

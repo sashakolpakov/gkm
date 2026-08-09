@@ -145,7 +145,8 @@ def test_prompt_is_symmetric_contrastive_and_has_no_task_or_semantic_side() -> N
     prompt = panel_feature_proposer_prompt()
     assert "block_a" in prompt and "block_b" in prompt
     assert "all twelve" in prompt
-    assert "at least five" in prompt and "at most two" in prompt
+    assert "at least five" in prompt and "does_not_support" in prompt
+    assert "unclear does not count" in prompt
     lowered = prompt.lower()
     assert "side0" not in lowered and "side1" not in lowered
     assert "query" not in lowered and "task_id" not in lowered
@@ -166,7 +167,7 @@ def test_exact_admission_boundary_and_global_observer_vocabulary() -> None:
         _count_spec(ClosedCount.ONE),
         native_block="block_a",
         native_support=5,
-        contrast_support=2,
+        contrast_support=1,
         narration_suffix="exact admission boundary",
     )
     result = _parse(payload)
@@ -177,9 +178,40 @@ def test_exact_admission_boundary_and_global_observer_vocabulary() -> None:
     nomination = result.nominations[0]
     assert (
         nomination.native_support_count,
+        nomination.native_unclear_count,
         nomination.contrast_support_count,
+        nomination.contrast_does_not_support_count,
+        nomination.contrast_unclear_count,
         nomination.support_margin,
-    ) == (5, 2, 3)
+    ) == (5, 0, 1, 5, 0, 4)
+
+
+def test_all_unclear_contrast_is_missing_evidence_not_negative_evidence() -> None:
+    payload = _payload()
+    row = _row(
+        _count_spec(ClosedCount.ONE),
+        native_block="block_a",
+        native_support=5,
+        narration_suffix="contrast evidence is missing",
+    )
+    for index in range(6):
+        row[f"block_a_panel_{index:03d}_estimate"] = (
+            "supports" if index < 5 else "unclear"
+        )
+        row[f"block_b_panel_{index:03d}_estimate"] = "unclear"
+    payload["block_a_candidate_0"] = row
+    result = _parse(payload)
+    assert not any(
+        item.source_block == "block_a" and item.raw_slot == 0
+        for item in result.nominations
+    )
+    assert any(
+        gap.native_orientation is NativeOrientation.SIDE0_POSITIVE
+        and gap.raw_slot == 0
+        and gap.code
+        is PanelFeatureNominationGapCode.CONTRASTIVE_ADMISSION_REJECTED
+        for gap in result.nomination_gaps
+    )
 
 
 def test_shared_salience_is_rejected_instead_of_becoming_a_candidate() -> None:
@@ -206,7 +238,7 @@ def test_all_twelve_estimates_are_structurally_required() -> None:
         _parse(payload)
 
 
-def test_same_spec_across_orientations_has_two_provenances_but_one_observation() -> None:
+def test_same_spec_across_orientations_is_a_global_contradiction() -> None:
     payload = _payload()
     shared = _count_spec(ClosedCount.ONE)
     payload["block_a_candidate_0"] = _row(
@@ -217,9 +249,44 @@ def test_same_spec_across_orientations_has_two_provenances_but_one_observation()
     )
     result = _parse(payload)
     shared_nominations = [item for item in result.nominations if item.spec == shared]
-    assert {item.native_orientation for item in shared_nominations} == set(NativeOrientation)
+    assert shared_nominations == []
+    conflicts = [
+        gap
+        for gap in result.nomination_gaps
+        if gap.code is PanelFeatureNominationGapCode.GLOBAL_SPEC_CONTRADICTION
+        and gap.raw_slot == 0
+    ]
+    assert {item.native_orientation for item in conflicts} == set(NativeOrientation)
     assert result.observer_vocabulary is not None
-    assert sum(item == shared for item in result.observer_vocabulary.specs) == 1
+    assert shared not in result.observer_vocabulary.specs
+
+
+def test_conflicting_estimate_vectors_reject_every_same_orientation_copy() -> None:
+    payload = _payload()
+    shared = _count_spec(ClosedCount.ONE)
+    payload["block_a_candidate_0"] = _row(
+        shared,
+        native_block="block_a",
+        native_support=6,
+        contrast_support=0,
+        narration_suffix="first estimate vector",
+    )
+    payload["block_a_candidate_1"] = _row(
+        shared,
+        native_block="block_a",
+        native_support=5,
+        contrast_support=1,
+        narration_suffix="contradictory estimate vector",
+    )
+    result = _parse(payload)
+    assert not any(item.spec == shared for item in result.nominations)
+    conflicts = [
+        gap
+        for gap in result.nomination_gaps
+        if gap.code is PanelFeatureNominationGapCode.GLOBAL_SPEC_CONTRADICTION
+        and gap.native_orientation is NativeOrientation.SIDE0_POSITIVE
+    ]
+    assert {item.raw_slot for item in conflicts} >= {0, 1}
 
 
 def test_duplicate_within_native_orientation_is_a_typed_nomination_gap() -> None:
