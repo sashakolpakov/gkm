@@ -499,7 +499,7 @@ def test_unique_primary_freeze_commit_query_mapping_and_zero_call_replay(
     )
     positive_release = _released_query(positive_evidence, precommit)
     positive_receipt = store.persist(
-        object_kind="released-query-panel",
+        object_kind="released-extracted-query-panel",
         object_digest=positive_release.record_digest,
         data=positive_release.to_data(),
     )
@@ -511,6 +511,18 @@ def test_unique_primary_freeze_commit_query_mapping_and_zero_call_replay(
     )
     assert positive.formula_disposition is EngineeringDisposition.MATCH
     assert positive.outcome is EngineeringQueryOutcome.SIDE0
+    wrong_zip_kind_receipt = store.persist(
+        object_kind="released-query-panel",
+        object_digest=positive_release.record_digest,
+        data=positive_release.to_data(),
+    )
+    with pytest.raises(PrimaryFormulaTaskRunnerError, match="durable receipt"):
+        PrimaryFormulaQueryDecision.create(
+            freeze,
+            released_query_panel=positive_release,
+            query_release_store_receipt=wrong_zip_kind_receipt,
+            query_evidence_panel=positive_evidence,
+        )
     assert (
         cold_replay_primary_formula_query_decision(
             positive,
@@ -527,7 +539,7 @@ def test_unique_primary_freeze_commit_query_mapping_and_zero_call_replay(
     )
     negative_release = _released_query(negative_evidence, precommit)
     negative_receipt = store.persist(
-        object_kind="released-query-panel",
+        object_kind="released-extracted-query-panel",
         object_digest=negative_release.record_digest,
         data=negative_release.to_data(),
     )
@@ -561,7 +573,7 @@ def test_query_id_evidence_swap_bare_observation_and_freeze_tamper_fail_closed(
     released = _released_query(evidence, precommit)
     store = ObjectBongardReleaseStore((tmp_path / "swap-store").resolve())
     receipt = store.persist(
-        object_kind="released-query-panel",
+        object_kind="released-extracted-query-panel",
         object_digest=released.record_digest,
         data=released.to_data(),
     )

@@ -1727,8 +1727,13 @@ def _verify_query_custody(
     evidence: PanelFeatureEvidencePanel,
 ) -> int:
     payload = canonical_json(released.to_data()) + b"\n"
+    expected_object_kind = (
+        "released-query-panel"
+        if type(released) is ReleasedOfficialPanel
+        else "released-extracted-query-panel"
+    )
     if (
-        release_receipt.object_kind != "released-query-panel"
+        release_receipt.object_kind != expected_object_kind
         or release_receipt.object_digest != released.record_digest
         or release_receipt.payload_digest
         != "sha256:" + hashlib.sha256(payload).hexdigest()
