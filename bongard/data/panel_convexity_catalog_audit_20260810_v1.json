@@ -1,0 +1,243 @@
+{
+  "algorithm": {
+    "algorithm_digest": "sha256:222548a7e96708986d07f3f4cec06d1e0909b06ea7ae1207428f052b6f8029a5",
+    "algorithm_id": "bongard.panel-convexity/exact-style-stripped-plus-bd-singleton-alias-v1",
+    "source_path": "bongard/panel_convexity_catalog_audit.py",
+    "source_sha256": "41ace131590d9481cba96e0ad8adbd3e3560c84ebf4c7c787dc025777ff60ce0"
+  },
+  "claim_limits": {
+    "catalog_labels_are_semantic_pixel_truth": false,
+    "catalog_unresolved_certifies_convex_absence": false,
+    "catalog_unresolved_downstream_disposition": "GAP",
+    "catalog_unresolved_populates_typed_not_applicable": false,
+    "fuzzy_matching_used": false,
+    "mixed_turning_supervision_available": false,
+    "official_validation_or_test_authorized": false,
+    "pixels_read": 0
+  },
+  "cohort_source_bindings": {
+    "action_count_calibration_preregistration_raw_sha256": "sha256:c30a400f743d87971f5fea598ad67aa2f09fa23cc7ad0f362d614f190fb18282",
+    "action_count_calibration_preregistration_record_digest": "sha256:476ff0d602d43ddc6e4c8c6a964939a01c8471936eece71d0caba8a35bda396a",
+    "action_count_cnn_v1_preregistration_raw_sha256": "sha256:8eb18be77fb044cc2ef8a048d727bdfa3cefad13a8c17c0248bb76611f35d266",
+    "action_count_cnn_v1_preregistration_record_digest": "sha256:bbb8d380dc291a80d2fb89ee522c5ad6b5be2f0d67e5a2a80fc9907cb3337777"
+  },
+  "cohorts": {
+    "calibration": {
+      "all_14_binary_0_or_1_task_count": 0,
+      "all_14_catalog_labelled_with_compatibility_task_count": 20,
+      "all_14_direct_exact_signature_task_count": 19,
+      "label_counts": {
+        "catalog_unresolved": 198,
+        "convex": 35,
+        "nonconvex": 47
+      },
+      "match_counts": {
+        "bd_singleton_compatibility_alias": 1,
+        "direct_exact_signature": 279
+      },
+      "panel_count": 280,
+      "panel_label_rows_digest": "sha256:a826b2287f4f7b06d059dcf7725b63f59b5209923d9314dffce1b0db2afa6e0e",
+      "task_count": 20
+    },
+    "evaluation": {
+      "all_14_binary_0_or_1_task_count": 0,
+      "all_14_catalog_labelled_with_compatibility_task_count": 100,
+      "all_14_direct_exact_signature_task_count": 93,
+      "label_counts": {
+        "catalog_unresolved": 1034,
+        "convex": 146,
+        "nonconvex": 220
+      },
+      "match_counts": {
+        "bd_singleton_compatibility_alias": 7,
+        "direct_exact_signature": 1393
+      },
+      "panel_count": 1400,
+      "panel_label_rows_digest": "sha256:76f825e255e0d855f573ffe4f59c8569f1060aedd52165585c0ad0f711c2cc2e",
+      "task_count": 100
+    },
+    "train": {
+      "all_14_binary_0_or_1_task_count": 0,
+      "all_14_catalog_labelled_with_compatibility_task_count": 800,
+      "all_14_direct_exact_signature_task_count": 726,
+      "label_counts": {
+        "catalog_unresolved": 7982,
+        "convex": 1180,
+        "nonconvex": 2038
+      },
+      "match_counts": {
+        "bd_singleton_compatibility_alias": 81,
+        "direct_exact_signature": 11119
+      },
+      "panel_count": 11200,
+      "panel_label_rows_digest": "sha256:068da58efa4fed0ac2ed3ee6994b29015ba797040c7fedc42dd165e0718d6781",
+      "task_count": 800
+    },
+    "validation": {
+      "all_14_binary_0_or_1_task_count": 0,
+      "all_14_catalog_labelled_with_compatibility_task_count": 100,
+      "all_14_direct_exact_signature_task_count": 88,
+      "label_counts": {
+        "catalog_unresolved": 1005,
+        "convex": 131,
+        "nonconvex": 264
+      },
+      "match_counts": {
+        "bd_singleton_compatibility_alias": 13,
+        "direct_exact_signature": 1387
+      },
+      "panel_count": 1400,
+      "panel_label_rows_digest": "sha256:2221044704cb2ebf5bd53e116fa1d78da884958e66bbbbc2d516edb951a3359a",
+      "task_count": 100
+    }
+  },
+  "compatibility": {
+    "alias_count": 4,
+    "alias_proofs": [
+      {
+        "bd_singleton_task_id": "bd_exist_triangle_three_lines4_0000",
+        "current_table_signature": [
+          "arc:0.500:0.667:0.500",
+          "arc:0.500:0.667:0.667",
+          "line:0.500:0.597",
+          "line:0.500:0.667",
+          "line:0.866:0.917"
+        ],
+        "hd_occurrence_count": 66,
+        "raw_convexity_label": "-1",
+        "release_signature": [
+          "arc:0.500:0.667:0.500",
+          "arc:0.500:0.667:0.667",
+          "line:0.500:0.625",
+          "line:0.500:0.667",
+          "line:0.866:0.917"
+        ],
+        "shape_function_name": "exist_triangle_three_lines4",
+        "singleton_positive_panel_count": 7
+      },
+      {
+        "bd_singleton_task_id": "bd_open_symm_bridge_0000",
+        "current_table_signature": [
+          "line:0.600:0.500",
+          "line:0.800:0.250",
+          "line:0.600:0.250",
+          "arc:0.500:0.583:0.102"
+        ],
+        "hd_occurrence_count": 43,
+        "raw_convexity_label": "-1",
+        "release_signature": [
+          "line:0.600:0.500",
+          "line:0.800:0.250",
+          "line:0.600:0.250",
+          "arc:0.500:0.625:0.102"
+        ],
+        "shape_function_name": "open_symm_bridge",
+        "singleton_positive_panel_count": 7
+      },
+      {
+        "bd_singleton_task_id": "bd_thin_rec_down_right_triangle_0000",
+        "current_table_signature": [
+          "line:1.000:0.500",
+          "line:0.153:0.250",
+          "line:0.415:0.189",
+          "line:0.153:0.311",
+          "line:0.615:0.750",
+          "line:0.153:0.750"
+        ],
+        "hd_occurrence_count": 118,
+        "raw_convexity_label": "-1",
+        "release_signature": [
+          "line:1.000:0.500",
+          "line:0.170:0.250",
+          "line:0.539:0.189",
+          "line:0.170:0.311",
+          "line:0.500:0.750",
+          "line:0.170:0.750"
+        ],
+        "shape_function_name": "thin_rec_down_right_triangle",
+        "singleton_positive_panel_count": 7
+      },
+      {
+        "bd_singleton_task_id": "bd_thin_rec_right_triangle_0000",
+        "current_table_signature": [
+          "line:1.000:0.500",
+          "line:0.153:0.750",
+          "line:0.415:0.811",
+          "line:0.153:0.189",
+          "line:0.615:0.750",
+          "line:0.153:0.750"
+        ],
+        "hd_occurrence_count": 130,
+        "raw_convexity_label": "-1",
+        "release_signature": [
+          "line:1.000:0.500",
+          "line:0.170:0.750",
+          "line:0.539:0.811",
+          "line:0.170:0.189",
+          "line:0.500:0.750",
+          "line:0.170:0.750"
+        ],
+        "shape_function_name": "thin_rec_right_triangle",
+        "singleton_positive_panel_count": 7
+      }
+    ],
+    "all_alias_targets_are_catalog_unresolved": true,
+    "construction": "exact_HD_no-match_signature_to_unique_BD_named-singleton_seven-positive-panel_signature",
+    "source_version_diagnosis": "the_archive_BD_singletons_and_HD_panels_share_four_geometry_signatures_absent_from_the_bound_upstream_table_rows_named_by_those_singletons;_the_exact_historical_table_revision_is_not_identified_by_the_bound_sources"
+  },
+  "inventory": {
+    "attribute_row_count": 627,
+    "direct_signature_collision_count": 0,
+    "direct_signature_count": 627,
+    "hd_direct_exact_panel_count": 61243,
+    "hd_panel_count": 61600,
+    "hd_panel_count_with_compatibility": 61600,
+    "hd_task_count": 4400,
+    "raw_convexity_label_counts": {
+      "-1": 400,
+      "0": 152,
+      "1": 75
+    },
+    "shape_row_count": 627
+  },
+  "record_digest": "sha256:abb18a65a6c5499249ede5a75117f4789fafa45908c958828ac5acec07103767",
+  "schema": "gkm.bongard-panel-convexity-catalog-audit.v1",
+  "source_bindings": {
+    "attribute_rows": {
+      "path": "downloads/Bongard-LOGO/data/human_designed_shapes_attributes.tsv",
+      "sha256": "sha256:7ef4e825e1dd5951ee27c650795936698662c44ccbb9933978011eaa2241b7ed"
+    },
+    "bd_action_programs": {
+      "path": "downloads/ShapeBongard_V2_full/ShapeBongard_V2/bd/bd_action_programs.json",
+      "sha256": "sha256:768b060cc84636036bb85622cb574b52d00476e7fc08afc596ec38edb3cd4b2b"
+    },
+    "catalog_semantics_readme": {
+      "path": "downloads/Bongard-LOGO/data/README.md",
+      "sha256": "sha256:99e676943fc27b2233f953e4d1f8a5968daedefa8cad389cd359fb95f7f6c45a"
+    },
+    "hd_action_programs": {
+      "path": "downloads/ShapeBongard_V2_full/ShapeBongard_V2/hd/hd_action_programs.json",
+      "sha256": "sha256:190f3f850d98fa9df0f85cbbafa05fbbaf6d8845586c186ce062af8812ba7e7c"
+    },
+    "official_release_descriptor": {
+      "path": "bongard/data/shape_bongard_v2_release_v1.json",
+      "sha256": "sha256:dedcaf8de34fce3053a74856bb54b6ef54ce1640b71347a1d81d2b18007e6bb3"
+    },
+    "shape_rows": {
+      "path": "downloads/Bongard-LOGO/data/human_designed_shapes.tsv",
+      "sha256": "sha256:4c11e08ae54144eded496127c3945affa221263dc61573d2cc0442251cf6c6f0"
+    },
+    "upstream_abstract_sampler": {
+      "path": "downloads/Bongard-LOGO/bongard/sampler/abstract_sampler.py",
+      "sha256": "sha256:ae7c143a53568db31e55256628ae4938b0caa32596e3bae4e9434eedadb374e8"
+    },
+    "upstream_action_serializer": {
+      "path": "downloads/Bongard-LOGO/bongard/bongard.py",
+      "sha256": "sha256:71454672264d99fc50f44042854922ce9f39a63b4adba5c42535106162ab2961"
+    },
+    "upstream_shape_table_loader": {
+      "path": "downloads/Bongard-LOGO/bongard/util_funcs.py",
+      "sha256": "sha256:3a299f5b34d35195818818e0b209144bf032ff7a646c4a36ae834b3f7f0c9d2e"
+    }
+  }
+}
