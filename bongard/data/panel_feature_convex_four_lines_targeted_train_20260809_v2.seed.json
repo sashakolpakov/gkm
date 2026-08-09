@@ -1,0 +1,13 @@
+{
+  "engineering_only": true,
+  "lean_required": false,
+  "official_test_authorized": false,
+  "plan_record_digest": "sha256:a3a299bbd4ffe653025fe69ccf8742f93bdc3e99f34713a4dfa11672e7922d97",
+  "python_is_canonical_authority": true,
+  "record_digest": "sha256:4406b3c9389e35c3f75da8a21d8a53b06f846397d6416cf4aade164b8218ea42",
+  "schema": "gkm.bongard-panel-feature-targeted-drill-seed-preimage.v1",
+  "selection_seed": "panel-hierarchical-convex-four-lines-20260809-v2-0025",
+  "selection_seed_digest": "sha256:4e66628764b10c088229787cfd708c67dcc4c7d155911b7e5ee5305751a615e5",
+  "target_support_or_query_pixels_read_before_commit": false,
+  "target_task_id": "hd_convex-has_four_straight_lines_0000"
+}

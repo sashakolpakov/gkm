@@ -1,0 +1,80 @@
+{
+  "algorithm_digest": "sha256:f55a90731c2724ac1d1825acd4084a350629ab48281123013720424c79f5ae69",
+  "algorithm_id": "bongard.panel-feature/metadata-only-exact-unused-semantic-reuse-v1",
+  "algorithm_source_sha256": "d4bdc4ac4f0278ad328ca62cb83b3001591596c372fef365bf78e82c64ca32b1",
+  "claim": "targeted-train-engineering-drill-not-official-benchmark",
+  "exact_unused_candidate_count": 17,
+  "exact_unused_candidate_task_ids_digest": "sha256:df8d54b60bd3d75c8e0bbebb37abe9e8c252f077e9f8a33956b3055c2659d0db",
+  "exposed_task_ids_digest": "sha256:76d9d52459a19a85b18fe46c39a1a447b1145af25757aa37832b100cc6d99ce0",
+  "exposure_predecessor_digest": "sha256:6995ea9cfda2f384cb0ba1b1cdc3611c965227c60fdb281d1e2e56fffa357b56",
+  "lean_affects_selection_release_or_replay": false,
+  "lean_present": false,
+  "lean_removable": true,
+  "lean_required": false,
+  "official_test_authorized": false,
+  "panel_bytes_opened_during_selection": false,
+  "predicate_authority_id": "bongard.grounded-multimodal-predicate-authority/python-v1",
+  "python_is_canonical_authority": true,
+  "query_identities_sealed_before_support_pixels": true,
+  "record_digest": "sha256:a3a299bbd4ffe653025fe69ccf8742f93bdc3e99f34713a4dfa11672e7922d97",
+  "release_descriptor_digest": "sha256:4d5fb0ad6093ab32e8a8ac0ca5a3405482e1218994f9d257238e4a09fc56cd2b",
+  "requested_task_count": 1,
+  "schema": "gkm.bongard-panel-feature-targeted-drill-plan.v1",
+  "sealed_query_panel_ids_digest": "sha256:01a9c384b94b1c28de1d76562a738064d86523b83282df486e897ce7d4bb7439",
+  "selected_semantics_previously_disclosed": true,
+  "selected_task_ids_digest": "sha256:2f820f4221356fd83faf4c8e819046dc92ae08942caa272ad390d56515695f9f",
+  "selected_tasks_exact_image_unused": true,
+  "selection_inputs_include_action_programs": false,
+  "selection_inputs_include_pixel_paths": false,
+  "selection_inputs_include_pixels": false,
+  "selection_order_task_ids": [
+    "hd_convex-has_four_straight_lines_0000"
+  ],
+  "selection_order_task_ids_digest": "sha256:2f820f4221356fd83faf4c8e819046dc92ae08942caa272ad390d56515695f9f",
+  "selection_seed_digest": "sha256:4e66628764b10c088229787cfd708c67dcc4c7d155911b7e5ee5305751a615e5",
+  "semantic_reuse_witness_digest": "sha256:76e62e6c811680c978d54516973937116057b69c3353ed20c58aed4532d1daed",
+  "semantic_reuse_witness_task_ids": [
+    "hd_convex-has_four_straight_lines_0001"
+  ],
+  "semantics_fresh_claim_authorized": false,
+  "split_source_digest": "sha256:ebb9cd474478e0776dff539951070db2c96b9b312c4b0b073689d20792ed7230",
+  "target_semantic_key": "hd_convex-has_four_straight_lines",
+  "task_inventory_digest": "sha256:4503ae6b40dc7b34520eb5b8a4cca6ff8153635df0f42db5f6715cc349602dd0",
+  "tasks": [
+    {
+      "family": "hd",
+      "lean_affects_selection_or_decision": false,
+      "lean_present": false,
+      "lean_removable": true,
+      "lean_required": false,
+      "predicate_authority_id": "bongard.grounded-multimodal-predicate-authority/python-v1",
+      "python_is_canonical_authority": true,
+      "query_identities_sealed_before_support_pixels": true,
+      "query_labels_hidden_until_scoring": true,
+      "record_digest": "sha256:19b8a2727b906ac5f0e06e1977232da3ee19626110033629a5700c26d18b12fd",
+      "schema": "gkm.bongard-object-batch-task.v1",
+      "side_0_query_panel_id": "hd/hd_convex-has_four_straight_lines_0000/1/4.png",
+      "side_0_support_panel_ids": [
+        "hd/hd_convex-has_four_straight_lines_0000/1/0.png",
+        "hd/hd_convex-has_four_straight_lines_0000/1/1.png",
+        "hd/hd_convex-has_four_straight_lines_0000/1/2.png",
+        "hd/hd_convex-has_four_straight_lines_0000/1/3.png",
+        "hd/hd_convex-has_four_straight_lines_0000/1/5.png",
+        "hd/hd_convex-has_four_straight_lines_0000/1/6.png"
+      ],
+      "side_1_query_panel_id": "hd/hd_convex-has_four_straight_lines_0000/0/4.png",
+      "side_1_support_panel_ids": [
+        "hd/hd_convex-has_four_straight_lines_0000/0/0.png",
+        "hd/hd_convex-has_four_straight_lines_0000/0/1.png",
+        "hd/hd_convex-has_four_straight_lines_0000/0/2.png",
+        "hd/hd_convex-has_four_straight_lines_0000/0/3.png",
+        "hd/hd_convex-has_four_straight_lines_0000/0/5.png",
+        "hd/hd_convex-has_four_straight_lines_0000/0/6.png"
+      ],
+      "split": "train",
+      "support_labels_available_to_python_only": true,
+      "task_id": "hd_convex-has_four_straight_lines_0000"
+    }
+  ],
+  "train_task_ids_digest": "sha256:55286d0dded27fb308fae5067cb173169031d1f3ece5df73af0a4faea7fe7b2c"
+}
