@@ -37,7 +37,9 @@ from bongard.object_scene_anchor_panel_manifest import (
 )
 from bongard.object_scene_anchor_support_sheet import (
     ObjectSceneAnchorSupportSheet,
+    ObjectSceneAnchorSupportSheetPlan,
     build_object_scene_anchor_support_sheet,
+    plan_object_scene_anchor_support_sheet,
 )
 from bongard.object_scene_visual_frontend import (
     ObjectSceneProposalInventory,
@@ -53,11 +55,27 @@ OBJECT_SCENE_ANCHOR_SUPPORT_PANEL_FREEZE_SCHEMA = (
 OBJECT_SCENE_ANCHOR_SUPPORT_CORPUS_FREEZE_SCHEMA = (
     "gkm.object-scene-anchor-support-corpus-freeze.v1"
 )
+OBJECT_SCENE_ANCHOR_SUPPORT_CAPACITY_GAP_SCHEMA = (
+    "gkm.object-scene-anchor-support-capacity-gap.v1"
+)
 OBJECT_SCENE_ANCHOR_SUPPORT_PREPARATION_ID = (
     "bongard.object-scene-anchor-support-preparation/exact-pixels-v1"
 )
 OBJECT_SCENE_ANCHOR_SUPPORT_PANEL_COUNT = 12
 OBJECT_SCENE_ANCHOR_SUPPORT_BUCKET_SIZE = 6
+
+OBJECT_SCENE_ANCHOR_SUPPORT_TRANSPORT_CAPACITY_CODE = (
+    "support_sheet_png_exceeds_transport_limit"
+)
+OBJECT_SCENE_ANCHOR_SUPPORT_TRANSPORT_CAPACITY_MESSAGE = (
+    "support sheet exceeds transport MAX_PANEL_PNG_BYTES"
+)
+OBJECT_SCENE_ANCHOR_SUPPORT_PIXEL_CAPACITY_CODE = (
+    "support_sheet_exceeds_fixed_pixel_guard"
+)
+OBJECT_SCENE_ANCHOR_SUPPORT_PIXEL_CAPACITY_MESSAGE = (
+    "support sheet exceeds the fixed pixel guard"
+)
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _PANEL_ALIAS = re.compile(r"panel_[0-9]{3}\Z")
@@ -231,6 +249,386 @@ class ObjectSceneAnchorSupportPanelInput:
             original_panel_png_digest=panel.png_sha256,
             exact_original_png_bytes=panel.exact_png_bytes,
         )
+
+
+def _capacity_gap_authority_data() -> dict[str, object]:
+    return {
+        **_authority_data(),
+        "capacity_is_not_predicate_evidence": True,
+        "failed_fit_is_not_negative": True,
+        "capacity_disposition": "abstain",
+    }
+
+
+def _capacity_gap_content(
+    value: "ObjectSceneAnchorSupportCapacityGap",
+) -> dict[str, object]:
+    return {
+        "schema": OBJECT_SCENE_ANCHOR_SUPPORT_CAPACITY_GAP_SCHEMA,
+        "preparation_id": OBJECT_SCENE_ANCHOR_SUPPORT_PREPARATION_ID,
+        "preparation_source_digest": (
+            object_scene_anchor_support_preparation_source_digest()
+        ),
+        "failure_code": value.failure_code,
+        "safe_message": value.safe_message,
+        "panel_alias": value.panel_alias,
+        "support_bucket_index": value.support_bucket_index,
+        "source_digest": value.source_digest,
+        "source_panel_binding_digest": value.source_panel_binding_digest,
+        "source_ordinal": value.source_ordinal,
+        "task_id": value.task_id,
+        "panel_id": value.panel_id,
+        "original_panel_png_byte_count": value.original_panel_png_byte_count,
+        "original_panel_png_digest": value.original_panel_png_digest,
+        "support_sheet_plan": value.support_sheet_plan.to_data(),
+        "maximum_panel_png_byte_count": value.maximum_panel_png_byte_count,
+        **_capacity_gap_authority_data(),
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectSceneAnchorSupportCapacityGap:
+    """A sealed, model-free proof that one support sheet cannot be emitted."""
+
+    failure_code: str
+    safe_message: str
+    panel_alias: str
+    support_bucket_index: int
+    source_digest: str
+    source_panel_binding_digest: str
+    source_ordinal: int
+    task_id: str
+    panel_id: str
+    original_panel_png_byte_count: int
+    original_panel_png_digest: str
+    support_sheet_plan: ObjectSceneAnchorSupportSheetPlan
+    maximum_panel_png_byte_count: int
+    gap_digest: str
+
+    def __post_init__(self) -> None:
+        _panel_alias(self.panel_alias)
+        _bucket(self.support_bucket_index)
+        _digest(self.source_digest, "capacity gap source digest")
+        _digest(
+            self.source_panel_binding_digest,
+            "capacity gap source panel binding digest",
+        )
+        _integer(self.source_ordinal, "capacity gap source ordinal")
+        _integer(
+            self.original_panel_png_byte_count,
+            "capacity gap original panel PNG byte count",
+            minimum=1,
+        )
+        _integer(
+            self.maximum_panel_png_byte_count,
+            "capacity gap maximum panel PNG byte count",
+            minimum=1,
+        )
+        _digest(
+            self.original_panel_png_digest,
+            "capacity gap original panel PNG digest",
+        )
+        _digest(self.gap_digest, "support capacity gap digest")
+        if type(self.support_sheet_plan) is not ObjectSceneAnchorSupportSheetPlan:
+            raise TypeError(
+                "support_sheet_plan must be exact ObjectSceneAnchorSupportSheetPlan"
+            )
+        if (
+            not isinstance(self.task_id, str)
+            or not self.task_id
+            or not isinstance(self.panel_id, str)
+            or not self.panel_id
+            or self.support_sheet_plan.panel_digest
+            != self.original_panel_png_digest
+            or self.maximum_panel_png_byte_count != MAX_PANEL_PNG_BYTES
+        ):
+            raise ObjectSceneAnchorSupportPreparationError(
+                "support capacity gap source identity or limit differs"
+            )
+        if not self.support_sheet_plan.within_sheet_pixel_guard:
+            expected_code = OBJECT_SCENE_ANCHOR_SUPPORT_PIXEL_CAPACITY_CODE
+            expected_message = OBJECT_SCENE_ANCHOR_SUPPORT_PIXEL_CAPACITY_MESSAGE
+        elif (
+            self.support_sheet_plan.sheet_png_byte_count
+            > self.maximum_panel_png_byte_count
+        ):
+            expected_code = OBJECT_SCENE_ANCHOR_SUPPORT_TRANSPORT_CAPACITY_CODE
+            expected_message = (
+                OBJECT_SCENE_ANCHOR_SUPPORT_TRANSPORT_CAPACITY_MESSAGE
+            )
+        else:
+            raise ObjectSceneAnchorSupportPreparationError(
+                "support capacity gap does not exceed a fixed limit"
+            )
+        if (
+            self.failure_code != expected_code
+            or self.safe_message != expected_message
+        ):
+            raise ObjectSceneAnchorSupportPreparationError(
+                "support capacity gap code or safe message differs"
+            )
+        unsigned = _capacity_gap_content(self)
+        _assert_persistent_payload(unsigned)
+        if self.gap_digest != canonical_digest(unsigned):
+            raise ObjectSceneAnchorSupportPreparationError(
+                "support capacity gap digest differs"
+            )
+
+    @property
+    def proposal_count(self) -> int:
+        return self.support_sheet_plan.proposal_count
+
+    @property
+    def sheet_width_pixels(self) -> int:
+        return self.support_sheet_plan.sheet_width_pixels
+
+    @property
+    def sheet_height_pixels(self) -> int:
+        return self.support_sheet_plan.sheet_height_pixels
+
+    @property
+    def sheet_png_byte_count(self) -> int:
+        return self.support_sheet_plan.sheet_png_byte_count
+
+    def to_data(self) -> dict[str, object]:
+        return {**_capacity_gap_content(self), "gap_digest": self.gap_digest}
+
+    @classmethod
+    def from_data(cls, value: object) -> "ObjectSceneAnchorSupportCapacityGap":
+        raw = _fields(
+            value,
+            {
+                "schema",
+                "preparation_id",
+                "preparation_source_digest",
+                "failure_code",
+                "safe_message",
+                "panel_alias",
+                "support_bucket_index",
+                "source_digest",
+                "source_panel_binding_digest",
+                "source_ordinal",
+                "task_id",
+                "panel_id",
+                "original_panel_png_byte_count",
+                "original_panel_png_digest",
+                "support_sheet_plan",
+                "maximum_panel_png_byte_count",
+                *_capacity_gap_authority_data(),
+                "gap_digest",
+            },
+            "support capacity gap",
+        )
+        if (
+            raw["schema"] != OBJECT_SCENE_ANCHOR_SUPPORT_CAPACITY_GAP_SCHEMA
+            or raw["preparation_id"]
+            != OBJECT_SCENE_ANCHOR_SUPPORT_PREPARATION_ID
+            or raw["preparation_source_digest"]
+            != object_scene_anchor_support_preparation_source_digest()
+            or any(
+                raw[key] != item
+                for key, item in _capacity_gap_authority_data().items()
+            )
+            or not isinstance(raw["support_sheet_plan"], Mapping)
+        ):
+            raise ObjectSceneAnchorSupportPreparationError(
+                "support capacity gap policy differs"
+            )
+        result = cls(
+            failure_code=raw["failure_code"],
+            safe_message=raw["safe_message"],
+            panel_alias=raw["panel_alias"],
+            support_bucket_index=raw["support_bucket_index"],
+            source_digest=raw["source_digest"],
+            source_panel_binding_digest=raw["source_panel_binding_digest"],
+            source_ordinal=raw["source_ordinal"],
+            task_id=raw["task_id"],
+            panel_id=raw["panel_id"],
+            original_panel_png_byte_count=raw[
+                "original_panel_png_byte_count"
+            ],
+            original_panel_png_digest=raw["original_panel_png_digest"],
+            support_sheet_plan=ObjectSceneAnchorSupportSheetPlan.from_data(
+                raw["support_sheet_plan"]
+            ),
+            maximum_panel_png_byte_count=raw[
+                "maximum_panel_png_byte_count"
+            ],
+            gap_digest=raw["gap_digest"],
+        )
+        if result.to_data() != dict(raw):
+            raise ObjectSceneAnchorSupportPreparationError(
+                "support capacity gap is not canonical"
+            )
+        return result
+
+
+class ObjectSceneAnchorSupportCapacityExceeded(
+    ObjectSceneAnchorSupportPreparationError
+):
+    """Raised only with a sealed capacity gap and a fixed safe message."""
+
+    def __init__(self, gap: ObjectSceneAnchorSupportCapacityGap) -> None:
+        if type(gap) is not ObjectSceneAnchorSupportCapacityGap:
+            raise TypeError("gap must be exact ObjectSceneAnchorSupportCapacityGap")
+        self.gap = ObjectSceneAnchorSupportCapacityGap.from_data(gap.to_data())
+        super().__init__(self.gap.safe_message)
+
+    @property
+    def failure_code(self) -> str:
+        return self.gap.failure_code
+
+    @property
+    def safe_message(self) -> str:
+        return self.gap.safe_message
+
+
+def _capacity_gap_for_plan(
+    panel_input: ObjectSceneAnchorSupportPanelInput,
+    plan: ObjectSceneAnchorSupportSheetPlan,
+) -> ObjectSceneAnchorSupportCapacityGap | None:
+    if type(panel_input) is not ObjectSceneAnchorSupportPanelInput:
+        raise TypeError("panel_input must be exact support panel input")
+    if type(plan) is not ObjectSceneAnchorSupportSheetPlan:
+        raise TypeError("plan must be exact ObjectSceneAnchorSupportSheetPlan")
+    if plan.panel_digest != panel_input.original_panel_png_digest:
+        raise ObjectSceneAnchorSupportPreparationError(
+            "support-sheet plan differs from the exact panel input"
+        )
+    if not plan.within_sheet_pixel_guard:
+        failure_code = OBJECT_SCENE_ANCHOR_SUPPORT_PIXEL_CAPACITY_CODE
+        safe_message = OBJECT_SCENE_ANCHOR_SUPPORT_PIXEL_CAPACITY_MESSAGE
+    elif plan.sheet_png_byte_count > MAX_PANEL_PNG_BYTES:
+        failure_code = OBJECT_SCENE_ANCHOR_SUPPORT_TRANSPORT_CAPACITY_CODE
+        safe_message = OBJECT_SCENE_ANCHOR_SUPPORT_TRANSPORT_CAPACITY_MESSAGE
+    else:
+        return None
+    values = {
+        "failure_code": failure_code,
+        "safe_message": safe_message,
+        "panel_alias": panel_input.panel_alias,
+        "support_bucket_index": panel_input.support_bucket_index,
+        "source_digest": panel_input.source_digest,
+        "source_panel_binding_digest": panel_input.source_panel_binding_digest,
+        "source_ordinal": panel_input.source_ordinal,
+        "task_id": panel_input.task_id,
+        "panel_id": panel_input.panel_id,
+        "original_panel_png_byte_count": len(
+            panel_input.exact_original_png_bytes
+        ),
+        "original_panel_png_digest": panel_input.original_panel_png_digest,
+        "support_sheet_plan": plan,
+        "maximum_panel_png_byte_count": MAX_PANEL_PNG_BYTES,
+    }
+    provisional = object.__new__(ObjectSceneAnchorSupportCapacityGap)
+    for name, item in values.items():
+        object.__setattr__(provisional, name, item)
+    return ObjectSceneAnchorSupportCapacityGap(
+        **values,
+        gap_digest=canonical_digest(_capacity_gap_content(provisional)),
+    )
+
+
+def _preflight_object_scene_anchor_support_capacity_from_exact_inventory(
+    panel_input: ObjectSceneAnchorSupportPanelInput,
+    inventory: ObjectSceneProposalInventory,
+) -> ObjectSceneAnchorSupportSheetPlan:
+    """Preflight an inventory already extracted from ``panel_input`` pixels.
+
+    This private helper is used immediately after local extraction.  Public
+    callers must pass through ``preflight_object_scene_anchor_support_capacity``
+    so an unrelated or merely digest-matching inventory cannot seal a gap.
+    """
+
+    if type(panel_input) is not ObjectSceneAnchorSupportPanelInput:
+        raise TypeError("panel_input must be exact support panel input")
+    if type(inventory) is not ObjectSceneProposalInventory:
+        raise TypeError("inventory must be exact ObjectSceneProposalInventory")
+    plan = plan_object_scene_anchor_support_sheet(inventory)
+    if plan.panel_digest != panel_input.original_panel_png_digest:
+        raise ObjectSceneAnchorSupportPreparationError(
+            "support inventory differs from the exact panel input"
+        )
+    gap = _capacity_gap_for_plan(panel_input, plan)
+    if gap is not None:
+        raise ObjectSceneAnchorSupportCapacityExceeded(gap)
+    return plan
+
+
+def preflight_object_scene_anchor_support_capacity(
+    panel_input: ObjectSceneAnchorSupportPanelInput,
+    inventory: ObjectSceneProposalInventory,
+) -> ObjectSceneAnchorSupportSheetPlan:
+    """Verify exact pixels, then return a plan or a sealed capacity gap."""
+
+    if type(panel_input) is not ObjectSceneAnchorSupportPanelInput:
+        raise TypeError("panel_input must be exact support panel input")
+    if type(inventory) is not ObjectSceneProposalInventory:
+        raise TypeError("inventory must be exact ObjectSceneProposalInventory")
+    replayed_inventory = extract_object_scene_proposal_inventory(
+        panel_input.exact_original_png_bytes
+    )
+    if replayed_inventory != inventory:
+        raise ObjectSceneAnchorSupportPreparationError(
+            "support inventory differs from exact panel pixels"
+        )
+    return _preflight_object_scene_anchor_support_capacity_from_exact_inventory(
+        panel_input, replayed_inventory
+    )
+
+
+def verify_object_scene_anchor_support_capacity_gap(
+    gap: ObjectSceneAnchorSupportCapacityGap,
+    panel_input: ObjectSceneAnchorSupportPanelInput,
+    *,
+    expected_gap_digest: str | None = None,
+) -> ObjectSceneAnchorSupportCapacityGap:
+    """Cold-recompute a capacity gap from the exact original panel pixels."""
+
+    if type(gap) is not ObjectSceneAnchorSupportCapacityGap:
+        raise TypeError("gap must be exact ObjectSceneAnchorSupportCapacityGap")
+    if type(panel_input) is not ObjectSceneAnchorSupportPanelInput:
+        raise TypeError("panel_input must be exact support panel input")
+    restored = ObjectSceneAnchorSupportCapacityGap.from_data(gap.to_data())
+    if expected_gap_digest is not None and restored.gap_digest != _digest(
+        expected_gap_digest, "expected support capacity gap digest"
+    ):
+        raise ObjectSceneAnchorSupportPreparationError(
+            "support capacity gap differs from commitment"
+        )
+    exact_metadata = (
+        panel_input.panel_alias,
+        panel_input.support_bucket_index,
+        panel_input.source_digest,
+        panel_input.source_panel_binding_digest,
+        panel_input.source_ordinal,
+        panel_input.task_id,
+        panel_input.panel_id,
+        len(panel_input.exact_original_png_bytes),
+        panel_input.original_panel_png_digest,
+    )
+    gap_metadata = (
+        restored.panel_alias,
+        restored.support_bucket_index,
+        restored.source_digest,
+        restored.source_panel_binding_digest,
+        restored.source_ordinal,
+        restored.task_id,
+        restored.panel_id,
+        restored.original_panel_png_byte_count,
+        restored.original_panel_png_digest,
+    )
+    inventory = extract_object_scene_proposal_inventory(
+        panel_input.exact_original_png_bytes
+    )
+    expected = _capacity_gap_for_plan(
+        panel_input, plan_object_scene_anchor_support_sheet(inventory)
+    )
+    if exact_metadata != gap_metadata or expected is None or expected != restored:
+        raise ObjectSceneAnchorSupportPreparationError(
+            "support capacity gap differs from exact panel replay"
+        )
+    return restored
 
 
 def _panel_content(value: "ObjectSceneAnchorSupportPanelFreeze") -> dict[str, object]:
@@ -526,6 +924,11 @@ def build_object_scene_anchor_support_panel(
     # Deliberately pass only pixels into every geometry extraction stage.
     png_bytes = panel_input.exact_original_png_bytes
     inventory = extract_object_scene_proposal_inventory(png_bytes)
+    support_sheet_plan = (
+        _preflight_object_scene_anchor_support_capacity_from_exact_inventory(
+            panel_input, inventory
+        )
+    )
     catalog = extract_object_scene_anchor_catalog(png_bytes, inventory)
     manifest = build_object_scene_anchor_panel_decision_manifest(
         catalog, png_bytes, inventory
@@ -533,9 +936,13 @@ def build_object_scene_anchor_support_panel(
     sheet, sheet_png = build_object_scene_anchor_support_sheet(
         png_bytes, inventory, catalog, manifest
     )
-    if len(sheet_png) > MAX_PANEL_PNG_BYTES:
+    if (
+        sheet.sheet_width_pixels != support_sheet_plan.sheet_width_pixels
+        or sheet.sheet_height_pixels != support_sheet_plan.sheet_height_pixels
+        or len(sheet_png) != support_sheet_plan.sheet_png_byte_count
+    ):
         raise ObjectSceneAnchorSupportPreparationError(
-            "support sheet exceeds transport MAX_PANEL_PNG_BYTES"
+            "support sheet differs from its exact preflight plan"
         )
     freeze = _make_panel_freeze(
         panel_input, inventory, catalog, manifest, sheet, sheet_png
@@ -922,10 +1329,17 @@ def verify_object_scene_anchor_support_corpus_runtime(
 
 __all__ = (
     "OBJECT_SCENE_ANCHOR_SUPPORT_BUCKET_SIZE",
+    "OBJECT_SCENE_ANCHOR_SUPPORT_CAPACITY_GAP_SCHEMA",
     "OBJECT_SCENE_ANCHOR_SUPPORT_CORPUS_FREEZE_SCHEMA",
     "OBJECT_SCENE_ANCHOR_SUPPORT_PANEL_COUNT",
     "OBJECT_SCENE_ANCHOR_SUPPORT_PANEL_FREEZE_SCHEMA",
     "OBJECT_SCENE_ANCHOR_SUPPORT_PREPARATION_ID",
+    "OBJECT_SCENE_ANCHOR_SUPPORT_PIXEL_CAPACITY_CODE",
+    "OBJECT_SCENE_ANCHOR_SUPPORT_PIXEL_CAPACITY_MESSAGE",
+    "OBJECT_SCENE_ANCHOR_SUPPORT_TRANSPORT_CAPACITY_CODE",
+    "OBJECT_SCENE_ANCHOR_SUPPORT_TRANSPORT_CAPACITY_MESSAGE",
+    "ObjectSceneAnchorSupportCapacityExceeded",
+    "ObjectSceneAnchorSupportCapacityGap",
     "ObjectSceneAnchorSupportCorpusFreeze",
     "ObjectSceneAnchorSupportCorpusRuntimeBundle",
     "ObjectSceneAnchorSupportPanelFreeze",
@@ -936,6 +1350,8 @@ __all__ = (
     "build_object_scene_anchor_support_panel",
     "freeze_object_scene_anchor_support_corpus",
     "object_scene_anchor_support_preparation_source_digest",
+    "preflight_object_scene_anchor_support_capacity",
+    "verify_object_scene_anchor_support_capacity_gap",
     "verify_object_scene_anchor_support_corpus_runtime",
     "verify_object_scene_anchor_support_panel_runtime",
 )

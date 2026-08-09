@@ -15,6 +15,8 @@ from bongard.object_scene_anchor_atlas import (
     OBJECT_SCENE_ANCHOR_ATLAS_WIDTH_PIXELS,
     ObjectSceneAnchorAtlas,
     ObjectSceneAnchorAtlasError,
+    _encode_grayscale_png,
+    object_scene_anchor_grayscale_png_byte_count,
     render_object_scene_anchor_atlas,
     verify_object_scene_anchor_atlas,
 )
@@ -112,6 +114,55 @@ def test_exact_roundtrip_replay_and_grayscale_png(clean_render) -> None:
             OBJECT_SCENE_ANCHOR_ATLAS_HEIGHT_PIXELS,
         )
         assert image.getextrema()[0] < image.getextrema()[1]
+
+
+@pytest.mark.parametrize(
+    ("width", "height"),
+    (
+        (1, 1),
+        (17, 23),
+        (65534, 1),  # One full stored-DEFLATE block.
+        (65535, 1),  # Crosses the stored-DEFLATE block boundary.
+    ),
+)
+def test_grayscale_png_byte_count_is_an_exact_encoder_identity(
+    width: int,
+    height: int,
+) -> None:
+    pixels = np.zeros((height, width), dtype=np.uint8)
+    encoded = _encode_grayscale_png(pixels)
+
+    assert len(encoded) == object_scene_anchor_grayscale_png_byte_count(
+        width, height
+    )
+
+
+def test_grayscale_png_byte_count_rejects_non_png_dimensions() -> None:
+    for width, height in ((0, 1), (1, 0), (True, 1), (1, 0x100000000)):
+        with pytest.raises(ObjectSceneAnchorAtlasError):
+            object_scene_anchor_grayscale_png_byte_count(width, height)
+
+
+def test_grayscale_png_byte_count_is_bounded_by_single_idat_field() -> None:
+    # The support-sheet 64 Mi-pixel guard remains inside the encoder domain.
+    guarded_scanline_bytes = 8192 * 8193
+    assert object_scene_anchor_grayscale_png_byte_count(8192, 8192) == (
+        guarded_scanline_bytes
+        + 63
+        + 5 * ((guarded_scanline_bytes + 65534) // 65535)
+    )
+
+    # The largest stored-zlib stream fitting an unsigned four-byte IDAT length
+    # has 4,294,639,624 scanline bytes (65,533 stored-DEFLATE blocks).
+    maximum_one_row_width = 4_294_639_623
+    assert object_scene_anchor_grayscale_png_byte_count(
+        maximum_one_row_width, 1
+    ) == 4_294_967_352
+
+    with pytest.raises(ObjectSceneAnchorAtlasError, match="single IDAT"):
+        object_scene_anchor_grayscale_png_byte_count(
+            maximum_one_row_width + 1, 1
+        )
 
 
 def test_slot_map_is_complete_ordered_and_never_truncated(clean_render) -> None:

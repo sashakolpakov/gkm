@@ -10,7 +10,10 @@ import pytest
 
 from bongard import visual_witnesses as _visual
 from bongard.canonical import canonical_digest
-from bongard.object_scene_anchor_atlas import render_object_scene_anchor_atlas
+from bongard.object_scene_anchor_atlas import (
+    object_scene_anchor_grayscale_png_byte_count,
+    render_object_scene_anchor_atlas,
+)
 from bongard.object_scene_anchor_catalog import extract_object_scene_anchor_catalog
 from bongard.object_scene_anchor_crop import render_object_scene_anchor_object_crop
 from bongard.object_scene_anchor_panel_manifest import (
@@ -18,11 +21,15 @@ from bongard.object_scene_anchor_panel_manifest import (
 )
 from bongard.object_scene_anchor_salience import AnchorSalienceLimits
 from bongard.object_scene_anchor_support_sheet import (
+    OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_MAX_PIXEL_COUNT,
     ObjectSceneAnchorSupportSheet,
     ObjectSceneAnchorSupportSheetError,
+    ObjectSceneAnchorSupportSheetPlan,
     _layout,
     build_object_scene_anchor_support_sheet,
+    plan_object_scene_anchor_support_sheet,
     verify_object_scene_anchor_support_sheet,
+    verify_object_scene_anchor_support_sheet_plan,
 )
 from bongard.object_scene_visual_frontend import (
     extract_object_scene_proposal_inventory,
@@ -102,6 +109,61 @@ def test_support_sheet_is_deterministic_complete_and_cold_replayable(
     assert artifact.proposal_count == manifest.proposal_count == 2
     assert artifact.object_ids == manifest.object_ids
     assert tuple(artifact.by_object_id) == manifest.object_ids
+
+
+def test_support_sheet_plan_is_exact_canonical_and_matches_render(
+    frozen_sheet,
+) -> None:
+    _, inventory, _, _, artifact, sheet_png = frozen_sheet
+    plan = plan_object_scene_anchor_support_sheet(inventory)
+
+    assert ObjectSceneAnchorSupportSheetPlan.from_data(plan.to_data()) == plan
+    assert (
+        verify_object_scene_anchor_support_sheet_plan(
+            plan,
+            inventory,
+            expected_plan_digest=plan.plan_digest,
+        )
+        == plan
+    )
+    assert (plan.sheet_width_pixels, plan.sheet_height_pixels) == (
+        artifact.sheet_width_pixels,
+        artifact.sheet_height_pixels,
+    )
+    assert plan.sheet_pixel_count == (
+        artifact.sheet_width_pixels * artifact.sheet_height_pixels
+    )
+    assert plan.sheet_png_byte_count == len(sheet_png)
+    assert plan.object_crop_dimensions_pixels == tuple(
+        (item.crop_width_pixels, item.crop_height_pixels)
+        for item in artifact.objects
+    )
+    assert plan.within_sheet_pixel_guard is True
+    assert (
+        plan.maximum_sheet_pixel_count
+        == OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_MAX_PIXEL_COUNT
+    )
+
+    damaged = deepcopy(plan.to_data())
+    damaged["sheet_png_byte_count"] += 1
+    _reseal(damaged, "plan_digest")
+    with pytest.raises(
+        ObjectSceneAnchorSupportSheetError,
+        match="geometry or byte identity",
+    ):
+        ObjectSceneAnchorSupportSheetPlan.from_data(damaged)
+
+
+def test_sixteen_native_atlas_rows_exceed_transport_without_rendering() -> None:
+    _, _, sheet_size = _layout(
+        512,
+        512,
+        ((1, 1, 640, 512),) * 16,
+    )
+
+    assert sheet_size == (683, 9020)
+    assert object_scene_anchor_grayscale_png_byte_count(*sheet_size) == 6_170_218
+    assert object_scene_anchor_grayscale_png_byte_count(*sheet_size) > 4_000_000
 
 
 def test_native_panel_crop_atlas_and_slot_pixels_are_lossless(
@@ -254,6 +316,9 @@ def test_reordering_resealed_omission_and_component_tampering_are_detected(
         ),
     )
     omitted["sheet_width_pixels"], omitted["sheet_height_pixels"] = omitted_size
+    omitted["sheet_png_byte_count"] = (
+        object_scene_anchor_grayscale_png_byte_count(*omitted_size)
+    )
     _reseal(omitted, "artifact_digest")
     truncated = ObjectSceneAnchorSupportSheet.from_data(omitted)
     with pytest.raises(ObjectSceneAnchorSupportSheetError, match="exact panel"):

@@ -73,6 +73,7 @@ _USED_BORDER_VALUE = 144
 _BASE_GRAPH_VALUE = 188
 _HIGHLIGHT_VALUE = 16
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+_PNG_CHUNK_MAX_PAYLOAD_BYTE_COUNT = 0xFFFFFFFF
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _OBJECT_ID = re.compile(r"object_[0-9]{4}\Z")
@@ -889,6 +890,36 @@ def _png_chunk(kind: bytes, payload: bytes) -> bytes:
     )
 
 
+def object_scene_anchor_grayscale_png_byte_count(
+    width_pixels: int,
+    height_pixels: int,
+) -> int:
+    """Return the exact byte count emitted by the grayscale PNG encoder.
+
+    Every scanline has one filter byte, and ``_stored_zlib`` emits stored
+    DEFLATE blocks of at most 65,535 bytes.  The remaining 63 bytes are the
+    PNG signature/chunk framing plus the zlib header and Adler-32 trailer.
+    This is a size identity, not a compression estimate.  Its domain is the
+    domain of ``_encode_grayscale_png``: each dimension must fit IHDR and the
+    complete stored-zlib stream must fit the encoder's single IDAT chunk.
+    """
+
+    width = _integer(width_pixels, "grayscale PNG width", minimum=1)
+    height = _integer(height_pixels, "grayscale PNG height", minimum=1)
+    if width > 0xFFFFFFFF or height > 0xFFFFFFFF:
+        raise ObjectSceneAnchorAtlasError(
+            "grayscale PNG dimensions exceed the four-byte IHDR fields"
+        )
+    scanline_byte_count = height * (width + 1)
+    stored_block_count = (scanline_byte_count + 65534) // 65535
+    stored_zlib_byte_count = scanline_byte_count + 6 + 5 * stored_block_count
+    if stored_zlib_byte_count > _PNG_CHUNK_MAX_PAYLOAD_BYTE_COUNT:
+        raise ObjectSceneAnchorAtlasError(
+            "grayscale PNG payload exceeds the single IDAT chunk field"
+        )
+    return scanline_byte_count + 63 + 5 * stored_block_count
+
+
 def _encode_grayscale_png(pixels: np.ndarray) -> bytes:
     if pixels.dtype != np.uint8 or pixels.ndim != 2:
         raise TypeError("atlas pixels must be a two-dimensional uint8 array")
@@ -901,12 +932,17 @@ def _encode_grayscale_png(pixels: np.ndarray) -> bytes:
     scanlines = b"".join(
         b"\x00" + np.ascontiguousarray(row).tobytes() for row in pixels
     )
-    return (
+    result = (
         _PNG_SIGNATURE
         + _png_chunk(b"IHDR", ihdr)
         + _png_chunk(b"IDAT", _stored_zlib(scanlines))
         + _png_chunk(b"IEND", b"")
     )
+    if len(result) != object_scene_anchor_grayscale_png_byte_count(width, height):
+        raise ObjectSceneAnchorAtlasError(
+            "grayscale PNG encoder differs from its exact byte-count identity"
+        )
+    return result
 
 
 def _render_pixels(
@@ -1050,6 +1086,7 @@ __all__ = (
     "ObjectSceneAnchorAtlasSlot",
     "ObjectSceneAnchorAtlasStatus",
     "extract_object_scene_anchor_atlas",
+    "object_scene_anchor_grayscale_png_byte_count",
     "object_scene_anchor_atlas_renderer_digest",
     "object_scene_anchor_atlas_source_digest",
     "render_object_scene_anchor_atlas",

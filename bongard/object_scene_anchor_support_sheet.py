@@ -31,10 +31,13 @@ from PIL import Image
 from bongard.canonical import canonical_digest
 from bongard.object_scene_anchor_atlas import (
     OBJECT_SCENE_ANCHOR_ATLAS_COLUMNS,
+    OBJECT_SCENE_ANCHOR_ATLAS_HEIGHT_PIXELS,
     OBJECT_SCENE_ANCHOR_ATLAS_TILE_SIZE_PIXELS,
+    OBJECT_SCENE_ANCHOR_ATLAS_WIDTH_PIXELS,
     ObjectSceneAnchorAtlas,
     ObjectSceneAnchorAtlasSlot,
     _encode_grayscale_png,
+    object_scene_anchor_grayscale_png_byte_count,
     object_scene_anchor_atlas_renderer_digest,
     render_object_scene_anchor_atlas,
 )
@@ -61,6 +64,9 @@ OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_OBJECT_SCHEMA = (
 OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_SLOT_SCHEMA = (
     "gkm.object-scene-anchor-support-sheet-slot.v1"
 )
+OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_PLAN_SCHEMA = (
+    "gkm.object-scene-anchor-support-sheet-plan.v1"
+)
 OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_ALGORITHM_ID = (
     "bongard.object-scene-anchor-support-sheet/panel-crop-atlas-native-l-v1"
 )
@@ -75,7 +81,7 @@ _BACKGROUND_VALUE = 255
 _PANEL_BORDER_VALUE = 24
 _CROP_BORDER_VALUE = 96
 _ATLAS_BORDER_VALUE = 168
-_MAX_SHEET_PIXELS = 64 * 1024 * 1024
+OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_MAX_PIXEL_COUNT = 64 * 1024 * 1024
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _OBJECT_ID = re.compile(r"object_[0-9]{4}\Z")
 _SLOT_ID = re.compile(r"slot-[0-9]{4}\Z")
@@ -669,7 +675,11 @@ class ObjectSceneAnchorSupportSheet:
             or (self.sheet_width_pixels, self.sheet_height_pixels)
             != expected_layout[2]
             or self.sheet_width_pixels * self.sheet_height_pixels
-            > _MAX_SHEET_PIXELS
+            > OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_MAX_PIXEL_COUNT
+            or self.sheet_png_byte_count
+            != object_scene_anchor_grayscale_png_byte_count(
+                self.sheet_width_pixels, self.sheet_height_pixels
+            )
         ):
             raise ObjectSceneAnchorSupportSheetError(
                 "support-sheet native layout differs"
@@ -797,6 +807,321 @@ def _layout(
     return (panel_x, panel_y), tuple(rows), (sheet_width, sheet_height)
 
 
+def _plan_authority_data() -> dict[str, object]:
+    return {
+        "predicate_authority_id": PYTHON_PREDICATE_AUTHORITY_ID,
+        "python_is_canonical_authority": True,
+        "inventory_is_only_geometry_input": True,
+        "catalog_consumed": False,
+        "panel_manifest_consumed": False,
+        "component_pixels_rendered": False,
+        "model_calls_permitted": False,
+        "query_pixels_consumed": False,
+    }
+
+
+def _plan_content(value: "ObjectSceneAnchorSupportSheetPlan") -> dict[str, object]:
+    return {
+        "schema": OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_PLAN_SCHEMA,
+        "algorithm_id": OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_ALGORITHM_ID,
+        "renderer_digest": value.renderer_digest,
+        "panel_digest": value.panel_digest,
+        "inventory_digest": value.inventory_digest,
+        "proposal_count": value.proposal_count,
+        "object_ids": list(value.object_ids),
+        "panel_width_pixels": value.panel_width_pixels,
+        "panel_height_pixels": value.panel_height_pixels,
+        "object_crop_dimensions_pixels": [
+            list(item) for item in value.object_crop_dimensions_pixels
+        ],
+        "atlas_width_pixels": value.atlas_width_pixels,
+        "atlas_height_pixels": value.atlas_height_pixels,
+        "sheet_width_pixels": value.sheet_width_pixels,
+        "sheet_height_pixels": value.sheet_height_pixels,
+        "sheet_pixel_count": value.sheet_pixel_count,
+        "sheet_png_byte_count": value.sheet_png_byte_count,
+        "maximum_sheet_pixel_count": value.maximum_sheet_pixel_count,
+        "within_sheet_pixel_guard": value.within_sheet_pixel_guard,
+        **_plan_authority_data(),
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectSceneAnchorSupportSheetPlan:
+    """Exact layout and encoder size known before component rendering."""
+
+    renderer_digest: str
+    panel_digest: str
+    inventory_digest: str
+    proposal_count: int
+    object_ids: tuple[str, ...]
+    panel_width_pixels: int
+    panel_height_pixels: int
+    object_crop_dimensions_pixels: tuple[tuple[int, int], ...]
+    atlas_width_pixels: int
+    atlas_height_pixels: int
+    sheet_width_pixels: int
+    sheet_height_pixels: int
+    sheet_pixel_count: int
+    sheet_png_byte_count: int
+    maximum_sheet_pixel_count: int
+    within_sheet_pixel_guard: bool
+    plan_digest: str
+
+    def __post_init__(self) -> None:
+        _digest(self.renderer_digest, "support-sheet plan renderer digest")
+        _digest(self.panel_digest, "support-sheet plan panel digest")
+        _digest(self.inventory_digest, "support-sheet plan inventory digest")
+        _digest(self.plan_digest, "support-sheet plan digest")
+        for label, item, minimum in (
+            ("proposal count", self.proposal_count, 0),
+            ("panel width", self.panel_width_pixels, 2),
+            ("panel height", self.panel_height_pixels, 2),
+            ("atlas width", self.atlas_width_pixels, 1),
+            ("atlas height", self.atlas_height_pixels, 1),
+            ("sheet width", self.sheet_width_pixels, 1),
+            ("sheet height", self.sheet_height_pixels, 1),
+            ("sheet pixel count", self.sheet_pixel_count, 1),
+            ("sheet PNG byte count", self.sheet_png_byte_count, 1),
+            (
+                "maximum sheet pixel count",
+                self.maximum_sheet_pixel_count,
+                1,
+            ),
+        ):
+            _integer(item, f"support-sheet plan {label}", minimum=minimum)
+        if (
+            type(self.object_ids) is not tuple
+            or type(self.object_crop_dimensions_pixels) is not tuple
+            or any(
+                type(item) is not tuple or len(item) != 2
+                for item in self.object_crop_dimensions_pixels
+            )
+        ):
+            raise ObjectSceneAnchorSupportSheetError(
+                "support-sheet plan object dimensions must use exact tuples"
+            )
+        for index, dimensions in enumerate(self.object_crop_dimensions_pixels):
+            _integer(
+                dimensions[0],
+                f"support-sheet plan crop {index} width",
+                minimum=1,
+            )
+            _integer(
+                dimensions[1],
+                f"support-sheet plan crop {index} height",
+                minimum=1,
+            )
+        expected_ids = tuple(
+            f"object_{index:04d}" for index in range(self.proposal_count)
+        )
+        dimensions = tuple(
+            (
+                crop_width,
+                crop_height,
+                self.atlas_width_pixels,
+                self.atlas_height_pixels,
+            )
+            for crop_width, crop_height in self.object_crop_dimensions_pixels
+        )
+        _, _, expected_size = _layout(
+            self.panel_width_pixels,
+            self.panel_height_pixels,
+            dimensions,
+        )
+        expected_pixel_count = expected_size[0] * expected_size[1]
+        if (
+            self.renderer_digest
+            != object_scene_anchor_support_sheet_renderer_digest()
+            or self.object_ids != expected_ids
+            or len(self.object_crop_dimensions_pixels) != self.proposal_count
+            or self.atlas_width_pixels
+            != OBJECT_SCENE_ANCHOR_ATLAS_WIDTH_PIXELS
+            or self.atlas_height_pixels
+            != OBJECT_SCENE_ANCHOR_ATLAS_HEIGHT_PIXELS
+            or (self.sheet_width_pixels, self.sheet_height_pixels)
+            != expected_size
+            or self.sheet_pixel_count != expected_pixel_count
+            or self.sheet_png_byte_count
+            != object_scene_anchor_grayscale_png_byte_count(*expected_size)
+            or self.maximum_sheet_pixel_count
+            != OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_MAX_PIXEL_COUNT
+            or type(self.within_sheet_pixel_guard) is not bool
+            or self.within_sheet_pixel_guard
+            is not (
+                expected_pixel_count
+                <= OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_MAX_PIXEL_COUNT
+            )
+        ):
+            raise ObjectSceneAnchorSupportSheetError(
+                "support-sheet plan geometry or byte identity differs"
+            )
+        if self.plan_digest != canonical_digest(_plan_content(self)):
+            raise ObjectSceneAnchorSupportSheetError(
+                "support-sheet plan digest differs"
+            )
+
+    def to_data(self) -> dict[str, object]:
+        return {**_plan_content(self), "plan_digest": self.plan_digest}
+
+    @classmethod
+    def from_data(cls, value: object) -> "ObjectSceneAnchorSupportSheetPlan":
+        raw = _exact_fields(
+            value,
+            {
+                "schema",
+                "algorithm_id",
+                "renderer_digest",
+                "panel_digest",
+                "inventory_digest",
+                "proposal_count",
+                "object_ids",
+                "panel_width_pixels",
+                "panel_height_pixels",
+                "object_crop_dimensions_pixels",
+                "atlas_width_pixels",
+                "atlas_height_pixels",
+                "sheet_width_pixels",
+                "sheet_height_pixels",
+                "sheet_pixel_count",
+                "sheet_png_byte_count",
+                "maximum_sheet_pixel_count",
+                "within_sheet_pixel_guard",
+                *_plan_authority_data(),
+                "plan_digest",
+            },
+            "object scene anchor support-sheet plan",
+        )
+        if (
+            raw["schema"] != OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_PLAN_SCHEMA
+            or raw["algorithm_id"]
+            != OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_ALGORITHM_ID
+            or any(
+                raw[key] != item for key, item in _plan_authority_data().items()
+            )
+            or not isinstance(raw["object_ids"], list)
+            or not isinstance(raw["object_crop_dimensions_pixels"], list)
+            or any(
+                not isinstance(item, list) or len(item) != 2
+                for item in raw["object_crop_dimensions_pixels"]
+            )
+        ):
+            raise ObjectSceneAnchorSupportSheetError(
+                "support-sheet plan policy differs"
+            )
+        result = cls(
+            renderer_digest=raw["renderer_digest"],
+            panel_digest=raw["panel_digest"],
+            inventory_digest=raw["inventory_digest"],
+            proposal_count=raw["proposal_count"],
+            object_ids=tuple(raw["object_ids"]),
+            panel_width_pixels=raw["panel_width_pixels"],
+            panel_height_pixels=raw["panel_height_pixels"],
+            object_crop_dimensions_pixels=tuple(
+                tuple(item) for item in raw["object_crop_dimensions_pixels"]
+            ),
+            atlas_width_pixels=raw["atlas_width_pixels"],
+            atlas_height_pixels=raw["atlas_height_pixels"],
+            sheet_width_pixels=raw["sheet_width_pixels"],
+            sheet_height_pixels=raw["sheet_height_pixels"],
+            sheet_pixel_count=raw["sheet_pixel_count"],
+            sheet_png_byte_count=raw["sheet_png_byte_count"],
+            maximum_sheet_pixel_count=raw["maximum_sheet_pixel_count"],
+            within_sheet_pixel_guard=raw["within_sheet_pixel_guard"],
+            plan_digest=raw["plan_digest"],
+        )
+        if result.to_data() != dict(raw):
+            raise ObjectSceneAnchorSupportSheetError(
+                "support-sheet plan is not canonical"
+            )
+        return result
+
+
+def plan_object_scene_anchor_support_sheet(
+    inventory: ObjectSceneProposalInventory,
+) -> ObjectSceneAnchorSupportSheetPlan:
+    """Freeze exact support-sheet dimensions without rendering components."""
+
+    if type(inventory) is not ObjectSceneProposalInventory:
+        raise TypeError("inventory must be exact ObjectSceneProposalInventory")
+    frozen = ObjectSceneProposalInventory.from_data(inventory.to_data())
+    crop_dimensions = tuple(
+        (receipt.bbox_pixels[2] - receipt.bbox_pixels[0],
+         receipt.bbox_pixels[3] - receipt.bbox_pixels[1])
+        for receipt in frozen.objects
+    )
+    _, _, sheet_size = _layout(
+        frozen.width_pixels,
+        frozen.height_pixels,
+        tuple(
+            (
+                crop_width,
+                crop_height,
+                OBJECT_SCENE_ANCHOR_ATLAS_WIDTH_PIXELS,
+                OBJECT_SCENE_ANCHOR_ATLAS_HEIGHT_PIXELS,
+            )
+            for crop_width, crop_height in crop_dimensions
+        ),
+    )
+    sheet_pixel_count = sheet_size[0] * sheet_size[1]
+    values = {
+        "renderer_digest": object_scene_anchor_support_sheet_renderer_digest(),
+        "panel_digest": frozen.panel_digest,
+        "inventory_digest": frozen.inventory_digest,
+        "proposal_count": len(frozen.objects),
+        "object_ids": tuple(item.object_id for item in frozen.objects),
+        "panel_width_pixels": frozen.width_pixels,
+        "panel_height_pixels": frozen.height_pixels,
+        "object_crop_dimensions_pixels": crop_dimensions,
+        "atlas_width_pixels": OBJECT_SCENE_ANCHOR_ATLAS_WIDTH_PIXELS,
+        "atlas_height_pixels": OBJECT_SCENE_ANCHOR_ATLAS_HEIGHT_PIXELS,
+        "sheet_width_pixels": sheet_size[0],
+        "sheet_height_pixels": sheet_size[1],
+        "sheet_pixel_count": sheet_pixel_count,
+        "sheet_png_byte_count": object_scene_anchor_grayscale_png_byte_count(
+            *sheet_size
+        ),
+        "maximum_sheet_pixel_count": (
+            OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_MAX_PIXEL_COUNT
+        ),
+        "within_sheet_pixel_guard": (
+            sheet_pixel_count
+            <= OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_MAX_PIXEL_COUNT
+        ),
+    }
+    provisional = object.__new__(ObjectSceneAnchorSupportSheetPlan)
+    for name, item in values.items():
+        object.__setattr__(provisional, name, item)
+    return ObjectSceneAnchorSupportSheetPlan(
+        **values,
+        plan_digest=canonical_digest(_plan_content(provisional)),
+    )
+
+
+def verify_object_scene_anchor_support_sheet_plan(
+    plan: ObjectSceneAnchorSupportSheetPlan,
+    inventory: ObjectSceneProposalInventory,
+    *,
+    expected_plan_digest: str | None = None,
+) -> ObjectSceneAnchorSupportSheetPlan:
+    """Cold-recompute an exact support-sheet plan from its inventory."""
+
+    if type(plan) is not ObjectSceneAnchorSupportSheetPlan:
+        raise TypeError("plan must be exact ObjectSceneAnchorSupportSheetPlan")
+    restored = ObjectSceneAnchorSupportSheetPlan.from_data(plan.to_data())
+    if expected_plan_digest is not None and restored.plan_digest != _digest(
+        expected_plan_digest, "expected support-sheet plan digest"
+    ):
+        raise ObjectSceneAnchorSupportSheetError(
+            "support-sheet plan differs from commitment"
+        )
+    if restored != plan_object_scene_anchor_support_sheet(inventory):
+        raise ObjectSceneAnchorSupportSheetError(
+            "support-sheet plan differs from exact inventory replay"
+        )
+    return restored
+
+
 def _decode_luminance(png_bytes: bytes, label: str) -> np.ndarray:
     try:
         if not isinstance(png_bytes, bytes) or not png_bytes.startswith(
@@ -807,7 +1132,12 @@ def _decode_luminance(png_bytes: bytes, label: str) -> np.ndarray:
             if encoded.format != "PNG" or getattr(encoded, "n_frames", 1) != 1:
                 raise ValueError("input is not one PNG frame")
             width, height = encoded.size
-            if width < 1 or height < 1 or width * height > _MAX_SHEET_PIXELS:
+            if (
+                width < 1
+                or height < 1
+                or width * height
+                > OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_MAX_PIXEL_COUNT
+            ):
                 raise ValueError("PNG dimensions exceed the component guard")
             rgba = np.asarray(encoded.convert("RGBA"), dtype=np.uint8)
         values = rgba.astype(np.uint32, copy=False)
@@ -943,6 +1273,7 @@ def _make_object_presentation(
 
 def _make_sheet(
     *,
+    plan: ObjectSceneAnchorSupportSheetPlan,
     panel_manifest: ObjectSceneAnchorPanelDecisionManifest,
     original_png: bytes,
     panel_pixels: np.ndarray,
@@ -950,6 +1281,8 @@ def _make_sheet(
         tuple[bytes, np.ndarray, ObjectSceneAnchorAtlas, bytes, np.ndarray], ...
     ],
 ) -> tuple[ObjectSceneAnchorSupportSheet, bytes]:
+    if type(plan) is not ObjectSceneAnchorSupportSheetPlan:
+        raise TypeError("plan must be exact ObjectSceneAnchorSupportSheetPlan")
     dimensions = tuple(
         (
             int(crop_pixels.shape[1]),
@@ -959,13 +1292,36 @@ def _make_sheet(
         )
         for _, crop_pixels, _, _, atlas_pixels in components
     )
+    planned_dimensions = tuple(
+        (
+            crop_width,
+            crop_height,
+            plan.atlas_width_pixels,
+            plan.atlas_height_pixels,
+        )
+        for crop_width, crop_height in plan.object_crop_dimensions_pixels
+    )
     panel_placement, object_placements, sheet_size = _layout(
         panel_manifest.width_pixels,
         panel_manifest.height_pixels,
         dimensions,
     )
     sheet_width, sheet_height = sheet_size
-    if sheet_width * sheet_height > _MAX_SHEET_PIXELS:
+    if (
+        dimensions != planned_dimensions
+        or sheet_size != (plan.sheet_width_pixels, plan.sheet_height_pixels)
+        or panel_manifest.panel_digest != plan.panel_digest
+        or panel_manifest.inventory_digest != plan.inventory_digest
+        or panel_manifest.proposal_count != plan.proposal_count
+        or panel_manifest.object_ids != plan.object_ids
+    ):
+        raise ObjectSceneAnchorSupportSheetError(
+            "rendered support-sheet components differ from the exact plan"
+        )
+    if (
+        sheet_width * sheet_height
+        > OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_MAX_PIXEL_COUNT
+    ):
         raise ObjectSceneAnchorSupportSheetError(
             "support sheet exceeds the fixed pixel guard"
         )
@@ -1033,6 +1389,10 @@ def _make_sheet(
             )
         )
     sheet_png = _encode_grayscale_png(pixels)
+    if len(sheet_png) != plan.sheet_png_byte_count:
+        raise ObjectSceneAnchorSupportSheetError(
+            "rendered support-sheet PNG differs from the exact byte plan"
+        )
     values = {
         "renderer_digest": object_scene_anchor_support_sheet_renderer_digest(),
         "panel_manifest_digest": panel_manifest.manifest_digest,
@@ -1078,6 +1438,11 @@ def build_object_scene_anchor_support_sheet(
     if type(panel_manifest) is not ObjectSceneAnchorPanelDecisionManifest:
         raise TypeError(
             "panel_manifest must be exact ObjectSceneAnchorPanelDecisionManifest"
+        )
+    plan = plan_object_scene_anchor_support_sheet(inventory)
+    if not plan.within_sheet_pixel_guard:
+        raise ObjectSceneAnchorSupportSheetError(
+            "support sheet exceeds the fixed pixel guard"
         )
     manifest = verify_object_scene_anchor_panel_decision_manifest(
         panel_manifest,
@@ -1134,6 +1499,7 @@ def build_object_scene_anchor_support_sheet(
             (crop_png, crop_pixels, atlas, atlas_png, atlas_pixels)
         )
     return _make_sheet(
+        plan=plan,
         panel_manifest=manifest,
         original_png=png_bytes,
         panel_pixels=panel_pixels,
@@ -1185,18 +1551,23 @@ __all__ = (
     "OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_BORDER_PIXELS",
     "OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_COMPONENT_GAP_PIXELS",
     "OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_MODE",
+    "OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_MAX_PIXEL_COUNT",
     "OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_OBJECT_SCHEMA",
     "OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_PADDING_PIXELS",
     "OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_SCHEMA",
+    "OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_PLAN_SCHEMA",
     "OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_SECTION_GAP_PIXELS",
     "OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_SLOT_SCHEMA",
     "ObjectSceneAnchorSupportSheet",
     "ObjectSceneAnchorSupportSheetError",
     "ObjectSceneAnchorSupportSheetObject",
+    "ObjectSceneAnchorSupportSheetPlan",
     "ObjectSceneAnchorSupportSheetSlotPlacement",
     "build_object_scene_anchor_support_sheet",
     "object_scene_anchor_support_sheet_renderer_digest",
     "object_scene_anchor_support_sheet_source_digest",
+    "plan_object_scene_anchor_support_sheet",
     "render_object_scene_anchor_support_sheet",
     "verify_object_scene_anchor_support_sheet",
+    "verify_object_scene_anchor_support_sheet_plan",
 )

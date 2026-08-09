@@ -7,11 +7,19 @@ from io import BytesIO
 from PIL import Image, ImageDraw
 import pytest
 
+from bongard import object_scene_anchor_support_preparation as _preparation
+from bongard import object_scene_anchor_support_sheet as _support_sheet
 from bongard.canonical import canonical_digest
 from bongard.object_bongard_panel_rubric_calibration import (
     load_object_bongard_panel_rubric_calibration_source,
 )
 from bongard.object_scene_anchor_support_preparation import (
+    OBJECT_SCENE_ANCHOR_SUPPORT_PIXEL_CAPACITY_CODE,
+    OBJECT_SCENE_ANCHOR_SUPPORT_PIXEL_CAPACITY_MESSAGE,
+    OBJECT_SCENE_ANCHOR_SUPPORT_TRANSPORT_CAPACITY_CODE,
+    OBJECT_SCENE_ANCHOR_SUPPORT_TRANSPORT_CAPACITY_MESSAGE,
+    ObjectSceneAnchorSupportCapacityExceeded,
+    ObjectSceneAnchorSupportCapacityGap,
     ObjectSceneAnchorSupportCorpusFreeze,
     ObjectSceneAnchorSupportPanelFreeze,
     ObjectSceneAnchorSupportPanelInput,
@@ -19,7 +27,13 @@ from bongard.object_scene_anchor_support_preparation import (
     ObjectSceneAnchorSupportPreparationError,
     build_object_scene_anchor_support_panel,
     freeze_object_scene_anchor_support_corpus,
+    preflight_object_scene_anchor_support_capacity,
+    verify_object_scene_anchor_support_capacity_gap,
     verify_object_scene_anchor_support_panel_runtime,
+)
+from bongard.object_scene_visual_frontend import (
+    ObjectSceneProposalInventory,
+    extract_object_scene_proposal_inventory,
 )
 from bongard.transport import MAX_PANEL_PNG_BYTES
 
@@ -98,6 +112,113 @@ def test_panel_freeze_is_complete_byte_free_and_transport_safe(
     assert freeze.object_ids == tuple(
         item.object_id for item in freeze.inventory.objects
     )
+
+
+def test_transport_capacity_gap_is_typed_safe_and_precedes_rendering(
+    monkeypatch,
+) -> None:
+    panel_input = _input(0)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("post-preflight work was reached")
+
+    monkeypatch.setattr(_preparation, "MAX_PANEL_PNG_BYTES", 1)
+    monkeypatch.setattr(
+        _preparation, "extract_object_scene_anchor_catalog", forbidden
+    )
+    monkeypatch.setattr(
+        _preparation, "build_object_scene_anchor_panel_decision_manifest", forbidden
+    )
+    monkeypatch.setattr(
+        _preparation, "build_object_scene_anchor_support_sheet", forbidden
+    )
+
+    with pytest.raises(ObjectSceneAnchorSupportCapacityExceeded) as caught:
+        build_object_scene_anchor_support_panel(panel_input)
+
+    exc = caught.value
+    gap = exc.gap
+    assert str(exc) == OBJECT_SCENE_ANCHOR_SUPPORT_TRANSPORT_CAPACITY_MESSAGE
+    assert exc.failure_code == OBJECT_SCENE_ANCHOR_SUPPORT_TRANSPORT_CAPACITY_CODE
+    assert exc.safe_message == OBJECT_SCENE_ANCHOR_SUPPORT_TRANSPORT_CAPACITY_MESSAGE
+    assert gap.failure_code == OBJECT_SCENE_ANCHOR_SUPPORT_TRANSPORT_CAPACITY_CODE
+    assert gap.safe_message == OBJECT_SCENE_ANCHOR_SUPPORT_TRANSPORT_CAPACITY_MESSAGE
+    assert gap.panel_alias == panel_input.panel_alias
+    assert gap.source_ordinal == panel_input.source_ordinal
+    assert gap.original_panel_png_digest == panel_input.original_panel_png_digest
+    assert gap.sheet_png_byte_count > gap.maximum_panel_png_byte_count == 1
+    assert not _has_bytes(gap.to_data())
+    assert ObjectSceneAnchorSupportCapacityGap.from_data(gap.to_data()) == gap
+    assert (
+        verify_object_scene_anchor_support_capacity_gap(
+            gap,
+            panel_input,
+            expected_gap_digest=gap.gap_digest,
+        )
+        == gap
+    )
+
+    damaged = deepcopy(gap.to_data())
+    damaged["safe_message"] = "arbitrary unsanitized exception text"
+    _reseal(damaged, "gap_digest")
+    with pytest.raises(
+        ObjectSceneAnchorSupportPreparationError,
+        match="code or safe message",
+    ):
+        ObjectSceneAnchorSupportCapacityGap.from_data(damaged)
+
+
+def test_pixel_guard_capacity_gap_has_a_distinct_closed_code(
+    monkeypatch,
+) -> None:
+    panel_input = _input(0)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("post-preflight work was reached")
+
+    monkeypatch.setattr(
+        _support_sheet,
+        "OBJECT_SCENE_ANCHOR_SUPPORT_SHEET_MAX_PIXEL_COUNT",
+        1,
+    )
+    monkeypatch.setattr(
+        _preparation, "extract_object_scene_anchor_catalog", forbidden
+    )
+
+    with pytest.raises(ObjectSceneAnchorSupportCapacityExceeded) as caught:
+        build_object_scene_anchor_support_panel(panel_input)
+
+    gap = caught.value.gap
+    assert gap.failure_code == OBJECT_SCENE_ANCHOR_SUPPORT_PIXEL_CAPACITY_CODE
+    assert gap.safe_message == OBJECT_SCENE_ANCHOR_SUPPORT_PIXEL_CAPACITY_MESSAGE
+    assert str(caught.value) == OBJECT_SCENE_ANCHOR_SUPPORT_PIXEL_CAPACITY_MESSAGE
+    assert gap.support_sheet_plan.within_sheet_pixel_guard is False
+    assert gap.support_sheet_plan.maximum_sheet_pixel_count == 1
+    assert (
+        verify_object_scene_anchor_support_capacity_gap(gap, panel_input)
+        == gap
+    )
+
+
+def test_public_capacity_preflight_rejects_unverified_inventory() -> None:
+    panel_input = _input(0)
+    inventory = extract_object_scene_proposal_inventory(
+        panel_input.exact_original_png_bytes
+    )
+    forged = deepcopy(inventory.to_data())
+    # Retain the exact panel digest while forging a layout large enough that
+    # the old public boundary would have emitted a sealed pixel-capacity gap.
+    forged["width_pixels"] = 100_000
+    _reseal(forged, "inventory_digest")
+    unrelated = ObjectSceneProposalInventory.from_data(forged)
+
+    with pytest.raises(
+        ObjectSceneAnchorSupportPreparationError,
+        match="differs from exact panel pixels",
+    ) as caught:
+        preflight_object_scene_anchor_support_capacity(panel_input, unrelated)
+
+    assert type(caught.value) is ObjectSceneAnchorSupportPreparationError
 
 
 def test_panel_runtime_cold_replays_every_artifact_from_source_pixels(

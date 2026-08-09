@@ -1808,13 +1808,15 @@ def _validate_task_result_record(value: object) -> dict[str, Any]:
     )
     allowed_statuses = {
         "success", "query_error", "proposer_gap", "language_gap",
-        "witness_gap", "capacity_gap", "pipeline_error",
+        "witness_gap", "support_capacity_gap", "capacity_gap", "pipeline_error",
         "infrastructure_error",
     }
     fixed_terminal = {
         "success": "score", "query_error": "score",
         "proposer_gap": "proposer", "language_gap": "version_space",
-        "witness_gap": "version_space", "capacity_gap": "rank_input",
+        "witness_gap": "version_space",
+        "support_capacity_gap": "support_capacity_preflight",
+        "capacity_gap": "rank_input",
     }
     if (
         set(raw) != required
@@ -1849,6 +1851,7 @@ def _validate_task_result_record(value: object) -> dict[str, Any]:
     exact_kinds = {
         "task_support_adapter": "anchor-task-support-adapter",
         "support_corpus": "anchor-support-corpus",
+        "support_capacity_gap": "anchor-support-capacity-gap",
         "proposer_input": "anchor-proposer-input",
         "proposer_artifact": "anchor-proposer-artifact",
         "predicate_language": "anchor-predicate-language",
@@ -2071,6 +2074,8 @@ def _run_object_scene_anchor_task_core(
         finalize_object_scene_anchor_support_observations,
     )
     from bongard.object_scene_anchor_support_preparation import (
+        ObjectSceneAnchorSupportCapacityExceeded,
+        ObjectSceneAnchorSupportCapacityGap,
         ObjectSceneAnchorSupportCorpusFreeze,
     )
     from bongard.object_scene_anchor_task_decision_custody import (
@@ -2102,9 +2107,34 @@ def _run_object_scene_anchor_task_core(
         released.append(panel)
         state.remember(f"support_release_{index:03d}", receipt)
     state.support_release_count = len(released)
-    support_runtime = build_object_scene_anchor_task_support_corpus(
-        task=task, prepared=prepared.release, released_panels=tuple(released)
-    )
+    try:
+        support_runtime = build_object_scene_anchor_task_support_corpus(
+            task=task, prepared=prepared.release, released_panels=tuple(released)
+        )
+    except ObjectSceneAnchorSupportCapacityExceeded as exc:
+        gap, _ = _persist_lower(
+            prepared,
+            state,
+            name="support_capacity_gap",
+            kind="anchor-support-capacity-gap",
+            value=exc.gap,
+            digest=exc.gap.gap_digest,
+            decoder=ObjectSceneAnchorSupportCapacityGap.from_data,
+        )
+        assert isinstance(gap, ObjectSceneAnchorSupportCapacityGap)
+        return _finish_task(
+            prepared,
+            state,
+            status="support_capacity_gap",
+            terminal_stage="support_capacity_preflight",
+            abstain_count=2,
+            diagnostic={
+                "failure_type": _failure_type(exc),
+                "failure_code": gap.failure_code,
+                "safe_message": gap.safe_message,
+                "capacity_gap_digest": gap.gap_digest,
+            },
+        )
     verify_object_scene_anchor_task_support_corpus(
         support_runtime,
         task=task,
@@ -3242,7 +3272,11 @@ def _cold_verify_task_result(
         cold_verify_object_scene_anchor_support_observation_result,
     )
     from bongard.object_scene_anchor_support_preparation import (
+        ObjectSceneAnchorSupportCapacityExceeded,
+        ObjectSceneAnchorSupportCapacityGap,
+        ObjectSceneAnchorSupportPanelInput,
         ObjectSceneAnchorSupportCorpusFreeze,
+        verify_object_scene_anchor_support_capacity_gap,
     )
     from bongard.object_scene_anchor_task_decision_custody import (
         ObjectSceneAnchorTaskDecisionCommit,
@@ -3337,11 +3371,78 @@ def _cold_verify_task_result(
         )
         for index in range(12)
     )
-    support_runtime = build_object_scene_anchor_task_support_corpus(
-        task=task,
-        prepared=prepared.release,
-        released_panels=released_support,
-    )
+    try:
+        support_runtime = build_object_scene_anchor_task_support_corpus(
+            task=task,
+            prepared=prepared.release,
+            released_panels=released_support,
+        )
+    except ObjectSceneAnchorSupportCapacityExceeded as exc:
+        if raw["status"] != "support_capacity_gap":
+            raise ObjectSceneAnchorBenchmarkError(
+                "unexpected support capacity gap on cold replay"
+            ) from exc
+        stored_gap = typed(
+            "support_capacity_gap",
+            "anchor-support-capacity-gap",
+            ObjectSceneAnchorSupportCapacityGap.from_data,
+            "gap_digest",
+        )
+        assert isinstance(stored_gap, ObjectSceneAnchorSupportCapacityGap)
+        matching_panels = tuple(
+            panel for panel in released_support
+            if panel.panel_id == stored_gap.panel_id
+        )
+        if len(matching_panels) != 1:
+            raise ObjectSceneAnchorBenchmarkError(
+                "support capacity gap panel custody differs"
+            )
+        verify_object_scene_anchor_support_capacity_gap(
+            stored_gap,
+            ObjectSceneAnchorSupportPanelInput(
+                panel_alias=stored_gap.panel_alias,
+                support_bucket_index=stored_gap.support_bucket_index,
+                source_digest=stored_gap.source_digest,
+                source_panel_binding_digest=(
+                    stored_gap.source_panel_binding_digest
+                ),
+                source_ordinal=stored_gap.source_ordinal,
+                task_id=stored_gap.task_id,
+                panel_id=stored_gap.panel_id,
+                original_panel_png_digest=stored_gap.original_panel_png_digest,
+                exact_original_png_bytes=matching_panels[0].exact_png_bytes,
+            ),
+            expected_gap_digest=stored_gap.gap_digest,
+        )
+        expected_diagnostic = {
+            "failure_type": _failure_type(exc),
+            "failure_code": stored_gap.failure_code,
+            "safe_message": stored_gap.safe_message,
+            "capacity_gap_digest": stored_gap.gap_digest,
+        }
+        if (
+            stored_gap != exc.gap
+            or raw["diagnostic"] != expected_diagnostic
+            or raw["terminal_stage"] != "support_capacity_preflight"
+            or raw["support_release_count"] != 12
+            or raw["query_release_count"] != 0
+            or (
+                raw["correct_count"],
+                raw["determinate_count"],
+                raw["abstain_count"],
+                raw["error_count"],
+            )
+            != (0, 0, 2, 0)
+            or raw["formula_frozen_and_committed_before_query_release"] is not True
+        ):
+            raise ObjectSceneAnchorBenchmarkError(
+                "support capacity gap replay differs"
+            )
+        return raw
+    if raw["status"] == "support_capacity_gap":
+        raise ObjectSceneAnchorBenchmarkError(
+            "stored support capacity gap no longer reproduces"
+        )
     adapter = typed(
         "task_support_adapter", "anchor-task-support-adapter",
         ObjectSceneAnchorTaskSupportAdapter.from_data, "adapter_digest",

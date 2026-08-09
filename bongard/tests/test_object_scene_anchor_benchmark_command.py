@@ -226,6 +226,36 @@ def test_campaign_keeps_clean_success_and_typed_gap_in_denominator(
     assert campaign["all_terminal_outcomes_remain_in_denominator"] is True
 
 
+def test_support_capacity_gap_is_an_abstention_not_a_pipeline_error(
+    tmp_path: Path,
+) -> None:
+    prepared, tasks = _prepared(tmp_path, ("synthetic-support-capacity-gap",))
+    state = benchmark._TaskState(tasks[0])
+    state.support_release_count = 12
+    row = benchmark._finish_task(
+        prepared,
+        state,
+        status="support_capacity_gap",
+        terminal_stage="support_capacity_preflight",
+        abstain_count=2,
+        diagnostic={
+            "failure_type": "ObjectSceneAnchorSupportCapacityExceeded",
+            "failure_code": "support_sheet_transport_capacity_exceeded",
+            "safe_message": "support sheet exceeds the fixed transport limit",
+            "capacity_gap_digest": canonical_digest({"synthetic": "capacity-gap"}),
+        },
+    )
+
+    campaign = benchmark._campaign_from_tasks(prepared, (row,))
+
+    assert campaign["status"] == "completed_with_gaps"
+    assert campaign["task_statuses"] == ["support_capacity_gap"]
+    assert campaign["query_denominator"] == 2
+    assert campaign["abstain_count"] == 2
+    assert campaign["error_count"] == 0
+    assert campaign["physical_call_slots_at_risk"] == 0
+
+
 def test_error_prediction_counter_prevents_campaign_success(tmp_path: Path) -> None:
     prepared, tasks = _prepared(tmp_path, ("synthetic-query-error",))
     rows = (
