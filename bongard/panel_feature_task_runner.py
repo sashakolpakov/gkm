@@ -6,11 +6,14 @@ byte strings in semantic side-0-then-side-1 order, a receipted canonical
 per support panel.  It builds the two native positive-only engineering version
 spaces without compiling prose or accepting arbitrary predicate code.
 
-If both orientations have a survivor, the selected pair is serialized to the
-canonical JSON bytes and passed to one persistence-and-reload callback.  Query
-pixels cannot be requested until that callback returns the exact same bytes
-and those bytes have been canonically decoded into the exact frozen pair.  A
-content-addressed archive then supports model-free replay with no callbacks.
+Exactly one survivor per orientation is required.  Multiple survivors are a
+typed selection gap; this runner never chooses one by digest order.  The sole
+pair is sealed in a content-addressed task-freeze object implementing the
+repository's official release-gate protocol.  Query pixels remain sealed until
+that exact freeze and its decision commit have both been durably persisted and
+reloaded.  Pixel release and candidate-neutral observation are separate calls:
+neither callback receives the frozen predicate.  A content-addressed archive
+then supports model-free replay with no callbacks.
 
 This module is deliberately engineering-only and uncalibrated.  Python is the
 executable predicate authority.  Lean is neither imported nor required and
@@ -23,12 +26,31 @@ import base64
 from dataclasses import dataclass
 from enum import Enum
 import hashlib
-import json
 import re
 from typing import Any, Callable, Mapping, Sequence
 
 from bongard.canonical import canonical_digest, canonical_json
 from bongard.object_bongard_batch import ObjectBongardTaskPlan
+from bongard.object_bongard_release_gate import (
+    ObjectBongardTaskCommitProtocol,
+    ObjectBongardTaskFreezeProtocol,
+    ObjectBongardWriteOnceReceipt,
+    PreparedObjectBongardRelease,
+    persist_object_bongard_task_commit,
+    persist_object_bongard_task_freeze,
+    release_object_bongard_query_panel,
+    release_object_bongard_support_panel,
+    verify_prepared_object_bongard_release,
+)
+from bongard.official_panel_archive import (
+    RELEASED_PANEL_SCHEMA,
+    OfficialPanelArchive,
+    ReleasedOfficialPanel,
+)
+from bongard.official_extracted_panel_archive import (
+    RELEASED_EXTRACTED_PANEL_SCHEMA,
+    ReleasedOfficialExtractedPanel,
+)
 from bongard.panel_feature_observation import (
     EngineeringFeatureDisposition,
     FeatureAxis,
@@ -58,6 +80,7 @@ from bongard.panel_feature_proposer import (
     panel_feature_proposer_contract_digest,
 )
 from bongard.panel_soft_ontology import (
+    FAMILY_CONTRACTS,
     LanguageGapArtifact,
     NativeFeatureProposal,
     NativeOrientation,
@@ -68,11 +91,18 @@ from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 
 PANEL_FEATURE_TASK_RUNNER_ID = (
-    "bongard.panel-feature-task/support-freeze-query-python-v1"
+    "bongard.panel-feature-task/unlabelled-observe-durable-freeze-python-v2"
 )
-PANEL_FEATURE_TASK_ARCHIVE_SCHEMA = "gkm.bongard-panel-feature-task-archive.v1"
+PANEL_FEATURE_TASK_ARCHIVE_SCHEMA = "gkm.bongard-panel-feature-task-archive.v2"
 PANEL_FEATURE_TASK_SUPPORT_GAP_SCHEMA = (
-    "gkm.bongard-panel-feature-task-support-gap.v1"
+    "gkm.bongard-panel-feature-task-support-gap.v2"
+)
+PANEL_FEATURE_TASK_SELECTION_GAP_SCHEMA = (
+    "gkm.bongard-panel-feature-task-selection-gap.v1"
+)
+PANEL_FEATURE_TASK_FREEZE_SCHEMA = "gkm.bongard-panel-feature-task-freeze.v1"
+PANEL_FEATURE_TASK_FREEZE_COMMIT_SCHEMA = (
+    "gkm.bongard-panel-feature-task-freeze-commit.v1"
 )
 PANEL_FEATURE_SUPPORT_PANEL_COUNT = 12
 PANEL_FEATURE_QUERY_PANEL_COUNT = 2
@@ -93,6 +123,7 @@ class PanelFeatureTaskRunnerError(RuntimeError):
 class PanelFeatureTaskRunStatus(str, Enum):
     COMPLETE = "complete"
     SUPPORT_GAP = "support_gap"
+    SELECTION_GAP = "selection_gap"
 
 
 def _authority_data() -> dict[str, object]:
@@ -160,9 +191,24 @@ def _support_ids(task: ObjectBongardTaskPlan) -> tuple[str, ...]:
     return (*task.side_0_support_panel_ids, *task.side_1_support_panel_ids)
 
 
+def panel_feature_axis_catalog() -> tuple[FeatureAxis, ...]:
+    """Return every registered neutral axis, independent of any proposal."""
+
+    return tuple(
+        sorted(
+            (
+                FeatureAxis(family, scope, frame)
+                for family, contract in FAMILY_CONTRACTS.items()
+                for scope, frame in contract.allowed_scope_frames
+            ),
+            key=lambda item: item.axis_digest,
+        )
+    )
+
+
 def _support_pngs(value: Sequence[bytes]) -> tuple[bytes, ...]:
     if isinstance(value, (bytes, bytearray, str, Mapping)):
-        raise TypeError("support_pngs must be an ordered sequence of PNG bytes")
+        raise TypeError("support PNGs must be an ordered sequence of PNG bytes")
     try:
         result = tuple(value)
     except TypeError as exc:
@@ -172,6 +218,129 @@ def _support_pngs(value: Sequence[bytes]) -> tuple[bytes, ...]:
             "support PNG sequence must contain exact side0-six then side1-six"
         )
     return tuple(_png(item, f"support panel {index}") for index, item in enumerate(result))
+
+
+AuthenticatedReleasedPanel = ReleasedOfficialPanel | ReleasedOfficialExtractedPanel
+
+
+def _canonical_released_panel(value: object) -> AuthenticatedReleasedPanel:
+    if type(value) is ReleasedOfficialPanel:
+        restored: AuthenticatedReleasedPanel = ReleasedOfficialPanel.from_data(
+            value.to_data()
+        )
+    elif type(value) is ReleasedOfficialExtractedPanel:
+        restored = ReleasedOfficialExtractedPanel.from_data(value.to_data())
+    else:
+        raise TypeError(
+            "released panel must be an exact ZIP-backed or manifest-backed official record"
+        )
+    if restored != value:
+        raise PanelFeatureTaskRunnerError("released panel canonical reload differs")
+    return restored
+
+
+def _released_panel_from_data(value: object) -> AuthenticatedReleasedPanel:
+    if not isinstance(value, Mapping):
+        raise PanelFeatureTaskRunnerError("released panel record differs")
+    schema = value.get("schema")
+    if schema == RELEASED_PANEL_SCHEMA:
+        return ReleasedOfficialPanel.from_data(value)
+    if schema == RELEASED_EXTRACTED_PANEL_SCHEMA:
+        return ReleasedOfficialExtractedPanel.from_data(value)
+    raise PanelFeatureTaskRunnerError("released panel authority schema differs")
+
+
+def _released_panel_authority_identity(
+    value: AuthenticatedReleasedPanel,
+) -> tuple[str, ...]:
+    receipt = value.release_receipt
+    if type(value) is ReleasedOfficialPanel:
+        return (
+            "official-zip",
+            receipt.release_descriptor_digest,
+            receipt.archive_digest,
+            receipt.central_directory_digest,
+        )
+    return (
+        "official-extracted-manifest",
+        receipt.release_descriptor_digest,
+        receipt.corpus_manifest_digest,
+        receipt.extracted_archive_digest,
+    )
+
+
+def _canonical_store_receipt(value: object) -> ObjectBongardWriteOnceReceipt:
+    if type(value) is not ObjectBongardWriteOnceReceipt:
+        raise TypeError("release-store receipt must be exact ObjectBongardWriteOnceReceipt")
+    restored = ObjectBongardWriteOnceReceipt.from_data(value.to_data())
+    if restored != value:
+        raise PanelFeatureTaskRunnerError("release-store receipt canonical reload differs")
+    return restored
+
+
+def _released_rows(
+    rows: Sequence[tuple[AuthenticatedReleasedPanel, ObjectBongardWriteOnceReceipt]],
+    identifiers: Sequence[str],
+    *,
+    expected_execution_precommit_digest: str,
+    expected_exposure_successor_digest: str,
+    object_kind: str,
+    label: str,
+) -> tuple[
+    tuple[AuthenticatedReleasedPanel, ...],
+    tuple[ObjectBongardWriteOnceReceipt, ...],
+    tuple[bytes, ...],
+]:
+    if isinstance(rows, (bytes, bytearray, str, Mapping)):
+        raise TypeError(f"{label} release rows must be an ordered sequence")
+    try:
+        values = tuple(rows)
+    except TypeError as exc:
+        raise TypeError(f"{label} release rows must be an ordered sequence") from exc
+    if len(values) != len(identifiers):
+        raise PanelFeatureTaskRunnerError(f"{label} release count differs")
+    panels: list[AuthenticatedReleasedPanel] = []
+    receipts: list[ObjectBongardWriteOnceReceipt] = []
+    for index, (row, expected_id) in enumerate(zip(values, identifiers, strict=True)):
+        if type(row) is not tuple or len(row) != 2:
+            raise PanelFeatureTaskRunnerError(f"{label} release row {index} differs")
+        panel = _canonical_released_panel(row[0])
+        receipt = _canonical_store_receipt(row[1])
+        expected_payload = canonical_json(panel.to_data()) + b"\n"
+        if (
+            panel.panel_id != expected_id
+            or panel.execution_precommit_digest
+            != _address(
+                expected_execution_precommit_digest,
+                "expected execution precommit digest",
+            )
+            or panel.exposure_successor_digest
+            != _address(
+                expected_exposure_successor_digest,
+                "expected exposure successor digest",
+            )
+            or panel.exact_png_digest
+            != "sha256:" + hashlib.sha256(panel.exact_png_bytes).hexdigest()
+            or panel.release_receipt.sha256 != panel.exact_png_digest
+            or receipt.object_kind != object_kind
+            or receipt.object_digest != panel.record_digest
+            or receipt.payload_digest
+            != "sha256:" + hashlib.sha256(expected_payload).hexdigest()
+            or receipt.size_bytes != len(expected_payload)
+        ):
+            raise PanelFeatureTaskRunnerError(
+                f"{label} release identity, pixels, authority, or durable receipt differs"
+            )
+        panels.append(panel)
+        receipts.append(receipt)
+    archive_identities = {_released_panel_authority_identity(item) for item in panels}
+    if len(archive_identities) != 1:
+        raise PanelFeatureTaskRunnerError(
+            f"{label} releases do not share one authenticated official archive"
+        )
+    return tuple(panels), tuple(receipts), tuple(
+        item.exact_png_bytes for item in panels
+    )
 
 
 def _presentation_digest(pngs: Sequence[bytes]) -> str:
@@ -459,16 +628,13 @@ def _canonical_observation(value: object) -> PanelFeatureObservationSet:
     return restored
 
 
-def _required_axis_digests(vocabulary: FeatureVocabulary) -> tuple[str, ...]:
-    return tuple(
-        sorted({FeatureAxis.for_spec(spec).axis_digest for spec in vocabulary.specs})
-    )
+def _all_axis_digests() -> tuple[str, ...]:
+    return tuple(item.axis_digest for item in panel_feature_axis_catalog())
 
 
 def _verify_observation_batch(
     observations: Sequence[PanelFeatureObservationSet],
     pngs: Sequence[bytes],
-    vocabulary: FeatureVocabulary,
     *,
     expected_contract_digest: str | None = None,
     expected_protocol_digest: str | None = None,
@@ -479,7 +645,7 @@ def _verify_observation_batch(
     values = tuple(_canonical_observation(item) for item in observations)
     if len(values) != len(pngs):
         raise PanelFeatureTaskRunnerError(f"{label} observation count differs")
-    required_axes = _required_axis_digests(vocabulary)
+    required_axes = _all_axis_digests()
     for index, (observation, panel) in enumerate(zip(values, pngs, strict=True)):
         if observation.panel_digest != hashlib.sha256(panel).hexdigest():
             raise PanelFeatureTaskRunnerError(
@@ -490,7 +656,7 @@ def _verify_observation_batch(
         )
         if actual_axes != required_axes:
             raise PanelFeatureTaskRunnerError(
-                f"{label} observation {index} is not the exact complete vocabulary-axis table"
+                f"{label} observation {index} is not the exact fixed full-axis table"
             )
     contract = values[0].observer_contract_digest
     protocol = values[0].measurement_protocol_digest
@@ -553,7 +719,6 @@ def _derive_support(
     observations, contract, protocol = _verify_observation_batch(
         support_observations,
         pngs,
-        vocabulary,
         label="support",
     )
     table = _table_for_observations(vocabulary, observations)
@@ -603,7 +768,8 @@ def _support_gap_content(value: "PanelFeatureTaskSupportGap") -> dict[str, objec
         "gap_kind": "required-native-positive-version-space-is-empty",
         "failed_or_uncertain_observation_counts_as_nonmatch": False,
         "freeze_callback_permitted": False,
-        "query_callback_permitted": False,
+        "query_release_permitted": False,
+        "query_observation_permitted": False,
         **_authority_data(),
     }
 
@@ -712,7 +878,8 @@ class PanelFeatureTaskSupportGap:
                 "gap_kind",
                 "failed_or_uncertain_observation_counts_as_nonmatch",
                 "freeze_callback_permitted",
-                "query_callback_permitted",
+                "query_release_permitted",
+                "query_observation_permitted",
                 *_authority_data(),
                 "gap_digest",
             },
@@ -725,7 +892,8 @@ class PanelFeatureTaskSupportGap:
             != "required-native-positive-version-space-is-empty"
             or raw["failed_or_uncertain_observation_counts_as_nonmatch"] is not False
             or raw["freeze_callback_permitted"] is not False
-            or raw["query_callback_permitted"] is not False
+            or raw["query_release_permitted"] is not False
+            or raw["query_observation_permitted"] is not False
             or any(raw[key] != item for key, item in _authority_data().items())
             or type(raw["missing_orientations"]) is not list
             or not isinstance(counts, Mapping)
@@ -747,6 +915,139 @@ class PanelFeatureTaskSupportGap:
             raise PanelFeatureTaskRunnerError("support gap value differs") from exc
         if result.to_data() != dict(raw):
             raise PanelFeatureTaskRunnerError("support gap is not canonical")
+        return result
+
+
+def _selection_gap_content(
+    value: "PanelFeatureTaskSelectionGap",
+) -> dict[str, object]:
+    return {
+        "schema": PANEL_FEATURE_TASK_SELECTION_GAP_SCHEMA,
+        "support_table_digest": value.support_table_digest,
+        "side0_version_space_digest": value.side0_version_space_digest,
+        "side1_version_space_digest": value.side1_version_space_digest,
+        "survivor_counts_by_orientation": {
+            orientation.value: count
+            for orientation, count in zip(
+                _ORIENTATIONS, value.survivor_counts_by_orientation, strict=True
+            )
+        },
+        "gap_kind": "multiple-support-consistent-formulas-require-external-selection",
+        "implicit_digest_order_selection_allowed": False,
+        "freeze_callback_permitted": False,
+        "query_release_permitted": False,
+        "query_observation_permitted": False,
+        **_authority_data(),
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class PanelFeatureTaskSelectionGap:
+    """A nonempty version space that no authenticated selector has resolved."""
+
+    support_table_digest: str
+    side0_version_space_digest: str
+    side1_version_space_digest: str
+    survivor_counts_by_orientation: tuple[int, int]
+    gap_digest: str
+
+    def __post_init__(self) -> None:
+        for label, value in (
+            ("support table", self.support_table_digest),
+            ("side0 version space", self.side0_version_space_digest),
+            ("side1 version space", self.side1_version_space_digest),
+            ("selection gap", self.gap_digest),
+        ):
+            _raw_digest(value, f"{label} digest")
+        if (
+            type(self.survivor_counts_by_orientation) is not tuple
+            or len(self.survivor_counts_by_orientation) != 2
+            or any(type(item) is not int or item < 1 for item in self.survivor_counts_by_orientation)
+            or self.survivor_counts_by_orientation == (1, 1)
+            or self.gap_digest != canonical_digest(_selection_gap_content(self))
+        ):
+            raise PanelFeatureTaskRunnerError("selection gap identity differs")
+
+    @classmethod
+    def create(
+        cls,
+        side0_space: EngineeringFeatureVersionSpace,
+        side1_space: EngineeringFeatureVersionSpace,
+    ) -> "PanelFeatureTaskSelectionGap":
+        if (
+            type(side0_space) is not EngineeringFeatureVersionSpace
+            or type(side1_space) is not EngineeringFeatureVersionSpace
+            or side0_space.support_table != side1_space.support_table
+        ):
+            raise TypeError("selection gap requires two version spaces over one table")
+        counts = (
+            len(side0_space.survivor_formula_digests),
+            len(side1_space.survivor_formula_digests),
+        )
+        if 0 in counts or counts == (1, 1):
+            raise PanelFeatureTaskRunnerError(
+                "selection gap requires nonempty unresolved version spaces"
+            )
+        values = {
+            "support_table_digest": side0_space.support_table.table_digest,
+            "side0_version_space_digest": side0_space.version_space_digest,
+            "side1_version_space_digest": side1_space.version_space_digest,
+            "survivor_counts_by_orientation": counts,
+        }
+        provisional = object.__new__(cls)
+        for name, item in values.items():
+            object.__setattr__(provisional, name, item)
+        return cls(
+            **values,
+            gap_digest=canonical_digest(_selection_gap_content(provisional)),
+        )
+
+    def to_data(self) -> dict[str, object]:
+        return {**_selection_gap_content(self), "gap_digest": self.gap_digest}
+
+    @classmethod
+    def from_data(cls, value: object) -> "PanelFeatureTaskSelectionGap":
+        raw = _fields(
+            value,
+            {
+                "schema",
+                "support_table_digest",
+                "side0_version_space_digest",
+                "side1_version_space_digest",
+                "survivor_counts_by_orientation",
+                "gap_kind",
+                "implicit_digest_order_selection_allowed",
+                "freeze_callback_permitted",
+                "query_release_permitted",
+                "query_observation_permitted",
+                *_authority_data(),
+                "gap_digest",
+            },
+            "panel-feature selection gap",
+        )
+        counts = raw["survivor_counts_by_orientation"]
+        if (
+            raw["schema"] != PANEL_FEATURE_TASK_SELECTION_GAP_SCHEMA
+            or raw["gap_kind"]
+            != "multiple-support-consistent-formulas-require-external-selection"
+            or raw["implicit_digest_order_selection_allowed"] is not False
+            or raw["freeze_callback_permitted"] is not False
+            or raw["query_release_permitted"] is not False
+            or raw["query_observation_permitted"] is not False
+            or any(raw[key] != item for key, item in _authority_data().items())
+            or not isinstance(counts, Mapping)
+            or list(counts) != [item.value for item in _ORIENTATIONS]
+        ):
+            raise PanelFeatureTaskRunnerError("selection gap policy differs")
+        result = cls(
+            raw["support_table_digest"],
+            raw["side0_version_space_digest"],
+            raw["side1_version_space_digest"],
+            tuple(counts[item.value] for item in _ORIENTATIONS),
+            raw["gap_digest"],
+        )
+        if result.to_data() != dict(raw):
+            raise PanelFeatureTaskRunnerError("selection gap is not canonical")
         return result
 
 
@@ -781,11 +1082,417 @@ def _decode_png_rows(
     return tuple(result)
 
 
+def _combined_version_space_digest(
+    side0_space: EngineeringFeatureVersionSpace,
+    side1_space: EngineeringFeatureVersionSpace,
+) -> str:
+    return canonical_digest(
+        {
+            "schema": "gkm.bongard-panel-feature-combined-version-space.v1",
+            "side0_version_space_digest": side0_space.version_space_digest,
+            "side1_version_space_digest": side1_space.version_space_digest,
+            "selection_policy": "external-only-no-implicit-digest-order",
+        }
+    )
+
+
+def _freeze_content(value: "PanelFeatureTaskFreeze") -> dict[str, object]:
+    return {
+        "schema": PANEL_FEATURE_TASK_FREEZE_SCHEMA,
+        "runner_id": PANEL_FEATURE_TASK_RUNNER_ID,
+        "task_id": value.task_id,
+        "task_plan_digest": value.task_plan_digest,
+        "execution_precommit_digest": value.execution_precommit_digest,
+        "proposer_result_digest": value.proposer_result_digest,
+        "support_table_digest": value.support_table_digest,
+        "side0_version_space": value.side0_version_space.to_data(),
+        "side1_version_space": value.side1_version_space.to_data(),
+        "version_space_digest": value.version_space_digest,
+        "support_version_space_digest": value.support_version_space_digest,
+        "rank_response_digest": value.rank_response_digest,
+        "predicate_pair": value.predicate_pair.to_data(),
+        "selected_predicate_digest": value.selected_predicate_digest,
+        "sealed_query_panel_ids": list(value.sealed_query_panel_ids),
+        "query_bytes_included": False,
+        "query_observations_included": False,
+        "implicit_survivor_selection_used": False,
+        "exactly_one_survivor_per_orientation": True,
+        **_authority_data(),
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class PanelFeatureTaskFreeze:
+    """Full Python predicate IR implementing the official task-freeze protocol."""
+
+    task_id: str
+    task_plan_digest: str
+    execution_precommit_digest: str
+    proposer_result_digest: str
+    support_table_digest: str
+    side0_version_space: EngineeringFeatureVersionSpace
+    side1_version_space: EngineeringFeatureVersionSpace
+    version_space_digest: str
+    support_version_space_digest: str
+    rank_response_digest: str
+    predicate_pair: FrozenEngineeringFeaturePredicatePair
+    selected_predicate_digest: str
+    sealed_query_panel_ids: tuple[str, str]
+    record_digest: str
+
+    def __post_init__(self) -> None:
+        if type(self.task_id) is not str or not self.task_id:
+            raise PanelFeatureTaskRunnerError("freeze task ID differs")
+        for label, value in (
+            ("task plan", self.task_plan_digest),
+            ("execution precommit", self.execution_precommit_digest),
+            ("task freeze", self.record_digest),
+        ):
+            _address(value, f"{label} digest")
+        for label, value in (
+            ("proposer result", self.proposer_result_digest),
+            ("support table", self.support_table_digest),
+            ("version space", self.version_space_digest),
+            ("support version space", self.support_version_space_digest),
+            ("rank response", self.rank_response_digest),
+            ("selected predicate", self.selected_predicate_digest),
+        ):
+            _raw_digest(value, f"{label} digest")
+        if (
+            type(self.side0_version_space) is not EngineeringFeatureVersionSpace
+            or type(self.side1_version_space) is not EngineeringFeatureVersionSpace
+            or type(self.predicate_pair) is not FrozenEngineeringFeaturePredicatePair
+            or self.side0_version_space.support_table
+            != self.side1_version_space.support_table
+            or self.support_table_digest
+            != self.side0_version_space.support_table.table_digest
+            or tuple(
+                len(item.survivor_formula_digests)
+                for item in (self.side0_version_space, self.side1_version_space)
+            )
+            != (1, 1)
+            or self.predicate_pair
+            != FrozenEngineeringFeaturePredicatePair.create(
+                self.side0_version_space, self.side1_version_space
+            )
+            or self.selected_predicate_digest != self.predicate_pair.pair_digest
+            or self.version_space_digest
+            != _combined_version_space_digest(
+                self.side0_version_space, self.side1_version_space
+            )
+            or self.support_version_space_digest != self.version_space_digest
+            or type(self.sealed_query_panel_ids) is not tuple
+            or len(self.sealed_query_panel_ids) != 2
+            or len(set(self.sealed_query_panel_ids)) != 2
+            or self.record_digest != "sha256:" + canonical_digest(_freeze_content(self))
+        ):
+            raise PanelFeatureTaskRunnerError("task freeze content differs")
+
+    @classmethod
+    def seal(
+        cls,
+        *,
+        task: ObjectBongardTaskPlan,
+        execution_precommit_digest: str,
+        proposer: PanelFeatureProposerResult,
+        side0_space: EngineeringFeatureVersionSpace,
+        side1_space: EngineeringFeatureVersionSpace,
+        rank_response_digest: str,
+    ) -> "PanelFeatureTaskFreeze":
+        if type(task) is not ObjectBongardTaskPlan:
+            raise TypeError("freeze task must be exact ObjectBongardTaskPlan")
+        pair = FrozenEngineeringFeaturePredicatePair.create(side0_space, side1_space)
+        combined = _combined_version_space_digest(side0_space, side1_space)
+        values = {
+            "task_id": task.task_id,
+            "task_plan_digest": task.record_digest,
+            "execution_precommit_digest": _address(
+                execution_precommit_digest, "execution precommit digest"
+            ),
+            "proposer_result_digest": proposer.result_digest,
+            "support_table_digest": side0_space.support_table.table_digest,
+            "side0_version_space": side0_space,
+            "side1_version_space": side1_space,
+            "version_space_digest": combined,
+            "support_version_space_digest": combined,
+            "rank_response_digest": _raw_digest(
+                rank_response_digest, "rank response digest"
+            ),
+            "predicate_pair": pair,
+            "selected_predicate_digest": pair.pair_digest,
+            "sealed_query_panel_ids": (
+                task.side_0_query_panel_id,
+                task.side_1_query_panel_id,
+            ),
+        }
+        provisional = object.__new__(cls)
+        for name, item in values.items():
+            object.__setattr__(provisional, name, item)
+        return cls(
+            **values,
+            record_digest="sha256:" + canonical_digest(_freeze_content(provisional)),
+        )
+
+    def to_data(self) -> dict[str, object]:
+        return {**_freeze_content(self), "record_digest": self.record_digest}
+
+    @classmethod
+    def from_data(cls, value: object) -> "PanelFeatureTaskFreeze":
+        raw = _fields(
+            value,
+            {
+                "schema",
+                "runner_id",
+                "task_id",
+                "task_plan_digest",
+                "execution_precommit_digest",
+                "proposer_result_digest",
+                "support_table_digest",
+                "side0_version_space",
+                "side1_version_space",
+                "version_space_digest",
+                "support_version_space_digest",
+                "rank_response_digest",
+                "predicate_pair",
+                "selected_predicate_digest",
+                "sealed_query_panel_ids",
+                "query_bytes_included",
+                "query_observations_included",
+                "implicit_survivor_selection_used",
+                "exactly_one_survivor_per_orientation",
+                *_authority_data(),
+                "record_digest",
+            },
+            "panel-feature task freeze",
+        )
+        if (
+            raw["schema"] != PANEL_FEATURE_TASK_FREEZE_SCHEMA
+            or raw["runner_id"] != PANEL_FEATURE_TASK_RUNNER_ID
+            or raw["query_bytes_included"] is not False
+            or raw["query_observations_included"] is not False
+            or raw["implicit_survivor_selection_used"] is not False
+            or raw["exactly_one_survivor_per_orientation"] is not True
+            or any(raw[key] != item for key, item in _authority_data().items())
+            or type(raw["sealed_query_panel_ids"]) is not list
+        ):
+            raise PanelFeatureTaskRunnerError("task freeze policy differs")
+        result = cls(
+            raw["task_id"],
+            raw["task_plan_digest"],
+            raw["execution_precommit_digest"],
+            raw["proposer_result_digest"],
+            raw["support_table_digest"],
+            EngineeringFeatureVersionSpace.from_data(raw["side0_version_space"]),
+            EngineeringFeatureVersionSpace.from_data(raw["side1_version_space"]),
+            raw["version_space_digest"],
+            raw["support_version_space_digest"],
+            raw["rank_response_digest"],
+            FrozenEngineeringFeaturePredicatePair.from_data(raw["predicate_pair"]),
+            raw["selected_predicate_digest"],
+            tuple(raw["sealed_query_panel_ids"]),
+            raw["record_digest"],
+        )
+        if result.to_data() != dict(raw):
+            raise PanelFeatureTaskRunnerError("task freeze is not canonical")
+        return result
+
+
+def _freeze_commit_content(
+    value: "PanelFeatureTaskFreezeCommit",
+) -> dict[str, object]:
+    return {
+        "schema": PANEL_FEATURE_TASK_FREEZE_COMMIT_SCHEMA,
+        "task_id": value.task_id,
+        "task_plan_digest": value.task_plan_digest,
+        "execution_precommit_digest": value.execution_precommit_digest,
+        "version_space_digest": value.version_space_digest,
+        "support_version_space_digest": value.support_version_space_digest,
+        "rank_response_digest": value.rank_response_digest,
+        "selected_predicate_digest": value.selected_predicate_digest,
+        "task_freeze_digest": value.task_freeze_digest,
+        "exact_freeze_payload_digest": value.exact_freeze_payload_digest,
+        "task_freeze_store_receipt_digest": value.task_freeze_store_receipt_digest,
+        "durably_persisted_and_reloaded_before_query_release": True,
+        **_authority_data(),
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class PanelFeatureTaskFreezeCommit:
+    """Durable decision commit implementing the official release protocol."""
+
+    task_id: str
+    task_plan_digest: str
+    execution_precommit_digest: str
+    version_space_digest: str
+    support_version_space_digest: str
+    rank_response_digest: str
+    selected_predicate_digest: str
+    task_freeze_digest: str
+    exact_freeze_payload_digest: str
+    task_freeze_store_receipt_digest: str
+    record_digest: str
+
+    def __post_init__(self) -> None:
+        if type(self.task_id) is not str or not self.task_id:
+            raise PanelFeatureTaskRunnerError("freeze-commit task ID differs")
+        for label, value in (
+            ("task plan", self.task_plan_digest),
+            ("execution precommit", self.execution_precommit_digest),
+            ("task freeze", self.task_freeze_digest),
+            ("exact freeze payload", self.exact_freeze_payload_digest),
+            ("task freeze store receipt", self.task_freeze_store_receipt_digest),
+            ("freeze commit", self.record_digest),
+        ):
+            _address(value, f"{label} digest")
+        for label, value in (
+            ("version space", self.version_space_digest),
+            ("support version space", self.support_version_space_digest),
+            ("rank response", self.rank_response_digest),
+            ("selected predicate", self.selected_predicate_digest),
+        ):
+            _raw_digest(value, f"{label} digest")
+        if (
+            self.version_space_digest != self.support_version_space_digest
+            or self.record_digest
+            != "sha256:" + canonical_digest(_freeze_commit_content(self))
+        ):
+            raise PanelFeatureTaskRunnerError("freeze commit content differs")
+
+    @classmethod
+    def seal(
+        cls,
+        freeze: PanelFeatureTaskFreeze,
+        freeze_receipt: ObjectBongardWriteOnceReceipt,
+    ) -> "PanelFeatureTaskFreezeCommit":
+        if type(freeze) is not PanelFeatureTaskFreeze:
+            raise TypeError("commit freeze must be exact PanelFeatureTaskFreeze")
+        receipt = _canonical_store_receipt(freeze_receipt)
+        payload = canonical_json(freeze.to_data()) + b"\n"
+        if (
+            receipt.object_kind != "task-freeze"
+            or receipt.object_digest != freeze.record_digest
+            or receipt.payload_digest
+            != "sha256:" + hashlib.sha256(payload).hexdigest()
+            or receipt.size_bytes != len(payload)
+        ):
+            raise PanelFeatureTaskRunnerError(
+                "freeze store receipt does not bind exact canonical freeze bytes"
+            )
+        values = {
+            "task_id": freeze.task_id,
+            "task_plan_digest": freeze.task_plan_digest,
+            "execution_precommit_digest": freeze.execution_precommit_digest,
+            "version_space_digest": freeze.version_space_digest,
+            "support_version_space_digest": freeze.support_version_space_digest,
+            "rank_response_digest": freeze.rank_response_digest,
+            "selected_predicate_digest": freeze.selected_predicate_digest,
+            "task_freeze_digest": freeze.record_digest,
+            "exact_freeze_payload_digest": receipt.payload_digest,
+            "task_freeze_store_receipt_digest": receipt.record_digest,
+        }
+        provisional = object.__new__(cls)
+        for name, item in values.items():
+            object.__setattr__(provisional, name, item)
+        return cls(
+            **values,
+            record_digest="sha256:"
+            + canonical_digest(_freeze_commit_content(provisional)),
+        )
+
+    def to_data(self) -> dict[str, object]:
+        return {**_freeze_commit_content(self), "record_digest": self.record_digest}
+
+    @classmethod
+    def from_data(cls, value: object) -> "PanelFeatureTaskFreezeCommit":
+        raw = _fields(
+            value,
+            {
+                "schema",
+                "task_id",
+                "task_plan_digest",
+                "execution_precommit_digest",
+                "version_space_digest",
+                "support_version_space_digest",
+                "rank_response_digest",
+                "selected_predicate_digest",
+                "task_freeze_digest",
+                "exact_freeze_payload_digest",
+                "task_freeze_store_receipt_digest",
+                "durably_persisted_and_reloaded_before_query_release",
+                *_authority_data(),
+                "record_digest",
+            },
+            "panel-feature task freeze commit",
+        )
+        if (
+            raw["schema"] != PANEL_FEATURE_TASK_FREEZE_COMMIT_SCHEMA
+            or raw["durably_persisted_and_reloaded_before_query_release"] is not True
+            or any(raw[key] != item for key, item in _authority_data().items())
+        ):
+            raise PanelFeatureTaskRunnerError("freeze commit policy differs")
+        result = cls(
+            raw["task_id"],
+            raw["task_plan_digest"],
+            raw["execution_precommit_digest"],
+            raw["version_space_digest"],
+            raw["support_version_space_digest"],
+            raw["rank_response_digest"],
+            raw["selected_predicate_digest"],
+            raw["task_freeze_digest"],
+            raw["exact_freeze_payload_digest"],
+            raw["task_freeze_store_receipt_digest"],
+            raw["record_digest"],
+        )
+        if result.to_data() != dict(raw):
+            raise PanelFeatureTaskRunnerError("freeze commit is not canonical")
+        return result
+
+
+def _verify_durable_freeze(
+    freeze: PanelFeatureTaskFreeze,
+    commit: PanelFeatureTaskFreezeCommit,
+    freeze_receipt: ObjectBongardWriteOnceReceipt,
+    commit_receipt: ObjectBongardWriteOnceReceipt,
+) -> tuple[
+    PanelFeatureTaskFreeze,
+    PanelFeatureTaskFreezeCommit,
+    ObjectBongardWriteOnceReceipt,
+    ObjectBongardWriteOnceReceipt,
+]:
+    frozen = PanelFeatureTaskFreeze.from_data(freeze.to_data())
+    committed = PanelFeatureTaskFreezeCommit.from_data(commit.to_data())
+    freeze_store = _canonical_store_receipt(freeze_receipt)
+    commit_store = _canonical_store_receipt(commit_receipt)
+    expected_commit = PanelFeatureTaskFreezeCommit.seal(frozen, freeze_store)
+    commit_payload = canonical_json(committed.to_data()) + b"\n"
+    if (
+        committed != expected_commit
+        or commit_store.object_kind != "task-decision-commit"
+        or commit_store.object_digest != committed.record_digest
+        or commit_store.payload_digest
+        != "sha256:" + hashlib.sha256(commit_payload).hexdigest()
+        or commit_store.size_bytes != len(commit_payload)
+    ):
+        raise PanelFeatureTaskRunnerError(
+            "durable freeze commit or exact persisted bytes differ"
+        )
+    return frozen, committed, freeze_store, commit_store
+
+
 def _archive_content(value: "PanelFeatureTaskArchive") -> dict[str, object]:
     return {
         "schema": PANEL_FEATURE_TASK_ARCHIVE_SCHEMA,
         "runner_id": PANEL_FEATURE_TASK_RUNNER_ID,
         "task_plan": value.task_plan.to_data(),
+        "execution_precommit_digest": value.execution_precommit_digest,
+        "exposure_successor_digest": value.exposure_successor_digest,
+        "support_released_panels": [
+            item.to_data() for item in value.support_released_panels
+        ],
+        "support_release_store_receipts": [
+            item.to_data() for item in value.support_release_store_receipts
+        ],
         "support_png_base64_by_panel_id": {
             panel_id: encoded
             for panel_id, encoded in value.support_png_base64_by_panel_id
@@ -799,10 +1506,30 @@ def _archive_content(value: "PanelFeatureTaskArchive") -> dict[str, object]:
         "side1_version_space": value.side1_version_space.to_data(),
         "status": value.status.value,
         "support_gap": None if value.support_gap is None else value.support_gap.to_data(),
+        "selection_gap": (
+            None if value.selection_gap is None else value.selection_gap.to_data()
+        ),
         "predicate_pair": (
             None if value.predicate_pair is None else value.predicate_pair.to_data()
         ),
-        "frozen_pair_canonical_base64": value.frozen_pair_canonical_base64,
+        "task_freeze": (
+            None if value.task_freeze is None else value.task_freeze.to_data()
+        ),
+        "task_freeze_store_receipt": (
+            None
+            if value.task_freeze_store_receipt is None
+            else value.task_freeze_store_receipt.to_data()
+        ),
+        "task_freeze_commit": (
+            None
+            if value.task_freeze_commit is None
+            else value.task_freeze_commit.to_data()
+        ),
+        "task_freeze_commit_store_receipt": (
+            None
+            if value.task_freeze_commit_store_receipt is None
+            else value.task_freeze_commit_store_receipt.to_data()
+        ),
         "sealed_query_panel_ids": {
             "side_0": value.task_plan.side_0_query_panel_id,
             "side_1": value.task_plan.side_1_query_panel_id,
@@ -810,13 +1537,20 @@ def _archive_content(value: "PanelFeatureTaskArchive") -> dict[str, object]:
         "query_png_base64_by_side": {
             side: encoded for side, encoded in value.query_png_base64_by_side
         },
+        "query_released_panels": [
+            item.to_data() for item in value.query_released_panels
+        ],
+        "query_release_store_receipts": [
+            item.to_data() for item in value.query_release_store_receipts
+        ],
         "query_observations": [item.to_data() for item in value.query_observations],
         "query_decisions": [item.to_data() for item in value.query_decisions],
-        "persist_reload_callback_invocations": (
-            value.persist_reload_callback_invocations
-        ),
-        "query_callback_invocations": value.query_callback_invocations,
-        "query_callback_called_only_after_exact_frozen_pair_reload": True,
+        "freeze_persist_reload_invocations": value.freeze_persist_reload_invocations,
+        "query_release_invocations": value.query_release_invocations,
+        "query_observer_invocations": value.query_observer_invocations,
+        "query_release_called_only_after_exact_task_freeze_commit_reload": True,
+        "query_release_and_observation_are_separate_calls": True,
+        "query_observer_receives_predicate_or_formula": False,
         "exact_png_bytes_archived_for_cold_replay": True,
         "cold_replay_callback_invocations": 0,
         "cold_replay_model_calls": 0,
@@ -827,6 +1561,10 @@ def _archive_content(value: "PanelFeatureTaskArchive") -> dict[str, object]:
 @dataclass(frozen=True, slots=True)
 class PanelFeatureTaskArchive:
     task_plan: ObjectBongardTaskPlan
+    execution_precommit_digest: str
+    exposure_successor_digest: str
+    support_released_panels: tuple[AuthenticatedReleasedPanel, ...]
+    support_release_store_receipts: tuple[ObjectBongardWriteOnceReceipt, ...]
     support_png_base64_by_panel_id: tuple[tuple[str, str], ...]
     proposer_result: PanelFeatureProposerResult
     support_observations: tuple[PanelFeatureObservationSet, ...]
@@ -836,13 +1574,20 @@ class PanelFeatureTaskArchive:
     side1_version_space: EngineeringFeatureVersionSpace
     status: PanelFeatureTaskRunStatus
     support_gap: PanelFeatureTaskSupportGap | None
+    selection_gap: PanelFeatureTaskSelectionGap | None
     predicate_pair: FrozenEngineeringFeaturePredicatePair | None
-    frozen_pair_canonical_base64: str | None
+    task_freeze: PanelFeatureTaskFreeze | None
+    task_freeze_store_receipt: ObjectBongardWriteOnceReceipt | None
+    task_freeze_commit: PanelFeatureTaskFreezeCommit | None
+    task_freeze_commit_store_receipt: ObjectBongardWriteOnceReceipt | None
     query_png_base64_by_side: tuple[tuple[str, str], ...]
+    query_released_panels: tuple[AuthenticatedReleasedPanel, ...]
+    query_release_store_receipts: tuple[ObjectBongardWriteOnceReceipt, ...]
     query_observations: tuple[PanelFeatureObservationSet, ...]
     query_decisions: tuple[EngineeringQueryDecision, ...]
-    persist_reload_callback_invocations: int
-    query_callback_invocations: int
+    freeze_persist_reload_invocations: int
+    query_release_invocations: int
+    query_observer_invocations: int
     record_digest: str
 
     def __post_init__(self) -> None:
@@ -850,8 +1595,22 @@ class PanelFeatureTaskArchive:
         _raw_digest(self.record_digest, "task archive digest")
         if task != self.task_plan:
             raise PanelFeatureTaskRunnerError("archive task differs")
+        _address(self.execution_precommit_digest, "archive execution precommit digest")
+        _address(self.exposure_successor_digest, "archive exposure successor digest")
         if (
-            type(self.support_png_base64_by_panel_id) is not tuple
+            type(self.support_released_panels) is not tuple
+            or len(self.support_released_panels) != PANEL_FEATURE_SUPPORT_PANEL_COUNT
+            or any(
+                type(item) not in {ReleasedOfficialPanel, ReleasedOfficialExtractedPanel}
+                for item in self.support_released_panels
+            )
+            or type(self.support_release_store_receipts) is not tuple
+            or len(self.support_release_store_receipts) != PANEL_FEATURE_SUPPORT_PANEL_COUNT
+            or any(
+                type(item) is not ObjectBongardWriteOnceReceipt
+                for item in self.support_release_store_receipts
+            )
+            or type(self.support_png_base64_by_panel_id) is not tuple
             or tuple(item[0] for item in self.support_png_base64_by_panel_id)
             != _support_ids(task)
             or type(self.support_observations) is not tuple
@@ -866,6 +1625,8 @@ class PanelFeatureTaskArchive:
             or type(self.side1_version_space) is not EngineeringFeatureVersionSpace
             or type(self.status) is not PanelFeatureTaskRunStatus
             or type(self.query_png_base64_by_side) is not tuple
+            or type(self.query_released_panels) is not tuple
+            or type(self.query_release_store_receipts) is not tuple
             or type(self.query_observations) is not tuple
             or type(self.query_decisions) is not tuple
             or any(
@@ -873,36 +1634,120 @@ class PanelFeatureTaskArchive:
                 for item in self.query_observations
             )
             or any(type(item) is not EngineeringQueryDecision for item in self.query_decisions)
-            or type(self.persist_reload_callback_invocations) is not int
-            or type(self.query_callback_invocations) is not int
+            or type(self.freeze_persist_reload_invocations) is not int
+            or type(self.query_release_invocations) is not int
+            or type(self.query_observer_invocations) is not int
         ):
             raise PanelFeatureTaskRunnerError("task archive field types differ")
         _canonical_proposer(self.proposer_result)
+        support_panels, support_receipts, support_pngs = _released_rows(
+            tuple(
+                zip(
+                    self.support_released_panels,
+                    self.support_release_store_receipts,
+                    strict=True,
+                )
+            ),
+            _support_ids(task),
+            expected_execution_precommit_digest=self.execution_precommit_digest,
+            expected_exposure_successor_digest=self.exposure_successor_digest,
+            object_kind="released-support-panel",
+            label="archived support",
+        )
+        encoded_support = _decode_png_rows(
+            self.support_png_base64_by_panel_id,
+            _support_ids(task),
+            label="archived support",
+        )
+        if (
+            support_panels != self.support_released_panels
+            or support_receipts != self.support_release_store_receipts
+            or support_pngs != encoded_support
+        ):
+            raise PanelFeatureTaskRunnerError("archived support release custody differs")
+        if self.query_released_panels or self.query_release_store_receipts:
+            query_panels, query_receipts, query_pngs = _released_rows(
+                tuple(
+                    zip(
+                        self.query_released_panels,
+                        self.query_release_store_receipts,
+                        strict=True,
+                    )
+                ),
+                (task.side_0_query_panel_id, task.side_1_query_panel_id),
+                expected_execution_precommit_digest=self.execution_precommit_digest,
+                expected_exposure_successor_digest=self.exposure_successor_digest,
+                object_kind="released-query-panel",
+                label="archived query",
+            )
+            if (
+                query_panels != self.query_released_panels
+                or query_receipts != self.query_release_store_receipts
+                or query_pngs
+                != _decode_png_rows(
+                    self.query_png_base64_by_side, _SIDES, label="archived query"
+                )
+            ):
+                raise PanelFeatureTaskRunnerError("archived query release custody differs")
         complete_shape = (
             self.support_gap is None
+            and self.selection_gap is None
             and type(self.predicate_pair) is FrozenEngineeringFeaturePredicatePair
-            and type(self.frozen_pair_canonical_base64) is str
+            and type(self.task_freeze) is PanelFeatureTaskFreeze
+            and type(self.task_freeze_store_receipt) is ObjectBongardWriteOnceReceipt
+            and type(self.task_freeze_commit) is PanelFeatureTaskFreezeCommit
+            and type(self.task_freeze_commit_store_receipt) is ObjectBongardWriteOnceReceipt
             and tuple(item[0] for item in self.query_png_base64_by_side) == _SIDES
+            and len(self.query_released_panels) == PANEL_FEATURE_QUERY_PANEL_COUNT
+            and len(self.query_release_store_receipts) == PANEL_FEATURE_QUERY_PANEL_COUNT
             and len(self.query_observations) == PANEL_FEATURE_QUERY_PANEL_COUNT
             and len(self.query_decisions) == PANEL_FEATURE_QUERY_PANEL_COUNT
             and (
-                self.persist_reload_callback_invocations,
-                self.query_callback_invocations,
+                self.freeze_persist_reload_invocations,
+                self.query_release_invocations,
+                self.query_observer_invocations,
             )
-            == (1, 1)
+            == (1, 1, 2)
         )
         gap_shape = (
             type(self.support_gap) is PanelFeatureTaskSupportGap
+            and self.selection_gap is None
             and self.predicate_pair is None
-            and self.frozen_pair_canonical_base64 is None
+            and self.task_freeze is None
+            and self.task_freeze_store_receipt is None
+            and self.task_freeze_commit is None
+            and self.task_freeze_commit_store_receipt is None
             and not self.query_png_base64_by_side
+            and not self.query_released_panels
+            and not self.query_release_store_receipts
             and not self.query_observations
             and not self.query_decisions
             and (
-                self.persist_reload_callback_invocations,
-                self.query_callback_invocations,
+                self.freeze_persist_reload_invocations,
+                self.query_release_invocations,
+                self.query_observer_invocations,
             )
-            == (0, 0)
+            == (0, 0, 0)
+        )
+        selection_gap_shape = (
+            self.support_gap is None
+            and type(self.selection_gap) is PanelFeatureTaskSelectionGap
+            and self.predicate_pair is None
+            and self.task_freeze is None
+            and self.task_freeze_store_receipt is None
+            and self.task_freeze_commit is None
+            and self.task_freeze_commit_store_receipt is None
+            and not self.query_png_base64_by_side
+            and not self.query_released_panels
+            and not self.query_release_store_receipts
+            and not self.query_observations
+            and not self.query_decisions
+            and (
+                self.freeze_persist_reload_invocations,
+                self.query_release_invocations,
+                self.query_observer_invocations,
+            )
+            == (0, 0, 0)
         )
         if (
             (
@@ -912,6 +1757,10 @@ class PanelFeatureTaskArchive:
             or (
                 self.status is PanelFeatureTaskRunStatus.SUPPORT_GAP
                 and not gap_shape
+            )
+            or (
+                self.status is PanelFeatureTaskRunStatus.SELECTION_GAP
+                and not selection_gap_shape
             )
             or self.record_digest != canonical_digest(_archive_content(self))
         ):
@@ -936,6 +1785,10 @@ class PanelFeatureTaskArchive:
                 "schema",
                 "runner_id",
                 "task_plan",
+                "execution_precommit_digest",
+                "exposure_successor_digest",
+                "support_released_panels",
+                "support_release_store_receipts",
                 "support_png_base64_by_panel_id",
                 "proposer_result",
                 "proposer_result_digest",
@@ -946,15 +1799,24 @@ class PanelFeatureTaskArchive:
                 "side1_version_space",
                 "status",
                 "support_gap",
+                "selection_gap",
                 "predicate_pair",
-                "frozen_pair_canonical_base64",
+                "task_freeze",
+                "task_freeze_store_receipt",
+                "task_freeze_commit",
+                "task_freeze_commit_store_receipt",
                 "sealed_query_panel_ids",
                 "query_png_base64_by_side",
+                "query_released_panels",
+                "query_release_store_receipts",
                 "query_observations",
                 "query_decisions",
-                "persist_reload_callback_invocations",
-                "query_callback_invocations",
-                "query_callback_called_only_after_exact_frozen_pair_reload",
+                "freeze_persist_reload_invocations",
+                "query_release_invocations",
+                "query_observer_invocations",
+                "query_release_called_only_after_exact_task_freeze_commit_reload",
+                "query_release_and_observation_are_separate_calls",
+                "query_observer_receives_predicate_or_formula",
                 "exact_png_bytes_archived_for_cold_replay",
                 "cold_replay_callback_invocations",
                 "cold_replay_model_calls",
@@ -967,14 +1829,21 @@ class PanelFeatureTaskArchive:
         if (
             raw["schema"] != PANEL_FEATURE_TASK_ARCHIVE_SCHEMA
             or raw["runner_id"] != PANEL_FEATURE_TASK_RUNNER_ID
-            or raw["query_callback_called_only_after_exact_frozen_pair_reload"]
-            is not True
+            or raw[
+                "query_release_called_only_after_exact_task_freeze_commit_reload"
+            ] is not True
+            or raw["query_release_and_observation_are_separate_calls"] is not True
+            or raw["query_observer_receives_predicate_or_formula"] is not False
             or raw["exact_png_bytes_archived_for_cold_replay"] is not True
             or raw["cold_replay_callback_invocations"] != 0
             or raw["cold_replay_model_calls"] != 0
             or any(raw[key] != item for key, item in _authority_data().items())
             or not isinstance(raw["support_png_base64_by_panel_id"], Mapping)
             or not isinstance(raw["query_png_base64_by_side"], Mapping)
+            or type(raw["support_released_panels"]) is not list
+            or type(raw["support_release_store_receipts"]) is not list
+            or type(raw["query_released_panels"]) is not list
+            or type(raw["query_release_store_receipts"]) is not list
             or type(raw["support_observations"]) is not list
             or type(raw["query_observations"]) is not list
             or type(raw["query_decisions"]) is not list
@@ -1005,6 +1874,16 @@ class PanelFeatureTaskArchive:
             raise PanelFeatureTaskRunnerError("archive status differs") from exc
         result = cls(
             task,
+            raw["execution_precommit_digest"],
+            raw["exposure_successor_digest"],
+            tuple(
+                _released_panel_from_data(item)
+                for item in raw["support_released_panels"]
+            ),
+            tuple(
+                ObjectBongardWriteOnceReceipt.from_data(item)
+                for item in raw["support_release_store_receipts"]
+            ),
             tuple((item, support_encoded[item]) for item in support_ids),
             proposer,
             tuple(
@@ -1023,13 +1902,51 @@ class PanelFeatureTaskArchive:
             ),
             (
                 None
+                if raw["selection_gap"] is None
+                else PanelFeatureTaskSelectionGap.from_data(raw["selection_gap"])
+            ),
+            (
+                None
                 if raw["predicate_pair"] is None
                 else FrozenEngineeringFeaturePredicatePair.from_data(
                     raw["predicate_pair"]
                 )
             ),
-            raw["frozen_pair_canonical_base64"],
+            (
+                None
+                if raw["task_freeze"] is None
+                else PanelFeatureTaskFreeze.from_data(raw["task_freeze"])
+            ),
+            (
+                None
+                if raw["task_freeze_store_receipt"] is None
+                else ObjectBongardWriteOnceReceipt.from_data(
+                    raw["task_freeze_store_receipt"]
+                )
+            ),
+            (
+                None
+                if raw["task_freeze_commit"] is None
+                else PanelFeatureTaskFreezeCommit.from_data(
+                    raw["task_freeze_commit"]
+                )
+            ),
+            (
+                None
+                if raw["task_freeze_commit_store_receipt"] is None
+                else ObjectBongardWriteOnceReceipt.from_data(
+                    raw["task_freeze_commit_store_receipt"]
+                )
+            ),
             tuple((side, query_encoded[side]) for side in _SIDES if side in query_encoded),
+            tuple(
+                _released_panel_from_data(item)
+                for item in raw["query_released_panels"]
+            ),
+            tuple(
+                ObjectBongardWriteOnceReceipt.from_data(item)
+                for item in raw["query_release_store_receipts"]
+            ),
             tuple(
                 PanelFeatureObservationSet.from_data(item)
                 for item in raw["query_observations"]
@@ -1038,8 +1955,9 @@ class PanelFeatureTaskArchive:
                 EngineeringQueryDecision.from_data(item)
                 for item in raw["query_decisions"]
             ),
-            raw["persist_reload_callback_invocations"],
-            raw["query_callback_invocations"],
+            raw["freeze_persist_reload_invocations"],
+            raw["query_release_invocations"],
+            raw["query_observer_invocations"],
             raw["record_digest"],
         )
         if raw["archive_address"] != result.archive_address or result.to_data() != dict(raw):
@@ -1057,43 +1975,37 @@ def _make_archive(**values: object) -> PanelFeatureTaskArchive:
     )
 
 
-PersistAndReload = Callable[[bytes], bytes]
-QueryCallback = Callable[
-    [FrozenEngineeringFeaturePredicatePair],
-    Mapping[str, tuple[bytes, PanelFeatureObservationSet]],
+ReleasedPanelRow = tuple[AuthenticatedReleasedPanel, ObjectBongardWriteOnceReceipt]
+FreezePersistReload = Callable[
+    [PanelFeatureTaskFreeze],
+    tuple[
+        PanelFeatureTaskFreezeCommit,
+        ObjectBongardWriteOnceReceipt,
+        ObjectBongardWriteOnceReceipt,
+    ],
+]
+QueryReleaseCallback = Callable[[], Mapping[str, ReleasedPanelRow]]
+PanelObserverCallback = Callable[
+    [str, bytes, tuple[FeatureAxis, ...]], PanelFeatureObservationSet
 ]
 SupportProposerCallback = Callable[
     [tuple[bytes, ...], str], PanelFeatureProposerResult
 ]
-SupportObserverCallback = Callable[
-    [str, bytes, tuple[PanelFeatureSpec, ...]], PanelFeatureObservationSet
-]
+SupportObserverCallback = PanelObserverCallback
+QueryObserverCallback = PanelObserverCallback
 
 
-def _reload_frozen_pair(
-    pair: FrozenEngineeringFeaturePredicatePair,
-    persist_and_reload: PersistAndReload,
-) -> tuple[FrozenEngineeringFeaturePredicatePair, bytes]:
-    frozen = canonical_json(pair.to_data())
-    reloaded = persist_and_reload(frozen)
-    if type(reloaded) is not bytes or reloaded != frozen:
-        raise PanelFeatureTaskRunnerError("persisted frozen-pair bytes changed on reload")
-    try:
-        raw = json.loads(reloaded.decode("utf-8", errors="strict"))
-    except (UnicodeError, json.JSONDecodeError) as exc:
-        raise PanelFeatureTaskRunnerError("reloaded frozen pair is not strict JSON") from exc
-    if type(raw) is not dict or canonical_json(raw) != reloaded:
-        raise PanelFeatureTaskRunnerError("reloaded frozen pair is not canonical JSON")
-    restored = FrozenEngineeringFeaturePredicatePair.from_data(raw)
-    if restored != pair or restored.pair_digest != pair.pair_digest:
-        raise PanelFeatureTaskRunnerError("reloaded frozen pair differs")
-    return restored, frozen
-
-
-def _query_rows(
+def _query_release_rows(
     callback_result: object,
     task: ObjectBongardTaskPlan,
-) -> tuple[tuple[bytes, PanelFeatureObservationSet], ...]:
+    *,
+    execution_precommit_digest: str,
+    exposure_successor_digest: str,
+) -> tuple[
+    tuple[AuthenticatedReleasedPanel, ...],
+    tuple[ObjectBongardWriteOnceReceipt, ...],
+    tuple[bytes, ...],
+]:
     query_ids = (task.side_0_query_panel_id, task.side_1_query_panel_id)
     if (
         not isinstance(callback_result, Mapping)
@@ -1101,32 +2013,72 @@ def _query_rows(
         or set(callback_result) != set(query_ids)
     ):
         raise PanelFeatureTaskRunnerError(
-            "query callback must return rows for the exact two sealed query panel IDs"
+            "query release must return the exact two sealed query panel IDs"
         )
-    result: list[tuple[bytes, PanelFeatureObservationSet]] = []
-    for side, panel_id in zip(_SIDES, query_ids, strict=True):
-        row = callback_result[panel_id]
-        if type(row) is not tuple or len(row) != 2:
-            raise PanelFeatureTaskRunnerError("query callback row differs")
-        result.append((_png(row[0], f"{side} query panel"), _canonical_observation(row[1])))
-    return tuple(result)
+    return _released_rows(
+        tuple(callback_result[item] for item in query_ids),
+        query_ids,
+        expected_execution_precommit_digest=execution_precommit_digest,
+        expected_exposure_successor_digest=exposure_successor_digest,
+        object_kind="released-query-panel",
+        label="query",
+    )
+
+
+def _observe_unlabelled_panels(
+    pngs: Sequence[bytes],
+    observer: PanelObserverCallback,
+) -> tuple[PanelFeatureObservationSet, ...]:
+    """Observe panels in digest order with opaque names and a fixed axis catalog."""
+
+    if not callable(observer):
+        raise TypeError("panel observer must be callable")
+    axes = panel_feature_axis_catalog()
+    order = tuple(
+        sorted(
+            range(len(pngs)),
+            key=lambda index: (hashlib.sha256(pngs[index]).hexdigest(), index),
+        )
+    )
+    by_index: dict[int, PanelFeatureObservationSet] = {}
+    for ordinal, index in enumerate(order):
+        token = f"panel_{ordinal:03d}"
+        by_index[index] = observer(token, pngs[index], axes)
+    return tuple(by_index[index] for index in range(len(pngs)))
 
 
 def run_panel_feature_task(
     task_plan: ObjectBongardTaskPlan,
-    support_pngs: Sequence[bytes],
+    support_releases: Sequence[ReleasedPanelRow],
     proposer_result: PanelFeatureProposerResult,
     support_observations: Sequence[PanelFeatureObservationSet],
     *,
-    persist_and_reload: PersistAndReload | None,
-    query_callback: QueryCallback | None,
+    execution_precommit_digest: str,
+    exposure_successor_digest: str,
+    rank_response_digest: str,
+    freeze_persist_reload: FreezePersistReload | None,
+    query_release_callback: QueryReleaseCallback | None,
+    query_observation_callback: QueryObserverCallback | None,
 ) -> PanelFeatureTaskArchive:
-    """Build support predicates, freeze/reload, then release both sealed queries.
+    """Engineering/test lane over already authenticated released-panel records.
 
-    ``support_pngs`` and ``support_observations`` are ordered exactly as the
-    task plan's six side-0 supports followed by its six side-1 supports.  A
-    support gap returns before either callback is inspected or invoked.
+    Pixel release and observation are deliberately split.  The zero-argument
+    release callback cannot receive a formula, and the observer receives only
+    an opaque token, exact bytes, and the fixed full axis catalog.  This
+    injected-callback lane remains non-benchmark-authoritative; use
+    :func:`run_panel_feature_task_with_official_release` for the existing
+    release-gate-backed production path.
     """
+
+    task = _task(task_plan)
+    support_panels, support_receipts, support_pngs = _released_rows(
+        support_releases,
+        _support_ids(task),
+        expected_execution_precommit_digest=execution_precommit_digest,
+        expected_exposure_successor_digest=exposure_successor_digest,
+        object_kind="released-support-panel",
+        label="support",
+    )
 
     (
         task,
@@ -1140,10 +2092,14 @@ def run_panel_feature_task(
         contract,
         protocol,
     ) = _derive_support(
-        task_plan, support_pngs, proposer_result, support_observations
+        task, support_pngs, proposer_result, support_observations
     )
     common = {
         "task_plan": task,
+        "execution_precommit_digest": execution_precommit_digest,
+        "exposure_successor_digest": exposure_successor_digest,
+        "support_released_panels": support_panels,
+        "support_release_store_receipts": support_receipts,
         "support_png_base64_by_panel_id": _encode_png_rows(
             _support_ids(task), pngs
         ),
@@ -1160,32 +2116,94 @@ def run_panel_feature_task(
             **common,
             status=PanelFeatureTaskRunStatus.SUPPORT_GAP,
             support_gap=gap,
+            selection_gap=None,
             predicate_pair=None,
-            frozen_pair_canonical_base64=None,
+            task_freeze=None,
+            task_freeze_store_receipt=None,
+            task_freeze_commit=None,
+            task_freeze_commit_store_receipt=None,
             query_png_base64_by_side=(),
+            query_released_panels=(),
+            query_release_store_receipts=(),
             query_observations=(),
             query_decisions=(),
-            persist_reload_callback_invocations=0,
-            query_callback_invocations=0,
+            freeze_persist_reload_invocations=0,
+            query_release_invocations=0,
+            query_observer_invocations=0,
         )
         return cold_replay_panel_feature_task(
             archive, expected_archive_address=archive.archive_address
         )
-    if not callable(persist_and_reload) or not callable(query_callback):
-        raise TypeError("surviving support predicates require freeze and query callbacks")
-    pair = FrozenEngineeringFeaturePredicatePair.create(side0_space, side1_space)
-    reloaded_pair, frozen_bytes = _reload_frozen_pair(pair, persist_and_reload)
+    survivor_counts = (
+        len(side0_space.survivor_formula_digests),
+        len(side1_space.survivor_formula_digests),
+    )
+    if survivor_counts != (1, 1):
+        gap = PanelFeatureTaskSelectionGap.create(side0_space, side1_space)
+        archive = _make_archive(
+            **common,
+            status=PanelFeatureTaskRunStatus.SELECTION_GAP,
+            support_gap=None,
+            selection_gap=gap,
+            predicate_pair=None,
+            task_freeze=None,
+            task_freeze_store_receipt=None,
+            task_freeze_commit=None,
+            task_freeze_commit_store_receipt=None,
+            query_png_base64_by_side=(),
+            query_released_panels=(),
+            query_release_store_receipts=(),
+            query_observations=(),
+            query_decisions=(),
+            freeze_persist_reload_invocations=0,
+            query_release_invocations=0,
+            query_observer_invocations=0,
+        )
+        return cold_replay_panel_feature_task(
+            archive, expected_archive_address=archive.archive_address
+        )
+    if (
+        not callable(freeze_persist_reload)
+        or not callable(query_release_callback)
+        or not callable(query_observation_callback)
+    ):
+        raise TypeError(
+            "a unique support pair requires freeze, query release, and query observer callbacks"
+        )
+    freeze = PanelFeatureTaskFreeze.seal(
+        task=task,
+        execution_precommit_digest=execution_precommit_digest,
+        proposer=proposer,
+        side0_space=side0_space,
+        side1_space=side1_space,
+        rank_response_digest=rank_response_digest,
+    )
+    durable = freeze_persist_reload(freeze)
+    if type(durable) is not tuple or len(durable) != 3:
+        raise PanelFeatureTaskRunnerError("freeze persistence result differs")
+    reloaded_freeze, commit, freeze_receipt, commit_receipt = _verify_durable_freeze(
+        freeze, durable[0], durable[1], durable[2]
+    )
+    if reloaded_freeze != freeze:
+        raise PanelFeatureTaskRunnerError("durably reloaded task freeze differs")
     # This is the first point at which query pixels may be obtained.
-    rows = _query_rows(query_callback(reloaded_pair), task)
-    query_pngs = tuple(item[0] for item in rows)
+    query_panels, query_receipts, query_pngs = _query_release_rows(
+        query_release_callback(),
+        task,
+        execution_precommit_digest=execution_precommit_digest,
+        exposure_successor_digest=exposure_successor_digest,
+    )
+    raw_query_observations = _observe_unlabelled_panels(
+        query_pngs, query_observation_callback
+    )
     query_observations, _, _ = _verify_observation_batch(
-        tuple(item[1] for item in rows),
+        raw_query_observations,
         query_pngs,
-        vocabulary,
         expected_contract_digest=contract,
         expected_protocol_digest=protocol,
         label="query",
     )
+    reloaded_pair = reloaded_freeze.predicate_pair
     decisions: list[EngineeringQueryDecision] = []
     for observation in query_observations:
         query_table = _table_for_observations(vocabulary, (observation,))
@@ -1198,13 +2216,20 @@ def run_panel_feature_task(
         **common,
         status=PanelFeatureTaskRunStatus.COMPLETE,
         support_gap=None,
+        selection_gap=None,
         predicate_pair=reloaded_pair,
-        frozen_pair_canonical_base64=base64.b64encode(frozen_bytes).decode("ascii"),
+        task_freeze=reloaded_freeze,
+        task_freeze_store_receipt=freeze_receipt,
+        task_freeze_commit=commit,
+        task_freeze_commit_store_receipt=commit_receipt,
         query_png_base64_by_side=_encode_png_rows(_SIDES, query_pngs),
+        query_released_panels=query_panels,
+        query_release_store_receipts=query_receipts,
         query_observations=query_observations,
         query_decisions=tuple(decisions),
-        persist_reload_callback_invocations=1,
-        query_callback_invocations=1,
+        freeze_persist_reload_invocations=1,
+        query_release_invocations=1,
+        query_observer_invocations=2,
     )
     return cold_replay_panel_feature_task(
         archive, expected_archive_address=archive.archive_address
@@ -1213,42 +2238,144 @@ def run_panel_feature_task(
 
 def run_panel_feature_task_with_support_callbacks(
     task_plan: ObjectBongardTaskPlan,
-    support_pngs: Sequence[bytes],
+    support_releases: Sequence[ReleasedPanelRow],
     *,
     proposer_callback: SupportProposerCallback,
     observation_callback: SupportObserverCallback,
-    persist_and_reload: PersistAndReload | None,
-    query_callback: QueryCallback | None,
+    execution_precommit_digest: str,
+    exposure_successor_digest: str,
+    rank_response_digest: str,
+    freeze_persist_reload: FreezePersistReload | None,
+    query_release_callback: QueryReleaseCallback | None,
+    query_observation_callback: QueryObserverCallback | None,
 ) -> PanelFeatureTaskArchive:
-    """Live support adapter with neutral names and no early query access.
+    """Observe support through the same proposal-independent full-axis API.
 
-    The proposer receives ``(twelve_pngs, raw_task_record_digest)``.  After its
-    provenance is checked, the observer is called twelve times with only the
-    neutral presentation name, exact PNG bytes, and globally deduplicated spec
-    tuple.  Receipts remain inside the returned canonical proposer/observation
-    artifacts.  The query callback is passed onward to :func:`run_panel_feature_task`
-    and therefore cannot run before exact frozen-pair persistence and reload.
+    The proposer still receives the required two contrastive blocks.  The
+    observer does not: its calls are reordered by pixel digest and contain no
+    side, block, position, candidate spec, formula, or orientation.
     """
 
     task = _task(task_plan)
-    pngs = _support_pngs(support_pngs)
+    _, _, pngs = _released_rows(
+        support_releases,
+        _support_ids(task),
+        expected_execution_precommit_digest=execution_precommit_digest,
+        expected_exposure_successor_digest=exposure_successor_digest,
+        object_kind="released-support-panel",
+        label="support",
+    )
     if not callable(proposer_callback) or not callable(observation_callback):
         raise TypeError("support proposer and observation callbacks must be callable")
     proposer = proposer_callback(pngs, task.record_digest.split(":", 1)[1])
-    canonical_proposer, vocabulary = _derive_vocabulary_and_verify_provenance(
+    canonical_proposer, _vocabulary = _derive_vocabulary_and_verify_provenance(
         task, pngs, proposer
     )
-    observations = tuple(
-        observation_callback(name, panel, vocabulary.specs)
-        for name, panel in zip(PANEL_FEATURE_PRESENTATION_NAMES, pngs, strict=True)
-    )
+    observations = _observe_unlabelled_panels(pngs, observation_callback)
     return run_panel_feature_task(
         task,
-        pngs,
+        support_releases,
         canonical_proposer,
         observations,
-        persist_and_reload=persist_and_reload,
-        query_callback=query_callback,
+        execution_precommit_digest=execution_precommit_digest,
+        exposure_successor_digest=exposure_successor_digest,
+        rank_response_digest=rank_response_digest,
+        freeze_persist_reload=freeze_persist_reload,
+        query_release_callback=query_release_callback,
+        query_observation_callback=query_observation_callback,
+    )
+
+
+def run_panel_feature_task_with_official_release(
+    task_plan: ObjectBongardTaskPlan,
+    *,
+    prepared: PreparedObjectBongardRelease,
+    archive: OfficialPanelArchive,
+    proposer_callback: SupportProposerCallback,
+    observation_callback: SupportObserverCallback,
+    query_observation_callback: QueryObserverCallback,
+    rank_response_digest: str,
+) -> PanelFeatureTaskArchive:
+    """Release pixels through the repository's trusted official gate directly."""
+
+    task = _task(task_plan)
+    if type(prepared) is not PreparedObjectBongardRelease:
+        raise TypeError("prepared must be exact PreparedObjectBongardRelease")
+    if type(archive) is not OfficialPanelArchive:
+        raise TypeError("archive must be exact OfficialPanelArchive")
+    verify_prepared_object_bongard_release(prepared)
+    matches = tuple(item for item in prepared.plan.tasks if item.task_id == task.task_id)
+    if len(matches) != 1 or matches[0] != task:
+        raise PanelFeatureTaskRunnerError("task differs from prepared official release")
+    support_releases = tuple(
+        release_object_bongard_support_panel(
+            prepared=prepared, archive=archive, panel_id=panel_id
+        )
+        for panel_id in _support_ids(task)
+    )
+    durable_state: dict[str, object] = {}
+
+    def persist_freeze(
+        freeze: PanelFeatureTaskFreeze,
+    ) -> tuple[
+        PanelFeatureTaskFreezeCommit,
+        ObjectBongardWriteOnceReceipt,
+        ObjectBongardWriteOnceReceipt,
+    ]:
+        freeze_receipt = persist_object_bongard_task_freeze(
+            store=prepared.store, freeze=freeze
+        )
+        prepared.store.verify(freeze_receipt, expected_data=freeze.to_data())
+        commit = PanelFeatureTaskFreezeCommit.seal(freeze, freeze_receipt)
+        commit_receipt = persist_object_bongard_task_commit(
+            store=prepared.store, commit=commit
+        )
+        prepared.store.verify(commit_receipt, expected_data=commit.to_data())
+        durable_state.update(
+            freeze=freeze,
+            commit=commit,
+            freeze_receipt=freeze_receipt,
+            commit_receipt=commit_receipt,
+        )
+        return commit, freeze_receipt, commit_receipt
+
+    def release_queries() -> Mapping[str, ReleasedPanelRow]:
+        if set(durable_state) != {
+            "freeze",
+            "commit",
+            "freeze_receipt",
+            "commit_receipt",
+        }:
+            raise PanelFeatureTaskRunnerError(
+                "query release attempted before exact durable freeze and commit"
+            )
+        return {
+            panel_id: release_object_bongard_query_panel(
+                prepared=prepared,
+                archive=archive,
+                panel_id=panel_id,
+                task_freeze=durable_state["freeze"],
+                task_commit=durable_state["commit"],
+                task_freeze_receipt=durable_state["freeze_receipt"],
+                task_commit_receipt=durable_state["commit_receipt"],
+            )
+            for panel_id in (
+                task.side_0_query_panel_id,
+                task.side_1_query_panel_id,
+            )
+        }
+
+    return run_panel_feature_task_with_support_callbacks(
+        task,
+        support_releases,
+        proposer_callback=proposer_callback,
+        observation_callback=observation_callback,
+        execution_precommit_digest=prepared.precommit.record_digest,
+        exposure_successor_digest=prepared.successor.digest,
+        rank_response_digest=rank_response_digest,
+        freeze_persist_reload=persist_freeze,
+        query_release_callback=release_queries,
+        query_observation_callback=query_observation_callback,
     )
 
 
@@ -1307,18 +2434,54 @@ def cold_replay_panel_feature_task(
         if (
             restored.status is not PanelFeatureTaskRunStatus.SUPPORT_GAP
             or restored.support_gap != gap
+            or restored.selection_gap is not None
             or restored.predicate_pair is not None
-            or restored.frozen_pair_canonical_base64 is not None
+            or restored.task_freeze is not None
+            or restored.task_freeze_store_receipt is not None
+            or restored.task_freeze_commit is not None
+            or restored.task_freeze_commit_store_receipt is not None
             or restored.query_png_base64_by_side
+            or restored.query_released_panels
+            or restored.query_release_store_receipts
             or restored.query_observations
             or restored.query_decisions
             or (
-                restored.persist_reload_callback_invocations,
-                restored.query_callback_invocations,
+                restored.freeze_persist_reload_invocations,
+                restored.query_release_invocations,
+                restored.query_observer_invocations,
             )
-            != (0, 0)
+            != (0, 0, 0)
         ):
             raise PanelFeatureTaskRunnerError("support-gap cold replay differs")
+        return restored
+    counts = (
+        len(side0_space.survivor_formula_digests),
+        len(side1_space.survivor_formula_digests),
+    )
+    if counts != (1, 1):
+        gap = PanelFeatureTaskSelectionGap.create(side0_space, side1_space)
+        if (
+            restored.status is not PanelFeatureTaskRunStatus.SELECTION_GAP
+            or restored.support_gap is not None
+            or restored.selection_gap != gap
+            or restored.predicate_pair is not None
+            or restored.task_freeze is not None
+            or restored.task_freeze_store_receipt is not None
+            or restored.task_freeze_commit is not None
+            or restored.task_freeze_commit_store_receipt is not None
+            or restored.query_png_base64_by_side
+            or restored.query_released_panels
+            or restored.query_release_store_receipts
+            or restored.query_observations
+            or restored.query_decisions
+            or (
+                restored.freeze_persist_reload_invocations,
+                restored.query_release_invocations,
+                restored.query_observer_invocations,
+            )
+            != (0, 0, 0)
+        ):
+            raise PanelFeatureTaskRunnerError("selection-gap cold replay differs")
         return restored
     expected_pair = FrozenEngineeringFeaturePredicatePair.create(
         side0_space, side1_space
@@ -1326,36 +2489,76 @@ def cold_replay_panel_feature_task(
     if (
         restored.status is not PanelFeatureTaskRunStatus.COMPLETE
         or restored.support_gap is not None
+        or restored.selection_gap is not None
         or restored.predicate_pair != expected_pair
-        or type(restored.frozen_pair_canonical_base64) is not str
+        or type(restored.task_freeze) is not PanelFeatureTaskFreeze
+        or type(restored.task_freeze_store_receipt)
+        is not ObjectBongardWriteOnceReceipt
+        or type(restored.task_freeze_commit) is not PanelFeatureTaskFreezeCommit
+        or type(restored.task_freeze_commit_store_receipt)
+        is not ObjectBongardWriteOnceReceipt
         or (
-            restored.persist_reload_callback_invocations,
-            restored.query_callback_invocations,
+            restored.freeze_persist_reload_invocations,
+            restored.query_release_invocations,
+            restored.query_observer_invocations,
         )
-        != (1, 1)
+        != (1, 1, 2)
     ):
         raise PanelFeatureTaskRunnerError("complete cold-replay phase differs")
-    try:
-        frozen = base64.b64decode(
-            restored.frozen_pair_canonical_base64, validate=True
-        )
-        raw_pair = json.loads(frozen.decode("utf-8", errors="strict"))
-    except (ValueError, TypeError, UnicodeError, json.JSONDecodeError) as exc:
-        raise PanelFeatureTaskRunnerError("archived frozen-pair bytes differ") from exc
-    if (
-        type(raw_pair) is not dict
-        or canonical_json(raw_pair) != frozen
-        or FrozenEngineeringFeaturePredicatePair.from_data(raw_pair) != expected_pair
-        or frozen != canonical_json(expected_pair.to_data())
-    ):
-        raise PanelFeatureTaskRunnerError("frozen-pair cold replay differs")
-    query_pngs = _decode_png_rows(
-        restored.query_png_base64_by_side, _SIDES, label="query"
+    assert restored.task_freeze is not None
+    assert restored.task_freeze_store_receipt is not None
+    assert restored.task_freeze_commit is not None
+    assert restored.task_freeze_commit_store_receipt is not None
+    expected_freeze = PanelFeatureTaskFreeze.seal(
+        task=task,
+        execution_precommit_digest=restored.execution_precommit_digest,
+        proposer=proposer,
+        side0_space=side0_space,
+        side1_space=side1_space,
+        rank_response_digest=restored.task_freeze.rank_response_digest,
     )
+    frozen, committed, freeze_receipt, commit_receipt = _verify_durable_freeze(
+        restored.task_freeze,
+        restored.task_freeze_commit,
+        restored.task_freeze_store_receipt,
+        restored.task_freeze_commit_store_receipt,
+    )
+    if (
+        frozen != expected_freeze
+        or frozen.predicate_pair != expected_pair
+        or committed != restored.task_freeze_commit
+        or freeze_receipt != restored.task_freeze_store_receipt
+        or commit_receipt != restored.task_freeze_commit_store_receipt
+        or not isinstance(frozen, ObjectBongardTaskFreezeProtocol)
+        or not isinstance(committed, ObjectBongardTaskCommitProtocol)
+    ):
+        raise PanelFeatureTaskRunnerError("task freeze cold replay differs")
+    query_panels, query_receipts, query_pngs = _released_rows(
+        tuple(
+            zip(
+                restored.query_released_panels,
+                restored.query_release_store_receipts,
+                strict=True,
+            )
+        ),
+        (task.side_0_query_panel_id, task.side_1_query_panel_id),
+        expected_execution_precommit_digest=restored.execution_precommit_digest,
+        expected_exposure_successor_digest=restored.exposure_successor_digest,
+        object_kind="released-query-panel",
+        label="query",
+    )
+    if (
+        query_panels != restored.query_released_panels
+        or query_receipts != restored.query_release_store_receipts
+        or query_pngs
+        != _decode_png_rows(
+            restored.query_png_base64_by_side, _SIDES, label="query"
+        )
+    ):
+        raise PanelFeatureTaskRunnerError("query release cold replay differs")
     query_observations, _, _ = _verify_observation_batch(
         restored.query_observations,
         query_pngs,
-        vocabulary,
         expected_contract_digest=contract,
         expected_protocol_digest=protocol,
         label="query",
@@ -1374,19 +2577,28 @@ def cold_replay_panel_feature_task(
 
 
 __all__ = (
+    "AuthenticatedReleasedPanel",
     "PANEL_FEATURE_QUERY_PANEL_COUNT",
     "PANEL_FEATURE_SUPPORT_PANEL_COUNT",
     "PANEL_FEATURE_TASK_RUNNER_ID",
     "PanelFeatureTaskArchive",
+    "PanelFeatureTaskFreeze",
+    "PanelFeatureTaskFreezeCommit",
     "PanelFeatureTaskRunStatus",
     "PanelFeatureTaskRunnerError",
+    "PanelFeatureTaskSelectionGap",
     "PanelFeatureTaskSupportGap",
-    "PersistAndReload",
-    "QueryCallback",
+    "FreezePersistReload",
+    "PanelObserverCallback",
+    "QueryObserverCallback",
+    "QueryReleaseCallback",
+    "ReleasedPanelRow",
     "SupportObserverCallback",
     "SupportProposerCallback",
     "cold_replay_panel_feature_task",
     "engineering_disposition_from_observation",
+    "panel_feature_axis_catalog",
     "run_panel_feature_task",
+    "run_panel_feature_task_with_official_release",
     "run_panel_feature_task_with_support_callbacks",
 )
