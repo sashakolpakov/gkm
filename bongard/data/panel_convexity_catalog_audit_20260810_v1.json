@@ -1,11 +1,13 @@
 {
   "algorithm": {
-    "algorithm_digest": "sha256:222548a7e96708986d07f3f4cec06d1e0909b06ea7ae1207428f052b6f8029a5",
+    "algorithm_digest": "sha256:42a0307bcf04cf52b889dae132013aab8e2a850e4a64fa5f294929e7d0e1c419",
     "algorithm_id": "bongard.panel-convexity/exact-style-stripped-plus-bd-singleton-alias-v1",
     "source_path": "bongard/panel_convexity_catalog_audit.py",
-    "source_sha256": "41ace131590d9481cba96e0ad8adbd3e3560c84ebf4c7c787dc025777ff60ce0"
+    "source_sha256": "0652589108c0f77ec86550a84eeeac3e65edffb81969c61fc9705571cb1c5286"
   },
   "claim_limits": {
+    "catalog_binding_external_construction_allowed": false,
+    "catalog_binding_mappings_mutable": false,
     "catalog_labels_are_semantic_pixel_truth": false,
     "catalog_unresolved_certifies_convex_absence": false,
     "catalog_unresolved_downstream_disposition": "GAP",
@@ -200,7 +202,7 @@
     },
     "shape_row_count": 627
   },
-  "record_digest": "sha256:abb18a65a6c5499249ede5a75117f4789fafa45908c958828ac5acec07103767",
+  "record_digest": "sha256:333a6cf4cbdf135484cbacf42ddb20aaf9fad482f70430583f36e60f3198f971",
   "schema": "gkm.bongard-panel-convexity-catalog-audit.v1",
   "source_bindings": {
     "attribute_rows": {

@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from bongard.canonical import canonical_digest
 from bongard.panel_convexity_catalog_audit import (
+    CatalogBinding,
     ConvexityCatalogError,
+    RAW_LABEL_TO_CLASS,
     audit_cohorts,
     build_catalog_binding,
     catalog_label_for_actions,
@@ -95,6 +98,30 @@ def test_bd_singleton_alias_is_exact_fail_closed_and_auditable() -> None:
     assert audit["all_14_catalog_labelled_with_compatibility_task_count"] == 1
     assert audit["all_14_binary_0_or_1_task_count"] == 0
     assert audit["label_counts"] == {"catalog_unresolved": 7, "convex": 7}
+
+    with pytest.raises(TypeError):
+        binding.raw_label_by_name["direct_shape"] = "0"  # type: ignore[index]
+    with pytest.raises(TypeError):
+        binding.alias_by_signature[next(iter(binding.alias_by_signature))] = (  # type: ignore[index]
+            "direct_shape"
+        )
+    with pytest.raises(TypeError):
+        binding.alias_proofs[0]["raw_convexity_label"] = "0"  # type: ignore[index]
+    with pytest.raises(TypeError):
+        RAW_LABEL_TO_CLASS["-1"] = "nonconvex"  # type: ignore[index]
+    with pytest.raises(ConvexityCatalogError, match="must be reconstructed"):
+        replace(binding, raw_label_by_name={"direct_shape": "0", "stale_shape": "-1"})
+
+
+def test_direct_binding_construction_is_rejected() -> None:
+    with pytest.raises(ConvexityCatalogError, match="must be reconstructed"):
+        CatalogBinding(
+            direct_by_signature={("line:1.000:0.500",): "forged"},
+            raw_label_by_name={"forged": "1"},
+            alias_by_signature={},
+            alias_proofs=(),
+            hd_missing_signature_counts={},
+        )
 
 
 def test_alias_cannot_turn_a_version_mismatch_into_binary_truth() -> None:

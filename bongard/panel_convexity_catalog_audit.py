@@ -26,10 +26,11 @@ _LOADED_SOURCE_SHA256 = capture_loaded_source(__name__, __file__)
 
 from collections import Counter, defaultdict
 import csv
-from dataclasses import dataclass
+from dataclasses import InitVar, dataclass, field
 import hashlib
 import json
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
 
 from bongard.canonical import canonical_digest
@@ -38,11 +39,11 @@ from bongard.canonical import canonical_digest
 AUDIT_SCHEMA = "gkm.bongard-panel-convexity-catalog-audit.v1"
 ALGORITHM_SCHEMA = "gkm.bongard-panel-convexity-catalog-algorithm.v1"
 ALGORITHM_ID = "bongard.panel-convexity/exact-style-stripped-plus-bd-singleton-alias-v1"
-RAW_LABEL_TO_CLASS = {
+RAW_LABEL_TO_CLASS: Mapping[str, str] = MappingProxyType({
     "1": "convex",
     "0": "nonconvex",
     "-1": "catalog_unresolved",
-}
+})
 
 
 class ConvexityCatalogError(RuntimeError):
@@ -50,6 +51,7 @@ class ConvexityCatalogError(RuntimeError):
 
 
 Signature = tuple[str, ...]
+_CATALOG_BINDING_AUTHORITY = object()
 
 
 @dataclass(frozen=True)
@@ -59,6 +61,89 @@ class CatalogBinding:
     alias_by_signature: Mapping[Signature, str]
     alias_proofs: tuple[Mapping[str, Any], ...]
     hd_missing_signature_counts: Mapping[Signature, int]
+    _authority: InitVar[object | None] = None
+    _seal: object | None = field(default=None, init=False, repr=False, compare=False)
+
+    def __post_init__(self, _authority: object | None) -> None:
+        if _authority is not _CATALOG_BINDING_AUTHORITY:
+            raise ConvexityCatalogError(
+                "CatalogBinding must be reconstructed by build_catalog_binding"
+            )
+        direct = dict(self.direct_by_signature)
+        labels = dict(self.raw_label_by_name)
+        aliases = dict(self.alias_by_signature)
+        missing = dict(self.hd_missing_signature_counts)
+        if (
+            any(
+                not isinstance(signature, tuple)
+                or not signature
+                or any(not isinstance(token, str) or not token for token in signature)
+                or not isinstance(name, str)
+                or not name
+                for signature, name in (*direct.items(), *aliases.items())
+            )
+            or any(
+                not isinstance(name, str)
+                or not name
+                or raw_label not in RAW_LABEL_TO_CLASS
+                for name, raw_label in labels.items()
+            )
+            or len(set(direct.values())) != len(direct)
+            or set(direct.values()) != set(labels)
+            or set(direct).intersection(aliases)
+            or set(missing) != set(aliases)
+            or any(type(count) is not int or count <= 0 for count in missing.values())
+            or any(labels.get(name) != "-1" for name in aliases.values())
+        ):
+            raise ConvexityCatalogError("CatalogBinding inventories are inconsistent")
+
+        frozen_proofs: list[Mapping[str, Any]] = []
+        proven_aliases: dict[Signature, str] = {}
+        expected_fields = {
+            "bd_singleton_task_id",
+            "current_table_signature",
+            "hd_occurrence_count",
+            "raw_convexity_label",
+            "release_signature",
+            "shape_function_name",
+            "singleton_positive_panel_count",
+        }
+        for proof in self.alias_proofs:
+            if not isinstance(proof, Mapping) or set(proof) != expected_fields:
+                raise ConvexityCatalogError("compatibility proof fields differ")
+            name = proof["shape_function_name"]
+            release_signature = tuple(proof["release_signature"])
+            current_signature = tuple(proof["current_table_signature"])
+            if (
+                not isinstance(name, str)
+                or aliases.get(release_signature) != name
+                or direct.get(current_signature) != name
+                or proof["bd_singleton_task_id"] != f"bd_{name}_0000"
+                or proof["hd_occurrence_count"] != missing.get(release_signature)
+                or proof["raw_convexity_label"] != "-1"
+                or proof["singleton_positive_panel_count"] != 7
+                or release_signature in proven_aliases
+            ):
+                raise ConvexityCatalogError("compatibility proof is inconsistent")
+            proven_aliases[release_signature] = name
+            frozen_proofs.append(
+                MappingProxyType(
+                    {
+                        **dict(proof),
+                        "current_table_signature": current_signature,
+                        "release_signature": release_signature,
+                    }
+                )
+            )
+        if proven_aliases != aliases:
+            raise ConvexityCatalogError("compatibility proofs do not cover aliases")
+
+        object.__setattr__(self, "direct_by_signature", MappingProxyType(direct))
+        object.__setattr__(self, "raw_label_by_name", MappingProxyType(labels))
+        object.__setattr__(self, "alias_by_signature", MappingProxyType(aliases))
+        object.__setattr__(self, "hd_missing_signature_counts", MappingProxyType(missing))
+        object.__setattr__(self, "alias_proofs", tuple(frozen_proofs))
+        object.__setattr__(self, "_seal", _CATALOG_BINDING_AUTHORITY)
 
 
 @dataclass(frozen=True)
@@ -104,8 +189,10 @@ def convexity_catalog_algorithm_digest() -> str:
                 "are_single_object_and_share_that_exact_signature"
             ),
             "compatibility_target_raw_label_required": "-1",
+            "catalog_binding_external_construction_allowed": False,
+            "catalog_binding_mappings_mutable": False,
             "fuzzy_matching": False,
-            "raw_label_to_supervised_class": RAW_LABEL_TO_CLASS,
+            "raw_label_to_supervised_class": dict(RAW_LABEL_TO_CLASS),
             "catalog_unresolved_downstream_policy": (
                 "any_calibrated_set_containing_catalog_unresolved_becomes_typed_GAP"
             ),
@@ -322,6 +409,7 @@ def build_catalog_binding(
         alias_by_signature=aliases,
         alias_proofs=tuple(proofs),
         hd_missing_signature_counts=dict(missing_counts),
+        _authority=_CATALOG_BINDING_AUTHORITY,
     )
 
 
@@ -330,6 +418,14 @@ def catalog_label_for_actions(
 ) -> PanelCatalogLabel:
     """Return the exact catalog target for one single-object panel."""
 
+    if (
+        type(binding) is not CatalogBinding
+        or binding._seal is not _CATALOG_BINDING_AUTHORITY
+        or not isinstance(binding.direct_by_signature, MappingProxyType)
+        or not isinstance(binding.raw_label_by_name, MappingProxyType)
+        or not isinstance(binding.alias_by_signature, MappingProxyType)
+    ):
+        raise ConvexityCatalogError("catalog binding is not sealed builder output")
     signature = signature_from_actions(actions)
     if signature in binding.direct_by_signature:
         name = binding.direct_by_signature[signature]
@@ -460,6 +556,8 @@ def build_live_audit(
             "source_sha256": convexity_catalog_source_digest(),
         },
         "claim_limits": {
+            "catalog_binding_external_construction_allowed": False,
+            "catalog_binding_mappings_mutable": False,
             "catalog_labels_are_semantic_pixel_truth": False,
             "catalog_unresolved_certifies_convex_absence": False,
             "catalog_unresolved_downstream_disposition": "GAP",
@@ -477,7 +575,14 @@ def build_live_audit(
         ),
         "compatibility": {
             "alias_count": len(binding.alias_by_signature),
-            "alias_proofs": list(binding.alias_proofs),
+            "alias_proofs": [
+                {
+                    **dict(proof),
+                    "current_table_signature": list(proof["current_table_signature"]),
+                    "release_signature": list(proof["release_signature"]),
+                }
+                for proof in binding.alias_proofs
+            ],
             "all_alias_targets_are_catalog_unresolved": all(
                 binding.raw_label_by_name[name] == "-1"
                 for name in binding.alias_by_signature.values()
