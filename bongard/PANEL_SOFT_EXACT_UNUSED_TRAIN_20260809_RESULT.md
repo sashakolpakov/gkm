@@ -27,6 +27,17 @@ exact-image-unused validation tasks; all 1,800 TEST tasks remain sealed.  That
 is a large representation-engineering pool, but not 9,886 independent visual
 concepts: many task IDs reuse generator semantics already disclosed elsewhere.
 
+The distinction is large.  Under the frozen task parser, the 9,010 unused
+TRAIN IDs collapse to 10 Freeform semantic families, 184 Abstract semantic
+tuples, and 2,418 Basic morphology-pair keys over 304 morphology clusters.
+After excluding the current exposure closure (and the conservative Basic
+morphology block policy), only one Freeform family, one Abstract tuple, and 37
+Basic morphology pairs are fully semantics-disjoint; 328 exact TRAIN task IDs
+instantiate those keys.  Those 328 are not automatically spendable: reserve
+and cross-split disclosure protection still applies.  The EOD engineering
+drill should therefore sample exact-unused TRAIN images from already disclosed
+semantic strata, not consume a supposedly fresh concept reserve.
+
 ## Durable evidence
 
 The output root is
