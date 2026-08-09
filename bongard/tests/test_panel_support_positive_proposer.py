@@ -8,6 +8,12 @@ from types import SimpleNamespace
 
 import pytest
 
+from bongard import panel_support_positive_proposer as proposer_module
+from bongard.object_bongard_turn_journal import (
+    ObjectBongardNamedImageTurnJournalTransport,
+    ObjectBongardTurnJournalSummary,
+    ObjectBongardTurnRuntime,
+)
 from bongard.panel_support_positive_proposer import (
     SUPPORT_POSITIVE_PRESENTATION_NAMES,
     PositiveConjunctionRubric,
@@ -22,6 +28,7 @@ from bongard.panel_support_positive_proposer import (
     verify_support_positive_proposer_artifact,
 )
 from bongard.panel_typed_codex_observer import build_panel_only_observation_context
+from bongard.prototype_scene_observer import prototype_scene_transport_source_digest
 from bongard.tests.test_prototype_scene_observer import (
     EFFORT,
     LAUNCHER_DIGEST,
@@ -174,6 +181,15 @@ def test_prose_rejects_negative_threshold_or_code(
         _observe(first, second, request, payload, [])
 
 
+def test_cue_must_be_exact_ordered_join_of_components() -> None:
+    payload = _payload()
+    payload["cue_text"] = "convex carrier and two touching loops"
+    first, second = _groups()
+    request = _request(first, second)
+    with pytest.raises(SupportPositiveProposerError, match="exact ordered join"):
+        _observe(first, second, request, payload, [])
+
+
 def test_replay_binds_exact_pixels_and_only_durable_journal_is_sealable() -> None:
     first, second = _groups()
     request = _request(first, second)
@@ -189,22 +205,138 @@ def test_replay_binds_exact_pixels_and_only_durable_journal_is_sealable() -> Non
         )
 
     address = "sha256:" + "a" * 64
+    fake = SimpleNamespace(
+        terminal_status="success",
+        manifest_digest=address,
+        turn_key=address,
+        claim_digest=address,
+        result_digest=address,
+        outcome_digest=address,
+        record_digest=address,
+    )
+    with pytest.raises(SupportPositiveProposerError, match="durable success"):
+        SupportPositiveTransportProvenance.create(
+            "production_exactly_once_journal", journal_summary=fake
+        )
+
+    terminal = ObjectBongardTurnJournalSummary(
+        address, address, "success", address, address, address, address
+    )
     journal = SupportPositiveTransportProvenance.create(
-        "production_exactly_once_journal",
-        journal_summary=SimpleNamespace(
-            terminal_status="success",
-            manifest_digest=address,
-            turn_key=address,
-            claim_digest=address,
-            result_digest=address,
-            outcome_digest=address,
-            record_digest=address,
-        ),
+        "production_exactly_once_journal", journal_summary=terminal
     )
     assert journal.benchmark_sealable is True
+    with pytest.raises(SupportPositiveProposerError, match="non-journal proposer"):
+        verify_support_positive_proposer_artifact(
+            artifact,
+            first,
+            second,
+            expected_artifact_digest=artifact.artifact_digest,
+            proposer_journal_terminal=terminal,
+        )
+    with pytest.raises(SupportPositiveProposerError, match="non-journal transport"):
+        SupportPositiveTransportProvenance.create(
+            "production_direct", journal_summary=terminal
+        )
     assert SupportPositiveTransportProvenance.create(
         "production_direct"
     ).benchmark_sealable is False
     assert SupportPositiveTransportProvenance.create(
         "injected_unverified"
     ).benchmark_sealable is False
+
+
+def test_journaled_replay_requires_exact_external_terminal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = _groups()
+    request = _request(first, second)
+    payload = _payload()
+    calls = 0
+
+    def physical_transport(prompt, paths, names, schema, **kwargs):
+        nonlocal calls
+        calls += 1
+        return CodexStructuredResult(
+            deepcopy(payload), _receipt(prompt, paths, names, schema, payload)
+        )
+
+    monkeypatch.setattr(
+        proposer_module, "run_codex_named_images_structured", physical_transport
+    )
+    runtime = ObjectBongardTurnRuntime(
+        model=MODEL,
+        reasoning_effort=EFFORT,
+        minutes=15,
+        verbose=False,
+        executable="codex",
+        cloud_policy_cache_snapshot=None,
+        model_catalog_snapshot=NO_TOOLS_KWARGS["model_catalog_snapshot"],
+        expected_launcher_digest=LAUNCHER_DIGEST,
+        no_tools_attestation=NO_TOOLS_KWARGS["no_tools_attestation"],
+        transport_source_digest=prototype_scene_transport_source_digest(),
+    )
+    journal = ObjectBongardNamedImageTurnJournalTransport(
+        tmp_path / "journal",
+        authorization_digest="sha256:" + "a" * 64,
+        execution_precommit_digest="sha256:" + "c" * 64,
+        task_id="hd_positive_prose_fixture_0001",
+        turn_kind="positive_prose_support_proposer",
+        expected_prompt=support_positive_proposer_prompt(request),
+        expected_images=tuple(
+            zip(
+                SUPPORT_POSITIVE_PRESENTATION_NAMES,
+                (*first, *second),
+                strict=True,
+            )
+        ),
+        expected_output_schema=support_positive_proposer_output_schema(request),
+        runtime=runtime,
+        underlying_transport=physical_transport,
+    )
+    artifact = propose_support_positive_rubric(
+        first,
+        second,
+        request=request,
+        model=MODEL,
+        reasoning_effort=EFFORT,
+        expected_launcher_digest=LAUNCHER_DIGEST,
+        **NO_TOOLS_KWARGS,
+        transport=journal,
+    )
+    assert calls == 1
+    assert artifact.benchmark_sealable is True
+    terminal = journal.verify()
+
+    with pytest.raises(SupportPositiveProposerError, match="journal terminal"):
+        verify_support_positive_proposer_artifact(
+            artifact,
+            first,
+            second,
+            expected_artifact_digest=artifact.artifact_digest,
+        )
+    wrong = ObjectBongardTurnJournalSummary(
+        terminal.manifest_digest,
+        terminal.turn_key,
+        terminal.terminal_status,
+        terminal.claim_digest,
+        terminal.result_digest,
+        terminal.outcome_digest,
+        "sha256:" + "b" * 64,
+    )
+    with pytest.raises(SupportPositiveProposerError, match="journal terminal"):
+        verify_support_positive_proposer_artifact(
+            artifact,
+            first,
+            second,
+            expected_artifact_digest=artifact.artifact_digest,
+            proposer_journal_terminal=wrong,
+        )
+    assert verify_support_positive_proposer_artifact(
+        artifact,
+        first,
+        second,
+        expected_artifact_digest=artifact.artifact_digest,
+        proposer_journal_terminal=terminal,
+    ) == artifact
+    assert calls == 1

@@ -679,6 +679,7 @@ def test_exact_source_and_query_journals_form_one_sealable_cold_replay_chain(
         first_group,
         second_group,
         expected_artifact_digest=source.artifact_digest,
+        proposer_journal_terminal=support_journal.verify(),
     ) == source
     assert verify_positive_prose_panel_artifact(
         result,

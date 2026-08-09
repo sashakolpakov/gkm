@@ -26,6 +26,7 @@ from bongard.canonical import canonical_digest, canonical_json
 from bongard.codex_no_tools_preflight import CodexNoToolsAttestation
 from bongard.object_bongard_turn_journal import (
     ObjectBongardNamedImageTurnJournalTransport,
+    ObjectBongardTurnJournalSummary,
     object_bongard_turn_journal_source_digest,
 )
 from bongard.panel_typed_codex_observer import (
@@ -149,9 +150,9 @@ class PositiveConjunctionRubric:
             label="positive component 2",
             maximum=MAX_COMPONENT_UTF8_BYTES,
         )
-        if re.search(r"\band\b", cue, re.IGNORECASE) is None:
+        if cue != f"{first} and {second}":
             raise SupportPositiveProposerError(
-                "positive cue must state one explicit conjunction"
+                "positive cue must be the exact ordered join of its two components"
             )
         if first.casefold() == second.casefold():
             raise SupportPositiveProposerError(
@@ -398,7 +399,9 @@ def support_positive_proposer_prompt(request: SupportPositiveProposerRequest) ->
         "Group B may be heterogeneous: do not assume, infer, or describe one shared "
         "Group B rule. Propose exactly one short affirmative visual conjunction "
         "describing Group A. Use two visibly present affirmative components. The cue "
-        "must contain the word 'and'. Return only cue_text, component_1, and "
+        "must be formed byte-for-byte as component_1, then the literal lowercase "
+        "text ' and ', then component_2; do not paraphrase the components in "
+        "cue_text. Return only cue_text, component_1, and "
         "component_2 plus all twelve fixed per-drawing estimate fields. For the whole "
         "conjunction, mark each drawing supports, does_not_support, or unclear. Check "
         "all twelve independently. Python admits a cue only when all six Group A "
@@ -571,12 +574,15 @@ class SupportPositiveTransportProvenance:
 
     @classmethod
     def create(
-        cls, kind: str, *, journal_summary: object | None = None
+        cls,
+        kind: str,
+        *,
+        journal_summary: ObjectBongardTurnJournalSummary | None = None,
     ) -> "SupportPositiveTransportProvenance":
         if kind == "production_exactly_once_journal":
             if (
-                journal_summary is None
-                or getattr(journal_summary, "terminal_status", None) != "success"
+                type(journal_summary) is not ObjectBongardTurnJournalSummary
+                or journal_summary.terminal_status != "success"
             ):
                 raise SupportPositiveProposerError("journal is not a durable success")
             return cls(
@@ -584,12 +590,16 @@ class SupportPositiveTransportProvenance:
                 _transport_source_binding(kind),
                 True,
                 True,
-                getattr(journal_summary, "manifest_digest"),
-                getattr(journal_summary, "turn_key"),
-                getattr(journal_summary, "claim_digest"),
-                getattr(journal_summary, "result_digest"),
-                getattr(journal_summary, "outcome_digest"),
-                getattr(journal_summary, "record_digest"),
+                journal_summary.manifest_digest,
+                journal_summary.turn_key,
+                journal_summary.claim_digest,
+                journal_summary.result_digest,
+                journal_summary.outcome_digest,
+                journal_summary.record_digest,
+            )
+        if journal_summary is not None:
+            raise SupportPositiveProposerError(
+                "non-journal transport received journal terminal custody"
             )
         return cls(
             kind,
@@ -666,6 +676,41 @@ def _transport_provenance(transport: object) -> SupportPositiveTransportProvenan
     return SupportPositiveTransportProvenance.create("injected_unverified")
 
 
+def _verify_external_journal_terminal(
+    provenance: SupportPositiveTransportProvenance,
+    summary: ObjectBongardTurnJournalSummary | None,
+) -> None:
+    if provenance.kind != "production_exactly_once_journal":
+        if summary is not None:
+            raise SupportPositiveProposerError(
+                "non-journal proposer artifact received external journal custody"
+            )
+        return
+    if (
+        type(summary) is not ObjectBongardTurnJournalSummary
+        or summary.terminal_status != "success"
+        or (
+            summary.manifest_digest,
+            summary.turn_key,
+            summary.claim_digest,
+            summary.result_digest,
+            summary.outcome_digest,
+            summary.record_digest,
+        )
+        != (
+            provenance.journal_manifest_digest,
+            provenance.journal_turn_key,
+            provenance.journal_claim_digest,
+            provenance.journal_result_digest,
+            provenance.journal_outcome_digest,
+            provenance.journal_terminal_record_digest,
+        )
+    ):
+        raise SupportPositiveProposerError(
+            "external proposer journal terminal differs from artifact custody"
+        )
+
+
 def _contract_digest(request: SupportPositiveProposerRequest) -> str:
     return canonical_digest(
         {
@@ -679,6 +724,8 @@ def _contract_digest(request: SupportPositiveProposerRequest) -> str:
             "group_b_may_be_heterogeneous": True,
             "positive_conjunction_count": 1,
             "positive_component_count": 2,
+            "cue_text_is_exact_ordered_component_join": True,
+            "component_joiner": " and ",
             "per_drawing_estimate_count": SUPPORT_IMAGE_COUNT,
             "native_supports_required": 6,
             "contrast_does_not_support_required": 5,
@@ -970,8 +1017,9 @@ def verify_support_positive_proposer_artifact(
     group_b_pngs: Sequence[bytes],
     *,
     expected_artifact_digest: str,
+    proposer_journal_terminal: ObjectBongardTurnJournalSummary | None = None,
 ) -> SupportPositiveProposerArtifact:
-    """Cold replay pixels, source, prompt/schema/payload, receipt, and prose parser."""
+    """Cold replay pixels, source, journal custody, receipt, and prose parser."""
 
     if type(artifact) is not SupportPositiveProposerArtifact:
         raise TypeError("support positive replay needs SupportPositiveProposerArtifact")
@@ -979,6 +1027,9 @@ def verify_support_positive_proposer_artifact(
     restored = SupportPositiveProposerArtifact.from_data(artifact.to_data())
     if restored.artifact_digest != expected:
         raise SupportPositiveProposerError("support positive artifact differs from commitment")
+    _verify_external_journal_terminal(
+        restored.transport_provenance, proposer_journal_terminal
+    )
     first = _freeze_group(group_a_pngs, "group A")
     second = _freeze_group(group_b_pngs, "group B")
     rebuilt = SupportPositiveProposerRequest.build(first, second, runtime=restored.runtime)
