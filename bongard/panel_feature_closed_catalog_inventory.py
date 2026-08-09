@@ -183,6 +183,7 @@ def _complete_axes_data() -> list[dict[str, object]]:
     return [item.to_data() for item in complete_whole_panel_feature_axes()]
 
 
+@cache
 def _complete_axes_digest() -> str:
     return canonical_digest(
         {
