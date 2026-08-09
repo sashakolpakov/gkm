@@ -148,6 +148,34 @@ def _write_once_or_verify(path: Path, value: Mapping[str, Any]) -> None:
         os.close(parent)
 
 
+def _read_record(path: Path) -> dict[str, Any]:
+    if path.is_symlink():
+        raise PanelFeatureExposedSupportSmokeError(f"artifact is a symlink: {path}")
+    payload = path.read_bytes()
+    if not payload.endswith(b"\n"):
+        raise PanelFeatureExposedSupportSmokeError(f"artifact encoding differs: {path}")
+    try:
+        raw = json.loads(payload[:-1].decode("utf-8", errors="strict"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise PanelFeatureExposedSupportSmokeError(
+            f"artifact is malformed: {path}"
+        ) from exc
+    if (
+        not isinstance(raw, dict)
+        or canonical_json(raw) + b"\n" != payload
+        or type(raw.get("record_digest")) is not str
+    ):
+        raise PanelFeatureExposedSupportSmokeError(
+            f"artifact is not canonical: {path}"
+        )
+    body = {key: value for key, value in raw.items() if key != "record_digest"}
+    if raw["record_digest"] != "sha256:" + canonical_digest(body):
+        raise PanelFeatureExposedSupportSmokeError(
+            f"artifact digest differs: {path}"
+        )
+    return raw
+
+
 def _read_source(path: Path) -> tuple[
     ObjectBongardTaskPlan, tuple[str, ...], tuple[bytes, ...], str
 ]:
@@ -276,6 +304,54 @@ def _runtime(
     launcher_sha256: str,
     verbose: bool,
 ) -> tuple[ObjectBongardTurnRuntime, dict[str, Any]]:
+    prior_path = output_root / "runtime.json"
+    if prior_path.exists():
+        prior = _read_record(prior_path)
+        try:
+            cache_encoded = prior["cloud_policy_cache_base64"]
+            cache = CloudPolicyCacheSnapshot(
+                None
+                if cache_encoded is None
+                else base64.b64decode(cache_encoded, validate=True)
+            )
+            catalog = CodexModelCatalogSnapshot(
+                base64.b64decode(prior["model_catalog_base64"], validate=True)
+            )
+            attestation = CodexNoToolsAttestation.from_mapping(
+                prior["no_tools_attestation"]
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise PanelFeatureExposedSupportSmokeError(
+                "stored runtime preimages differ"
+            ) from exc
+        fingerprint = codex_cli_authenticated_fingerprint(
+            executable, expected_launcher_digest=launcher_sha256
+        )
+        runtime = ObjectBongardTurnRuntime(
+            model=model,
+            reasoning_effort=reasoning_effort,
+            minutes=minutes,
+            verbose=verbose,
+            executable=executable,
+            cloud_policy_cache_snapshot=cache,
+            model_catalog_snapshot=catalog,
+            expected_launcher_digest=launcher_sha256,
+            no_tools_attestation=attestation,
+            transport_source_digest=prototype_scene_transport_source_digest(),
+        )
+        if (
+            prior.get("schema")
+            != "gkm.bongard-panel-feature-exposed-support-runtime.v1"
+            or prior.get("authorization_digest") != authorization["record_digest"]
+            or prior.get("execution_precommit_digest") != precommit["record_digest"]
+            or prior.get("launcher_fingerprint") != dict(fingerprint)
+            or prior.get("runtime_binding") != runtime.binding
+        ):
+            raise PanelFeatureExposedSupportSmokeError(
+                "stored runtime differs from the live pinned replay request"
+            )
+        return runtime, prior
+
     cache = snapshot_cloud_policy_cache()
     catalog = snapshot_pinned_model_catalog()
     fingerprint = codex_cli_authenticated_fingerprint(
