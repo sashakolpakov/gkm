@@ -165,6 +165,9 @@ PANEL_SOFT_CAMPAIGN_REPLAY_SUMMARY_SCHEMA = (
     "gkm.bongard-panel-soft-campaign-replay-summary.v1"
 )
 PANEL_SOFT_CAMPAIGN_ID = "bongard.panel-soft/exact-unused-train-engineering-v1"
+PANEL_SOFT_CAMPAIGN_MODULE_NAME = (
+    "bongard.panel_soft_engineering_campaign_command"
+)
 DEFAULT_SELECTION_SEED = "panel-soft-exact-unused-train-20260809-v1"
 DEFAULT_SELECTED_TASK_IDS = (
     "bd_open_s-exist_quadrangle_five_lines9_0000",
@@ -2040,6 +2043,16 @@ def panel_soft_engineering_campaign_source_bindings() -> dict[str, str]:
     }
 
 
+def _build_panel_soft_engineering_campaign_source_manifest(
+) -> ObjectSceneAnchorSourceManifest:
+    """Build the closure under the canonical import name, including `-m` runs."""
+
+    return build_object_scene_anchor_source_manifest(
+        root_module=PANEL_SOFT_CAMPAIGN_MODULE_NAME,
+        repository_root=_ROOT,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class PreparedPanelSoftEngineeringCampaign:
     output_root: Path
@@ -2539,9 +2552,7 @@ def prepare_panel_soft_engineering_campaign(
         executable=executable,
         expected_launcher_sha256=expected_launcher_sha256,
     )
-    source_manifest = build_object_scene_anchor_source_manifest(
-        root_module=__name__, repository_root=_ROOT
-    )
+    source_manifest = _build_panel_soft_engineering_campaign_source_manifest()
     cold_verify_object_scene_anchor_source_manifest(
         source_manifest,
         repository_root=_ROOT,

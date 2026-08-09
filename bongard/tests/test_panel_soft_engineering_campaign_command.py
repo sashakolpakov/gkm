@@ -370,6 +370,36 @@ def test_preparation_never_reads_panel_and_mirror_tamper_fails_closed(
         campaign.__post_init__()
 
 
+def test_source_manifest_uses_canonical_module_name_under_dash_m(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+    sentinel = object()
+
+    def fake_builder(*, root_module, repository_root):
+        captured.update(
+            root_module=root_module,
+            repository_root=repository_root,
+        )
+        return sentinel
+
+    monkeypatch.setattr(campaign_module, "__name__", "__main__")
+    monkeypatch.setattr(
+        campaign_module,
+        "build_object_scene_anchor_source_manifest",
+        fake_builder,
+    )
+
+    assert (
+        campaign_module._build_panel_soft_engineering_campaign_source_manifest()
+        is sentinel
+    )
+    assert captured == {
+        "root_module": "bongard.panel_soft_engineering_campaign_command",
+        "repository_root": campaign_module._ROOT,
+    }
+
+
 def test_fixed_denominator_and_external_campaign_replay_with_failed_turns(
     tmp_path: Path,
 ) -> None:
