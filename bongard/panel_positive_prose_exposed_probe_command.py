@@ -49,13 +49,16 @@ from bongard import prototype_scene_observer as _scene_runtime
 from bongard.transport import run_codex_named_images_structured
 
 
-PROBE_SCHEMA = "gkm.bongard-positive-prose-exposed-support-probe.v2"
+PROBE_SCHEMA = "gkm.bongard-positive-prose-exposed-support-probe.v3"
 AUTHORIZATION_SCHEMA = (
-    "gkm.bongard-positive-prose-exposed-support-authorization.v2"
+    "gkm.bongard-positive-prose-exposed-support-authorization.v3"
 )
-PRECOMMIT_SCHEMA = "gkm.bongard-positive-prose-exposed-support-precommit.v2"
-CUE_SCHEMA = "gkm.bongard-positive-conjunction-cue.v2"
+PRECOMMIT_SCHEMA = "gkm.bongard-positive-prose-exposed-support-precommit.v3"
+CUE_SCHEMA = "gkm.bongard-positive-conjunction-cue.v3"
 OBSERVATION_SCHEMA = "gkm.bongard-positive-prose-panel-observation.v1"
+KNOWN_SEMANTIC_CUE_SCHEMA = (
+    "gkm.bongard-positive-prose-known-semantic-cue-preregistration.v1"
+)
 DEFAULT_OUTPUT_ROOT = Path(
     "downloads/ShapeBongard_V2_full/"
     "panel_positive_prose_exposed_probe_20260809_v2"
@@ -167,7 +170,7 @@ def _observer_prompt(cue: Mapping[str, str]) -> str:
         + "\nEND_FROZEN_POSITIVE_CUE\n\n"
         "Return the narrowest honest inclusive interval on this fixed scale:\n"
         "0: the complete drawing clearly does not instantiate the full cue;\n"
-        "1: evidence weighs against the full cue, including a clearly missing "
+        "1: direct visible evidence decisively contradicts at least one required "
         "component;\n"
         "2: genuinely uncertain, tied, unresolved, or only one component is "
         "resolvable;\n"
@@ -239,19 +242,76 @@ def _interval(payload: object) -> tuple[int, int, Disposition]:
     return lower, upper, disposition
 
 
-def _authorization(task, panel_ids, panels, source_digest):
-    authorization = _record(
-        {
+def _load_frozen_semantic_cue(path: str | Path) -> tuple[dict[str, Any], str]:
+    source = Path(os.path.abspath(os.fspath(path)))
+    if source.is_symlink() or not source.is_file():
+        raise PositiveProseExposedProbeError("frozen cue file is unsafe")
+    raw = source.read_bytes()
+    try:
+        value = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise PositiveProseExposedProbeError("frozen cue is not canonical JSON") from exc
+    if type(value) is not dict or raw != canonical_json(value) + b"\n":
+        raise PositiveProseExposedProbeError("frozen cue bytes are not canonical")
+    digest = value.get("record_digest")
+    body = dict(value)
+    body.pop("record_digest", None)
+    if digest != "sha256:" + canonical_digest(body):
+        raise PositiveProseExposedProbeError("frozen cue record digest differs")
+    required_flags = {
+        "schema": KNOWN_SEMANTIC_CUE_SCHEMA,
+        "support_only_exposed_probe_authorized": True,
+        "query_pixels_authorized": False,
+        "target_support_or_query_pixels_read_before_commit": False,
+        "headless_model_generated": False,
+        "semantic_reuse": True,
+        "one_positive_conjunction_only": True,
+        "negative_description_present": False,
+        "negation_or_polarity_flip_allowed": False,
+        "prose_is_inert": True,
+        "python_is_canonical_authority": True,
+        "engineering_only": True,
+        "scientific_benchmark": False,
+        "official_test_authorized": False,
+        "closed_slate_headless_selection_required_before_target": True,
+        "lean_present": False,
+        "lean_required": False,
+        "lean_removable": True,
+    }
+    if any(value.get(name) != expected for name, expected in required_flags.items()):
+        raise PositiveProseExposedProbeError("frozen cue authority flags differ")
+    text = {
+        name: value.get(name)
+        for name in ("cue_text", "component_1", "component_2")
+    }
+    if any(type(item) is not str for item in text.values()):
+        raise PositiveProseExposedProbeError("frozen cue prose differs")
+    if text["component_1"] == text["component_2"]:
+        raise PositiveProseExposedProbeError("frozen cue components are identical")
+    if " and " not in text["cue_text"].lower():
+        raise PositiveProseExposedProbeError("frozen cue is not an affirmative conjunction")
+    return value, hashlib.sha256(raw).hexdigest()
+
+
+def _authorization(
+    task,
+    panel_ids,
+    panels,
+    source_digest,
+    *,
+    frozen_cue_record: Mapping[str, Any] | None = None,
+    frozen_cue_file_sha256: str | None = None,
+):
+    frozen = frozen_cue_record is not None
+    if frozen != (frozen_cue_file_sha256 is not None):
+        raise PositiveProseExposedProbeError("frozen cue custody is incomplete")
+    content: dict[str, Any] = {
             "schema": AUTHORIZATION_SCHEMA,
             "command_source_digest": positive_prose_exposed_probe_source_digest(),
             "source_archive_sha256": source_digest,
             "task_plan": task.to_data(),
             "support_panel_ids": list(panel_ids),
             "support_png_sha256": [hashlib.sha256(item).hexdigest() for item in panels],
-            "proposer_prompt_digest": hashlib.sha256(
-                _proposer_prompt().encode("utf-8")
-            ).hexdigest(),
-            "proposer_schema_digest": canonical_digest(_strict_proposer_schema()),
             "primary_orientation": "side0_positive",
             "one_positive_conjunction_only": True,
             "negative_description_or_formula_required": False,
@@ -261,13 +321,41 @@ def _authorization(task, panel_ids, panels, source_digest):
             "lean_present": False,
             "lean_required": False,
             "lean_removable": True,
+            "cue_origin": (
+                "preregistered_known_semantic_reuse"
+                if frozen
+                else "support_only_headless_proposer"
+            ),
+            "headless_model_generated": not frozen,
+            "semantic_reuse": frozen,
+            "closed_slate_headless_selection_required_before_target": frozen,
         }
-    )
+    if frozen:
+        content.update(
+            {
+                "frozen_cue_record_digest": frozen_cue_record["record_digest"],
+                "frozen_cue_file_sha256": frozen_cue_file_sha256,
+            }
+        )
+    else:
+        content.update(
+            {
+                "proposer_prompt_digest": hashlib.sha256(
+                    _proposer_prompt().encode("utf-8")
+                ).hexdigest(),
+                "proposer_schema_digest": canonical_digest(_strict_proposer_schema()),
+            }
+        )
+    authorization = _record(content)
     precommit = _record(
         {
             "schema": PRECOMMIT_SCHEMA,
             "authorization_digest": authorization["record_digest"],
-            "physical_call_plan": {"positive_proposer": 1, "support_observers": 12, "query": 0},
+            "physical_call_plan": {
+                "positive_proposer": 0 if frozen else 1,
+                "support_observers": 12,
+                "query": 0,
+            },
             "absolute_scale": [0, 1, 2, 3, 4],
             "present_when_lower_at_least": 3,
             "certified_absent_when_upper_at_most": 1,
@@ -281,6 +369,8 @@ def _authorization(task, panel_ids, panels, source_digest):
             "exactly_once_journals_required": True,
             "query_release_or_observation_authorized": False,
             "negation_or_polarity_flip_allowed": False,
+            "cue_origin": content["cue_origin"],
+            "known_semantic_cue_cannot_authorize_target": frozen,
         }
     )
     return authorization, precommit
@@ -369,6 +459,7 @@ def run_positive_prose_exposed_probe(
     launcher_sha256: str = DEFAULT_LAUNCHER_SHA256,
     workers: int = 4,
     verbose: bool = False,
+    frozen_cue_file: str | Path | None = None,
 ) -> dict[str, Any]:
     if type(workers) is not int or not 1 <= workers <= 12:
         raise PositiveProseExposedProbeError("workers must lie in 1..12")
@@ -378,7 +469,20 @@ def run_positive_prose_exposed_probe(
     if root.is_symlink() or not root.is_dir():
         raise PositiveProseExposedProbeError("output root is unsafe")
     task, panel_ids, panels, source_digest = _read_source(source)
-    authorization, precommit = _authorization(task, panel_ids, panels, source_digest)
+    frozen_cue_record = None
+    frozen_cue_file_sha256 = None
+    if frozen_cue_file is not None:
+        frozen_cue_record, frozen_cue_file_sha256 = _load_frozen_semantic_cue(
+            frozen_cue_file
+        )
+    authorization, precommit = _authorization(
+        task,
+        panel_ids,
+        panels,
+        source_digest,
+        frozen_cue_record=frozen_cue_record,
+        frozen_cue_file_sha256=frozen_cue_file_sha256,
+    )
     _write_once_or_verify(root / "authorization.json", authorization)
     _write_once_or_verify(root / "execution_precommit.json", precommit)
     runtime, runtime_evidence = _runtime(
@@ -393,41 +497,67 @@ def run_positive_prose_exposed_probe(
         verbose=verbose,
     )
 
-    proposer_prompt = _proposer_prompt()
-    proposer_schema = _strict_proposer_schema()
-    proposer_images = tuple(zip(PANEL_FEATURE_PRESENTATION_NAMES, panels, strict=True))
-    proposer_journal = ObjectBongardNamedImageTurnJournalTransport(
-        root / "journals" / "positive_proposer",
-        authorization_digest=authorization["record_digest"],
-        execution_precommit_digest=precommit["record_digest"],
-        task_id=task.task_id,
-        turn_kind="positive_prose_proposer",
-        expected_prompt=proposer_prompt,
-        expected_images=proposer_images,
-        expected_output_schema=proposer_schema,
-        runtime=runtime,
-        underlying_transport=run_codex_named_images_structured,
-    )
-    cue_payload, proposer_receipt = _call(
-        proposer_images,
-        prompt=proposer_prompt,
-        schema=proposer_schema,
-        journal=proposer_journal,
-        runtime=runtime,
-    )
-    cue_values = _cue(cue_payload)
-    cue = _record(
-        {
-            "schema": CUE_SCHEMA,
-            **cue_values,
-            "proposer_receipt_digest": proposer_receipt.receipt_digest,
-            "one_positive_conjunction_only": True,
-            "negative_description_present": False,
-            "prose_executable": False,
-            "python_selects_threshold": True,
-        }
-    )
-    proposer_summary = proposer_journal.verify().to_data()
+    proposer_summary = None
+    if frozen_cue_record is None:
+        proposer_prompt = _proposer_prompt()
+        proposer_schema = _strict_proposer_schema()
+        proposer_images = tuple(zip(PANEL_FEATURE_PRESENTATION_NAMES, panels, strict=True))
+        proposer_journal = ObjectBongardNamedImageTurnJournalTransport(
+            root / "journals" / "positive_proposer",
+            authorization_digest=authorization["record_digest"],
+            execution_precommit_digest=precommit["record_digest"],
+            task_id=task.task_id,
+            turn_kind="positive_prose_proposer",
+            expected_prompt=proposer_prompt,
+            expected_images=proposer_images,
+            expected_output_schema=proposer_schema,
+            runtime=runtime,
+            underlying_transport=run_codex_named_images_structured,
+        )
+        cue_payload, proposer_receipt = _call(
+            proposer_images,
+            prompt=proposer_prompt,
+            schema=proposer_schema,
+            journal=proposer_journal,
+            runtime=runtime,
+        )
+        cue_values = _cue(cue_payload)
+        cue = _record(
+            {
+                "schema": CUE_SCHEMA,
+                **cue_values,
+                "proposer_receipt_digest": proposer_receipt.receipt_digest,
+                "cue_origin": "support_only_headless_proposer",
+                "headless_model_generated": True,
+                "semantic_reuse": False,
+                "one_positive_conjunction_only": True,
+                "negative_description_present": False,
+                "prose_executable": False,
+                "python_selects_threshold": True,
+            }
+        )
+        proposer_summary = proposer_journal.verify().to_data()
+    else:
+        cue = _record(
+            {
+                "schema": CUE_SCHEMA,
+                "cue_text": frozen_cue_record["cue_text"],
+                "component_1": frozen_cue_record["component_1"],
+                "component_2": frozen_cue_record["component_2"],
+                "source_frozen_cue_record_digest": frozen_cue_record[
+                    "record_digest"
+                ],
+                "source_frozen_cue_file_sha256": frozen_cue_file_sha256,
+                "cue_origin": "preregistered_known_semantic_reuse",
+                "headless_model_generated": False,
+                "semantic_reuse": True,
+                "one_positive_conjunction_only": True,
+                "negative_description_present": False,
+                "prose_executable": False,
+                "python_selects_threshold": True,
+                "cannot_authorize_target_without_closed_slate_selection": True,
+            }
+        )
     _write_once_or_verify(root / "positive_cue.json", cue)
 
     observations: list[dict[str, Any] | None] = [None] * 12
@@ -476,7 +606,8 @@ def run_positive_prose_exposed_probe(
             "contrast_dispositions": list(contrast),
             "support_consistent": support_consistent,
             "status": "support_pass" if support_consistent else "support_gap",
-            "physical_model_calls": 13,
+            "physical_model_calls": 12 if frozen_cue_record is not None else 13,
+            "proposer_model_calls": 0 if frozen_cue_record is not None else 1,
             "proposer_journal": proposer_summary,
             "observer_journals": [item for item in summaries if item is not None],
             "query_release_calls": 0,
@@ -488,6 +619,12 @@ def run_positive_prose_exposed_probe(
             "negation_or_polarity_flip_allowed": False,
             "engineering_only": True,
             "scientific_benchmark": False,
+            "cue_origin": authorization["cue_origin"],
+            "headless_model_generated": authorization["headless_model_generated"],
+            "semantic_reuse": authorization["semantic_reuse"],
+            "known_semantic_cue_cannot_authorize_target": (
+                frozen_cue_record is not None
+            ),
             "python_is_canonical_authority": True,
             "lean_present": False,
             "lean_required": False,
@@ -509,6 +646,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--launcher-sha256", default=DEFAULT_LAUNCHER_SHA256)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--frozen-cue-file")
     args = parser.parse_args(argv)
     result = run_positive_prose_exposed_probe(
         source_archive=args.source_archive,
@@ -520,6 +658,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         launcher_sha256=args.launcher_sha256,
         workers=args.workers,
         verbose=args.verbose,
+        frozen_cue_file=args.frozen_cue_file,
     )
     print(result["record_digest"])
     return 0

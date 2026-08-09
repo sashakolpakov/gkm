@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 
 import pytest
 
@@ -11,6 +12,7 @@ from bongard.panel_positive_prose_exposed_probe_command import (
     _authorization,
     _cue,
     _interval,
+    _load_frozen_semantic_cue,
     run_positive_prose_exposed_probe,
 )
 
@@ -75,3 +77,37 @@ def test_probe_precommit_has_no_query_or_negative_predicate_surface() -> None:
         "query" not in name
         for name in inspect.signature(run_positive_prose_exposed_probe).parameters
     )
+
+
+def test_preregistered_known_cue_skips_proposer_and_cannot_authorize_target() -> None:
+    cue_path = (
+        Path(__file__).parents[1]
+        / "data"
+        / "panel_positive_prose_known_semantic_cue_20260809_v1.json"
+    )
+    cue, cue_file_sha256 = _load_frozen_semantic_cue(cue_path)
+    task = ObjectBongardTaskPlan.create(
+        "hd_convex-has_four_straight_lines_0001",
+        seed_digest="sha256:" + "34" * 32,
+    )
+    ids = task.side_0_support_panel_ids + task.side_1_support_panel_ids
+    panels = tuple(b"support" + bytes([index]) for index in range(12))
+    authorization, precommit = _authorization(
+        task,
+        ids,
+        panels,
+        "ab" * 32,
+        frozen_cue_record=cue,
+        frozen_cue_file_sha256=cue_file_sha256,
+    )
+
+    assert authorization["cue_origin"] == "preregistered_known_semantic_reuse"
+    assert authorization["headless_model_generated"] is False
+    assert authorization["query_pixels_available"] is False
+    assert authorization["frozen_cue_record_digest"] == cue["record_digest"]
+    assert precommit["physical_call_plan"] == {
+        "positive_proposer": 0,
+        "support_observers": 12,
+        "query": 0,
+    }
+    assert precommit["known_semantic_cue_cannot_authorize_target"] is True
