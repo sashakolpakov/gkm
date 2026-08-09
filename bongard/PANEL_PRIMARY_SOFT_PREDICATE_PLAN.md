@@ -35,12 +35,15 @@ exact panel pixels
 -> model-free, tamper-detecting replay
 ```
 
-This document is a design and the new Python module is only a closed semantic
-scaffold.  It does **not** yet implement the vision proposer/observer, a sealed
-calibration receipt, freeze-before-query chronology, pixel custody, replay, or
-benchmark authority.  Those are blockers to calling this lane a scientific
-benchmark.  Supplying an arbitrary digest is not a calibration receipt and
-cannot enable `present`, `certified_absent`, or support survivors.
+The engineering lane now implements the closed Python semantics, one receipted
+support-only whole-panel proposer, two receipted complete-vocabulary observer
+turns per panel, exact support-parent reconstruction, typed support gaps,
+byte-exact freeze/reload before the query callback, fixed-denominator query
+scoring, and model-free tamper-detecting replay.  It does **not** yet implement
+a sealed scientific calibration receipt or the campaign-level official-release
+and cross-task custody wrapper.  Those remain blockers to calling this lane a
+scientific benchmark.  Supplying an arbitrary digest is not a calibration
+receipt and cannot enable scientific `present` or `certified_absent` states.
 
 Typed geometry, object crops, and part atlases may accompany a panel as
 additional evidence.  They may refine or explain an atom, but an empty,
@@ -58,9 +61,11 @@ oblique corners`, or `one broad smooth sweep`.  Its identity binds:
 - the observer model, prompt, output schema, image presentation, atom order,
   batch composition, and repeat policy.
 
-The scaffold can bind declared digests for these fields, but it does not prove
-that an observer call used them.  That requires a sealed call receipt and
-custody verifier outside the current module.
+The proposer and observer artifacts bind these fields to exact named-image
+receipts and can be cold-verified against archived PNG bytes.  The task runner
+also requires every support artifact to reconstruct the exact frozen table.
+Campaign-level release receipts must still prove that each archived byte string
+belongs to the claimed official panel ID.
 
 Prose is data, never executable source.  Python supplies the only executable
 operators.  The initial language contains atoms and positive conjunctions;
@@ -69,13 +74,12 @@ post-query formula change.
 
 ## What is and is not rigorous
 
-Python is sufficient to rigorously check formula construction, support
-consistency, four-valued evaluation and, once their receipt layers exist,
-provenance, chronology, freezing, and replay.  The current scaffold implements
-the closed formula/observation semantics only; it does not implement those
-receipt layers.  Lean may remain as an optional checker/export target, but it
-is not part of predicate identity or benchmark semantics and must be removable
-without changing a decision.
+Python rigorously checks formula construction, support consistency, four-valued
+evaluation, receipt provenance, task-level chronology, freezing, and replay.
+The current scientific projection remains deliberately uncalibrated.  Lean may
+remain as an optional checker/export target, but it is not part of predicate
+identity or benchmark semantics and must be removable without changing a
+decision.
 
 Neither Python nor Lean proves from pixels alone that a phrase such as
 `bird-like` is visually true.  That claim comes from the frozen vision
@@ -115,6 +119,31 @@ Support and query panels must use the same deployed instrument:
 Observing the full proposed vocabulary on support but only the selected atoms
 on query is a protocol change and is not allowed.  Proposer citations are
 provenance, not a different support truth semantics.
+
+The official metadata mapping is deliberately non-obvious: semantic `side_0`
+uses physical archive directory `1`, while semantic `side_1` uses directory
+`0`.  A path numeral is therefore never interpreted as a semantic side.  The
+proposer only accepts two neutral six-panel blocks; the task runner alone binds
+their exact ordered IDs to a frozen `ObjectBongardTaskPlan`.
+
+## Why an apparent negation can win
+
+There are four distinct failure modes that can make a complement look better
+than the proposed predicate without discovering a better visual rule:
+
+- a panel/side mapping error reverses the intended orientation;
+- a failed extraction or uncertain fit is collapsed to Boolean false, after
+  which negation converts missing capability into apparent evidence;
+- the proposer describes the contrast group and a later polarity-repair pass
+  silently reverses it; or
+- searching both a candidate and its complement doubles a support-fitted
+  hypothesis class and selects whichever orientation resubstitutes better.
+
+The replacement closes all four operational routes: exact task-plan binding,
+four-valued failures, native-orientation atoms, and no `Not`, complement, or
+polarity-repair operator.  A side prediction additionally requires a two-sided
+witness: its native formula must match and the other native formula must
+nonmatch.  Nonmatch alone never predicts the opposite side.
 
 ## EOD engineering drill versus scientific benchmark
 
@@ -165,8 +194,9 @@ A nonmatch by itself never predicts the opposite side.  Two matches, two
 nonmatches, disagreement, or indeterminacy abstain; any error produces an error.
 Every operational artifact and enum is labelled `engineering_only`,
 `uncalibrated`, not scientific evidence, and not benchmark-authoritative.
-Freeze-before-query chronology and sealed call receipts remain external
-blockers and are recorded as unverified on these artifacts.
+The task runner now verifies sealed proposer/observer calls and freeze-before-
+query callback chronology.  Campaign-level proof that official query bytes were
+not read before that callback remains external.
 
 Python remains the canonical executable semantics for both paths.  Lean is an
 optional cross-check/export target and can be removed without changing formula
@@ -175,13 +205,16 @@ identity, survivor selection, or query decisions.
 A `scientific_benchmark` label remains blocked until all of the following are
 implemented and verified:
 
-- sealed proposer and observer call receipts tied to exact input pixels;
 - a non-forgeable calibration authority for both presence and absence under
   the exact observer contract;
-- formula freeze before any query pixels are created or released;
+- campaign-level official-release receipts and a durable exposure precommit
+  before any selected pixels are read;
+- campaign enforcement that query PNGs are first read inside the post-freeze
+  query callback;
 - identical support/query observation context, enforced from receipts rather
-  than asserted by caller-provided digests;
-- model-free, tamper-detecting replay with an explicit benchmark authority.
+  than asserted by caller-provided digests; and
+- an explicit scientific benchmark authority over the existing model-free,
+  tamper-detecting task replay.
 
 ## Synthesis and reporting
 
@@ -202,20 +235,16 @@ and the missing-authority gap explicitly.
 
 ## Immediate implementation order
 
-1. Add the direct whole-panel atom proposer and observer lane using raw panel
-   custody and transport primitives already present in the panel-rubric code.
-   Do not reuse its paired A-versus-B rubric or decision rule.
-2. Keep the closed backend-neutral atom/conjunction IR and Python interpreter;
-   its current vote projection is intentionally indeterminate/error only.
-3. Build sealed observer receipts and complete support observation tables, then
-   enforce the identical selected-vector protocol on query from those receipts.
+1. Finish the receipted support-only Codex ranker over the verified survivor
+   inventory.  Do not relabel the deterministic shortest-formula baseline as a
+   rank response.
+2. Finish the official-release campaign wrapper, global call-identity checks,
+   durable exposure successor, and zero-call campaign replay.
+3. Run the explicitly labelled engineering diagnostic on the preregistered
+   exact-unused TRAIN cohort; keep official test pixels sealed.
 4. Define and verify a typed calibration artifact for both presence and
    absence.  Do not add a digest-only enable switch.
-5. Implement freeze-before-query custody and model-free replay authority.
-6. Retain object/part geometry as optional typed evidence, with bounded
+5. Retain object/part geometry as optional typed evidence, with bounded
    preprocessing and paginated atlases.
-7. Run explicitly labelled engineering diagnostics on exact-unused TRAIN while
-   the authority blockers remain.  Promote to scientific benchmarking only
-   after the gates above pass, then remove superseded paired-rubric
-   and mandatory-anchor paths only after the replacement passes replay and
-   equivalence gates.
+6. Remove superseded paired-rubric and mandatory-anchor paths only after the
+   replacement passes live release, replay, and equivalence gates.
