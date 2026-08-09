@@ -518,6 +518,53 @@ def test_target_structural_mismatch_is_error_never_negative(setup) -> None:
         ) is Disposition.ERROR
 
 
+def test_target_cross_atom_citation_mismatch_is_error_never_absence(setup) -> None:
+    manifests, target_ids, _, base_language, _ = setup
+    panel_id = target_ids[0]
+    manifest = manifests[panel_id]
+    first_atom, second_atom, *remaining_atoms = base_language.atoms
+    catalogs = _catalogs(manifest, second_atom.binding_spec)
+    replacement_citation = ObjectSceneAnchorAtomCitation.create(
+        panel_id,
+        manifest.manifest_digest,
+        _catalogs_digest(manifest, second_atom.binding_spec, catalogs),
+        catalogs[1].bindings[0],
+    )
+    replacement_atom = ObjectSceneAnchorPredicateAtom.create(
+        source_card_digest=second_atom.source_card_digest,
+        orientation=second_atom.orientation,
+        binding_spec=second_atom.binding_spec,
+        witness_digests=second_atom.witness_digests,
+        positive_support_citations=tuple(
+            replacement_citation if item.panel_id == panel_id else item
+            for item in second_atom.positive_support_citations
+        ),
+    )
+    language = ObjectSceneAnchorPredicateLanguage.create(
+        source_proposal_digest=_sha("cross-atom-citation-mismatch"),
+        vocabulary=base_language.vocabulary,
+        atoms=(first_atom, replacement_atom, *remaining_atoms),
+    )
+    panel = _panel_evaluation(
+        panel_id,
+        manifest,
+        language,
+        lambda *_: Disposition.PRESENT,
+    )
+    candidate = next(
+        item
+        for item in enumerate_object_scene_anchor_candidates(
+            language, ObjectSceneAnchorOrientation.SIDE0_POSITIVE
+        )
+        if item.atom_digests
+        == tuple(sorted((first_atom.atom_digest, replacement_atom.atom_digest)))
+    )
+
+    assert evaluate_object_scene_anchor_candidate_on_target(
+        candidate, language, panel
+    ) is Disposition.ERROR
+
+
 def test_exact_card_adapter_emits_one_atom_per_affirmative_witness(setup) -> None:
     manifests, target_ids, contrast_ids, _, _ = setup
     side0 = {

@@ -1492,7 +1492,9 @@ def evaluate_object_scene_anchor_candidate_on_target(
         (item.binding.object_id, item.binding.binding_digest) for item in citations
     }
     if len(cited_keys) != 1:
-        return Disposition.CERTIFIED_ABSENT
+        # The atoms cite incompatible positive witnesses.  That is a malformed
+        # candidate binding, not visual evidence that the conjunction is absent.
+        return Disposition.ERROR
     cited_object_id, cited_digest = next(iter(cited_keys))
     object_matches = tuple(
         item for item in matrix.objects if item.object_id == cited_object_id
