@@ -12,14 +12,16 @@ never selected from proposer nominations.  Nominated owner-local features are
 retained in the vocabulary, but evaluate deterministically as indeterminate
 because their axes are outside this deployment catalog.
 
-Exactly one survivor per orientation is required.  Multiple survivors are a
-typed selection gap; this runner never chooses one by digest order.  The sole
-pair is sealed in a content-addressed task-freeze object implementing the
-repository's official release-gate protocol.  Query pixels remain sealed until
-that exact freeze and its decision commit have both been durably persisted and
-reloaded.  Pixel release and candidate-neutral observation are separate calls:
-neither callback receives the frozen predicate.  A content-addressed archive
-then supports model-free replay with no callbacks.
+Zero survivors remain a typed support gap.  A unique survivor in each native
+orientation needs no rank call.  Any nonempty multi-survivor space can proceed
+only through an exact benchmark-sealable ``PanelFeatureRankArtifact`` bound to
+the proposer, table, partitions, and both spaces; otherwise it remains a
+selection gap.  The two explicit selected formula digests are sealed in a
+content-addressed task freeze.  Query pixels remain sealed until that exact
+freeze and its decision commit have both been durably persisted and reloaded.
+Pixel release and candidate-neutral observation are separate calls: neither
+callback receives the frozen predicate.  A content-addressed archive then
+supports model-free replay with no callbacks.
 
 This module is deliberately engineering-only and uncalibrated.  Python is the
 executable predicate authority.  Lean is neither imported nor required and
@@ -66,12 +68,13 @@ from bongard.panel_batched_typed_codex_observer import (
     complete_whole_panel_feature_axes,
 )
 from bongard.panel_feature_predicate import (
+    AllOf,
     EngineeringDisposition,
     EngineeringFeatureVersionSpace,
-    EngineeringQueryDecision,
+    EngineeringQueryOutcome,
     EngineeringSupportTable,
     FeatureVocabulary,
-    FrozenEngineeringFeaturePredicatePair,
+    evaluate_engineering_all_of,
 )
 from bongard.panel_feature_proposer import (
     PANEL_FEATURE_OBSERVER_VOCABULARY_SCHEMA,
@@ -88,6 +91,10 @@ from bongard.panel_feature_proposer import (
     PanelFeatureProposerResult,
     panel_feature_proposer_contract_digest,
 )
+from bongard.panel_feature_ranker import (
+    PanelFeatureRankArtifact,
+    PanelFeatureRankInput,
+)
 from bongard.panel_soft_ontology import (
     LanguageGapArtifact,
     NativeFeatureProposal,
@@ -99,21 +106,33 @@ from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 
 PANEL_FEATURE_TASK_RUNNER_ID = (
+    "bongard.panel-feature-task/verified-support-rank-durable-freeze-python-v4"
+)
+PANEL_FEATURE_SUPPORT_DERIVATION_RUNNER_ID = (
     "bongard.panel-feature-task/complete-whole-panel-batch-durable-freeze-python-v3"
 )
-PANEL_FEATURE_TASK_ARCHIVE_SCHEMA = "gkm.bongard-panel-feature-task-archive.v3"
+PANEL_FEATURE_TASK_ARCHIVE_SCHEMA = "gkm.bongard-panel-feature-task-archive.v4"
 PANEL_FEATURE_TASK_SUPPORT_GAP_SCHEMA = (
     "gkm.bongard-panel-feature-task-support-gap.v3"
 )
 PANEL_FEATURE_TASK_SELECTION_GAP_SCHEMA = (
     "gkm.bongard-panel-feature-task-selection-gap.v2"
 )
-PANEL_FEATURE_TASK_FREEZE_SCHEMA = "gkm.bongard-panel-feature-task-freeze.v2"
+PANEL_FEATURE_TASK_FREEZE_SCHEMA = "gkm.bongard-panel-feature-task-freeze.v3"
 PANEL_FEATURE_TASK_FREEZE_COMMIT_SCHEMA = (
-    "gkm.bongard-panel-feature-task-freeze-commit.v2"
+    "gkm.bongard-panel-feature-task-freeze-commit.v3"
 )
 PANEL_FEATURE_SUPPORT_DERIVATION_SCHEMA = (
     "gkm.bongard-panel-feature-support-derivation.v1"
+)
+PANEL_FEATURE_SELECTED_PREDICATE_SCHEMA = (
+    "gkm.bongard-panel-feature-explicit-selected-predicate.v1"
+)
+PANEL_FEATURE_SELECTED_PAIR_SCHEMA = (
+    "gkm.bongard-panel-feature-explicit-selected-pair.v1"
+)
+PANEL_FEATURE_QUERY_DECISION_SCHEMA = (
+    "gkm.bongard-panel-feature-explicit-query-decision.v1"
 )
 PANEL_FEATURE_SUPPORT_PANEL_COUNT = 12
 PANEL_FEATURE_QUERY_PANEL_COUNT = 2
@@ -1137,7 +1156,7 @@ def _support_derivation_content(
 ) -> dict[str, object]:
     return {
         "schema": PANEL_FEATURE_SUPPORT_DERIVATION_SCHEMA,
-        "runner_id": PANEL_FEATURE_TASK_RUNNER_ID,
+        "runner_id": PANEL_FEATURE_SUPPORT_DERIVATION_RUNNER_ID,
         "task_plan": value.task_plan.to_data(),
         "support_png_base64_by_panel_id": {
             panel_id: encoded
@@ -1352,7 +1371,7 @@ class PanelFeatureSupportDerivation:
         )
         if (
             raw["schema"] != PANEL_FEATURE_SUPPORT_DERIVATION_SCHEMA
-            or raw["runner_id"] != PANEL_FEATURE_TASK_RUNNER_ID
+            or raw["runner_id"] != PANEL_FEATURE_SUPPORT_DERIVATION_RUNNER_ID
             or raw["deployment_observer_axes"]
             != _deployment_axis_catalog_data()
             or raw["deployment_observer_axis_catalog_digest"]
@@ -1447,6 +1466,440 @@ def derive_panel_feature_support(
     )
 
 
+def _selected_predicate_content(
+    value: "PanelFeatureSelectedPredicate",
+) -> dict[str, object]:
+    return {
+        "schema": PANEL_FEATURE_SELECTED_PREDICATE_SCHEMA,
+        "version_space": value.version_space.to_data(),
+        "selected_formula_digest": value.selected_formula_digest,
+        "selection_mode": value.selection_mode,
+        "rank_artifact_digest": value.rank_artifact_digest,
+        "selected_formula_must_be_verified_survivor": True,
+        "implicit_minimum_or_digest_selection_used": False,
+        **_authority_data(),
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class PanelFeatureSelectedPredicate:
+    """One explicitly selected support survivor, never an implicit minimum."""
+
+    version_space: EngineeringFeatureVersionSpace
+    selected_formula_digest: str
+    selection_mode: str
+    rank_artifact_digest: str | None
+    predicate_digest: str
+
+    def __post_init__(self) -> None:
+        if type(self.version_space) is not EngineeringFeatureVersionSpace:
+            raise TypeError("selected predicate needs EngineeringFeatureVersionSpace")
+        _raw_digest(self.selected_formula_digest, "selected formula digest")
+        if self.selected_formula_digest not in self.version_space.survivor_formula_digests:
+            raise PanelFeatureTaskRunnerError(
+                "selected formula is not a verified support survivor"
+            )
+        counts = len(self.version_space.survivor_formula_digests)
+        if self.selection_mode == "unique_support_survivor":
+            if counts != 1 or self.rank_artifact_digest is not None:
+                raise PanelFeatureTaskRunnerError(
+                    "unique selection mode differs from support space"
+                )
+        elif self.selection_mode == "verified_support_rank_artifact":
+            if self.rank_artifact_digest is None:
+                raise PanelFeatureTaskRunnerError(
+                    "ranked selection needs its exact artifact digest"
+                )
+            _raw_digest(self.rank_artifact_digest, "rank artifact digest")
+        else:
+            raise PanelFeatureTaskRunnerError("selected predicate mode differs")
+        _raw_digest(self.predicate_digest, "selected predicate digest")
+        if self.predicate_digest != canonical_digest(
+            _selected_predicate_content(self)
+        ):
+            raise PanelFeatureTaskRunnerError("selected predicate digest differs")
+
+    @property
+    def formula(self) -> AllOf:
+        return next(
+            item
+            for item in self.version_space.survivor_formulas
+            if item.formula_digest == self.selected_formula_digest
+        )
+
+    @classmethod
+    def create(
+        cls,
+        version_space: EngineeringFeatureVersionSpace,
+        selected_formula_digest: str,
+        *,
+        rank_artifact_digest: str | None,
+    ) -> "PanelFeatureSelectedPredicate":
+        mode = (
+            "unique_support_survivor"
+            if rank_artifact_digest is None
+            else "verified_support_rank_artifact"
+        )
+        values = {
+            "version_space": version_space,
+            "selected_formula_digest": selected_formula_digest,
+            "selection_mode": mode,
+            "rank_artifact_digest": rank_artifact_digest,
+        }
+        provisional = object.__new__(cls)
+        for name, item in values.items():
+            object.__setattr__(provisional, name, item)
+        return cls(
+            **values,
+            predicate_digest=canonical_digest(
+                _selected_predicate_content(provisional)
+            ),
+        )
+
+    def to_data(self) -> dict[str, object]:
+        return {
+            **_selected_predicate_content(self),
+            "predicate_digest": self.predicate_digest,
+        }
+
+    @classmethod
+    def from_data(cls, value: object) -> "PanelFeatureSelectedPredicate":
+        raw = _fields(
+            value,
+            {
+                "schema",
+                "version_space",
+                "selected_formula_digest",
+                "selection_mode",
+                "rank_artifact_digest",
+                "selected_formula_must_be_verified_survivor",
+                "implicit_minimum_or_digest_selection_used",
+                *_authority_data(),
+                "predicate_digest",
+            },
+            "explicit selected predicate",
+        )
+        if (
+            raw["schema"] != PANEL_FEATURE_SELECTED_PREDICATE_SCHEMA
+            or raw["selected_formula_must_be_verified_survivor"] is not True
+            or raw["implicit_minimum_or_digest_selection_used"] is not False
+            or any(raw[key] != item for key, item in _authority_data().items())
+        ):
+            raise PanelFeatureTaskRunnerError("selected predicate policy differs")
+        result = cls(
+            EngineeringFeatureVersionSpace.from_data(raw["version_space"]),
+            raw["selected_formula_digest"],
+            raw["selection_mode"],
+            raw["rank_artifact_digest"],
+            raw["predicate_digest"],
+        )
+        if result.to_data() != dict(raw):
+            raise PanelFeatureTaskRunnerError("selected predicate is not canonical")
+        return result
+
+
+def _selected_pair_content(
+    value: "PanelFeatureSelectedPredicatePair",
+) -> dict[str, object]:
+    return {
+        "schema": PANEL_FEATURE_SELECTED_PAIR_SCHEMA,
+        "side0_predicate": value.side0_predicate.to_data(),
+        "side1_predicate": value.side1_predicate.to_data(),
+        "selection_mode": value.selection_mode,
+        "rank_artifact_digest": value.rank_artifact_digest,
+        "selected_formula_digests": list(value.selected_formula_digests),
+        "one_explicit_survivor_per_native_orientation": True,
+        "implicit_minimum_or_digest_selection_used": False,
+        **_authority_data(),
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class PanelFeatureSelectedPredicatePair:
+    side0_predicate: PanelFeatureSelectedPredicate
+    side1_predicate: PanelFeatureSelectedPredicate
+    selection_mode: str
+    rank_artifact_digest: str | None
+    pair_digest: str
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.side0_predicate) is not PanelFeatureSelectedPredicate
+            or type(self.side1_predicate) is not PanelFeatureSelectedPredicate
+        ):
+            raise TypeError("selected pair predicates differ")
+        left = self.side0_predicate.version_space
+        right = self.side1_predicate.version_space
+        survivor_counts = (
+            len(left.survivor_formula_digests),
+            len(right.survivor_formula_digests),
+        )
+        if (
+            left.native_orientation is not NativeOrientation.SIDE0_POSITIVE
+            or right.native_orientation is not NativeOrientation.SIDE1_POSITIVE
+            or left.support_table != right.support_table
+            or left.side0_panel_digests != right.side0_panel_digests
+            or left.side1_panel_digests != right.side1_panel_digests
+            or self.side0_predicate.selection_mode != self.selection_mode
+            or self.side1_predicate.selection_mode != self.selection_mode
+            or self.side0_predicate.rank_artifact_digest
+            != self.rank_artifact_digest
+            or self.side1_predicate.rank_artifact_digest
+            != self.rank_artifact_digest
+            or (
+                self.selection_mode == "verified_support_rank_artifact"
+                and survivor_counts == (1, 1)
+            )
+        ):
+            raise PanelFeatureTaskRunnerError("selected predicate pair custody differs")
+        _raw_digest(self.pair_digest, "selected predicate pair digest")
+        if self.pair_digest != canonical_digest(_selected_pair_content(self)):
+            raise PanelFeatureTaskRunnerError("selected predicate pair digest differs")
+
+    @property
+    def selected_formula_digests(self) -> tuple[str, str]:
+        return (
+            self.side0_predicate.selected_formula_digest,
+            self.side1_predicate.selected_formula_digest,
+        )
+
+    @property
+    def vocabulary(self) -> FeatureVocabulary:
+        return self.side0_predicate.version_space.support_table.vocabulary
+
+    @classmethod
+    def create(
+        cls,
+        side0_space: EngineeringFeatureVersionSpace,
+        side1_space: EngineeringFeatureVersionSpace,
+        selected_formula_digests: tuple[str, str],
+        *,
+        rank_artifact_digest: str | None,
+    ) -> "PanelFeatureSelectedPredicatePair":
+        if type(selected_formula_digests) is not tuple or len(selected_formula_digests) != 2:
+            raise TypeError("selected formula digests must be an exact pair")
+        side0 = PanelFeatureSelectedPredicate.create(
+            side0_space,
+            selected_formula_digests[0],
+            rank_artifact_digest=rank_artifact_digest,
+        )
+        side1 = PanelFeatureSelectedPredicate.create(
+            side1_space,
+            selected_formula_digests[1],
+            rank_artifact_digest=rank_artifact_digest,
+        )
+        values = {
+            "side0_predicate": side0,
+            "side1_predicate": side1,
+            "selection_mode": side0.selection_mode,
+            "rank_artifact_digest": rank_artifact_digest,
+        }
+        provisional = object.__new__(cls)
+        for name, item in values.items():
+            object.__setattr__(provisional, name, item)
+        return cls(
+            **values,
+            pair_digest=canonical_digest(_selected_pair_content(provisional)),
+        )
+
+    def to_data(self) -> dict[str, object]:
+        return {**_selected_pair_content(self), "pair_digest": self.pair_digest}
+
+    @classmethod
+    def from_data(cls, value: object) -> "PanelFeatureSelectedPredicatePair":
+        raw = _fields(
+            value,
+            {
+                "schema",
+                "side0_predicate",
+                "side1_predicate",
+                "selection_mode",
+                "rank_artifact_digest",
+                "selected_formula_digests",
+                "one_explicit_survivor_per_native_orientation",
+                "implicit_minimum_or_digest_selection_used",
+                *_authority_data(),
+                "pair_digest",
+            },
+            "explicit selected predicate pair",
+        )
+        if (
+            raw["schema"] != PANEL_FEATURE_SELECTED_PAIR_SCHEMA
+            or raw["one_explicit_survivor_per_native_orientation"] is not True
+            or raw["implicit_minimum_or_digest_selection_used"] is not False
+            or type(raw["selected_formula_digests"]) is not list
+            or any(raw[key] != item for key, item in _authority_data().items())
+        ):
+            raise PanelFeatureTaskRunnerError("selected pair policy differs")
+        result = cls(
+            PanelFeatureSelectedPredicate.from_data(raw["side0_predicate"]),
+            PanelFeatureSelectedPredicate.from_data(raw["side1_predicate"]),
+            raw["selection_mode"],
+            raw["rank_artifact_digest"],
+            raw["pair_digest"],
+        )
+        if (
+            raw["selected_formula_digests"] != list(result.selected_formula_digests)
+            or result.to_data() != dict(raw)
+        ):
+            raise PanelFeatureTaskRunnerError("selected pair is not canonical")
+        return result
+
+
+def _query_outcome(
+    side0: EngineeringDisposition, side1: EngineeringDisposition
+) -> EngineeringQueryOutcome:
+    if EngineeringDisposition.ERROR in (side0, side1):
+        return EngineeringQueryOutcome.ERROR
+    if (
+        side0 is EngineeringDisposition.MATCH
+        and side1 is EngineeringDisposition.NONMATCH
+    ):
+        return EngineeringQueryOutcome.SIDE0
+    if (
+        side1 is EngineeringDisposition.MATCH
+        and side0 is EngineeringDisposition.NONMATCH
+    ):
+        return EngineeringQueryOutcome.SIDE1
+    return EngineeringQueryOutcome.ABSTAIN
+
+
+def _query_decision_content(value: "PanelFeatureQueryDecision") -> dict[str, object]:
+    return {
+        "schema": PANEL_FEATURE_QUERY_DECISION_SCHEMA,
+        "predicate_pair": value.predicate_pair.to_data(),
+        "query_table": value.query_table.to_data(),
+        "panel_digest": value.panel_digest,
+        "side0_disposition": value.side0_disposition.value,
+        "side1_disposition": value.side1_disposition.value,
+        "outcome": value.outcome.value,
+        "decision_rule": "explicit-native-positive-and-other-native-negative",
+        "nonmatch_alone_predicts_opposite": False,
+        **_authority_data(),
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class PanelFeatureQueryDecision:
+    predicate_pair: PanelFeatureSelectedPredicatePair
+    query_table: EngineeringSupportTable
+    panel_digest: str
+    side0_disposition: EngineeringDisposition
+    side1_disposition: EngineeringDisposition
+    outcome: EngineeringQueryOutcome
+    decision_digest: str
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.predicate_pair) is not PanelFeatureSelectedPredicatePair
+            or type(self.query_table) is not EngineeringSupportTable
+        ):
+            raise TypeError("query decision inputs differ")
+        _raw_digest(self.panel_digest, "query panel digest")
+        if (
+            self.query_table.panel_digests != (self.panel_digest,)
+            or self.query_table.vocabulary.vocabulary_digest
+            != self.predicate_pair.vocabulary.vocabulary_digest
+        ):
+            raise PanelFeatureTaskRunnerError("query table custody differs")
+        side0 = evaluate_engineering_all_of(
+            self.predicate_pair.side0_predicate.formula,
+            self.query_table,
+            self.panel_digest,
+        )
+        side1 = evaluate_engineering_all_of(
+            self.predicate_pair.side1_predicate.formula,
+            self.query_table,
+            self.panel_digest,
+        )
+        if (
+            self.side0_disposition,
+            self.side1_disposition,
+            self.outcome,
+        ) != (side0, side1, _query_outcome(side0, side1)):
+            raise PanelFeatureTaskRunnerError("query decision replay differs")
+        _raw_digest(self.decision_digest, "query decision digest")
+        if self.decision_digest != canonical_digest(_query_decision_content(self)):
+            raise PanelFeatureTaskRunnerError("query decision digest differs")
+
+    @classmethod
+    def create(
+        cls,
+        predicate_pair: PanelFeatureSelectedPredicatePair,
+        query_table: EngineeringSupportTable,
+        panel_digest: str,
+    ) -> "PanelFeatureQueryDecision":
+        side0 = evaluate_engineering_all_of(
+            predicate_pair.side0_predicate.formula, query_table, panel_digest
+        )
+        side1 = evaluate_engineering_all_of(
+            predicate_pair.side1_predicate.formula, query_table, panel_digest
+        )
+        values = {
+            "predicate_pair": predicate_pair,
+            "query_table": query_table,
+            "panel_digest": panel_digest,
+            "side0_disposition": side0,
+            "side1_disposition": side1,
+            "outcome": _query_outcome(side0, side1),
+        }
+        provisional = object.__new__(cls)
+        for name, item in values.items():
+            object.__setattr__(provisional, name, item)
+        return cls(
+            **values,
+            decision_digest=canonical_digest(_query_decision_content(provisional)),
+        )
+
+    def to_data(self) -> dict[str, object]:
+        return {**_query_decision_content(self), "decision_digest": self.decision_digest}
+
+    @classmethod
+    def from_data(cls, value: object) -> "PanelFeatureQueryDecision":
+        raw = _fields(
+            value,
+            {
+                "schema",
+                "predicate_pair",
+                "query_table",
+                "panel_digest",
+                "side0_disposition",
+                "side1_disposition",
+                "outcome",
+                "decision_rule",
+                "nonmatch_alone_predicts_opposite",
+                *_authority_data(),
+                "decision_digest",
+            },
+            "explicit query decision",
+        )
+        if (
+            raw["schema"] != PANEL_FEATURE_QUERY_DECISION_SCHEMA
+            or raw["decision_rule"]
+            != "explicit-native-positive-and-other-native-negative"
+            or raw["nonmatch_alone_predicts_opposite"] is not False
+            or any(raw[key] != item for key, item in _authority_data().items())
+        ):
+            raise PanelFeatureTaskRunnerError("query decision policy differs")
+        try:
+            result = cls(
+                PanelFeatureSelectedPredicatePair.from_data(raw["predicate_pair"]),
+                EngineeringSupportTable.from_data(raw["query_table"]),
+                raw["panel_digest"],
+                EngineeringDisposition(raw["side0_disposition"]),
+                EngineeringDisposition(raw["side1_disposition"]),
+                EngineeringQueryOutcome(raw["outcome"]),
+                raw["decision_digest"],
+            )
+        except (TypeError, ValueError) as exc:
+            if isinstance(exc, PanelFeatureTaskRunnerError):
+                raise
+            raise PanelFeatureTaskRunnerError("query decision value differs") from exc
+        if result.to_data() != dict(raw):
+            raise PanelFeatureTaskRunnerError("query decision is not canonical")
+        return result
+
+
 def _combined_version_space_digest(
     side0_space: EngineeringFeatureVersionSpace,
     side1_space: EngineeringFeatureVersionSpace,
@@ -1457,6 +1910,19 @@ def _combined_version_space_digest(
             "side0_version_space_digest": side0_space.version_space_digest,
             "side1_version_space_digest": side1_space.version_space_digest,
             "selection_policy": "external-only-no-implicit-digest-order",
+        }
+    )
+
+
+def _selection_response_digest(pair: PanelFeatureSelectedPredicatePair) -> str:
+    if pair.rank_artifact_digest is not None:
+        return pair.rank_artifact_digest
+    return canonical_digest(
+        {
+            "schema": "gkm.bongard-panel-feature-unique-selection-response.v1",
+            "selected_formula_digests": list(pair.selected_formula_digests),
+            "selection_mode": pair.selection_mode,
+            "model_call_made": False,
         }
     )
 
@@ -1475,6 +1941,14 @@ def _freeze_content(value: "PanelFeatureTaskFreeze") -> dict[str, object]:
         "version_space_digest": value.version_space_digest,
         "support_version_space_digest": value.support_version_space_digest,
         "rank_response_digest": value.rank_response_digest,
+        "rank_artifact": (
+            None if value.rank_artifact is None else value.rank_artifact.to_data()
+        ),
+        "rank_artifact_digest": value.rank_artifact_digest,
+        "selection_mode": value.predicate_pair.selection_mode,
+        "selected_formula_digests": list(
+            value.predicate_pair.selected_formula_digests
+        ),
         "predicate_pair": value.predicate_pair.to_data(),
         "selected_predicate_digest": value.selected_predicate_digest,
         "sealed_query_panel_ids": list(value.sealed_query_panel_ids),
@@ -1484,7 +1958,8 @@ def _freeze_content(value: "PanelFeatureTaskFreeze") -> dict[str, object]:
         "query_bytes_included": False,
         "query_observations_included": False,
         "implicit_survivor_selection_used": False,
-        "exactly_one_survivor_per_orientation": True,
+        "one_explicit_selected_survivor_per_orientation": True,
+        "all_version_space_survivors_retained": True,
         **_authority_data(),
     }
 
@@ -1503,7 +1978,9 @@ class PanelFeatureTaskFreeze:
     version_space_digest: str
     support_version_space_digest: str
     rank_response_digest: str
-    predicate_pair: FrozenEngineeringFeaturePredicatePair
+    rank_artifact: PanelFeatureRankArtifact | None
+    rank_artifact_digest: str | None
+    predicate_pair: PanelFeatureSelectedPredicatePair
     selected_predicate_digest: str
     sealed_query_panel_ids: tuple[str, str]
     record_digest: str
@@ -1529,19 +2006,67 @@ class PanelFeatureTaskFreeze:
         if (
             type(self.side0_version_space) is not EngineeringFeatureVersionSpace
             or type(self.side1_version_space) is not EngineeringFeatureVersionSpace
-            or type(self.predicate_pair) is not FrozenEngineeringFeaturePredicatePair
+            or type(self.predicate_pair) is not PanelFeatureSelectedPredicatePair
+        ):
+            raise TypeError("freeze version spaces or selected pair differ")
+        if (
+            self.rank_artifact is not None
+            and type(self.rank_artifact) is not PanelFeatureRankArtifact
+        ):
+            raise TypeError(
+                "freeze rank artifact must be exact PanelFeatureRankArtifact"
+            )
+        survivor_counts = (
+            len(self.side0_version_space.survivor_formula_digests),
+            len(self.side1_version_space.survivor_formula_digests),
+        )
+        verified_rank: PanelFeatureRankArtifact | None = None
+        if self.rank_artifact is not None:
+            try:
+                verified_rank = _canonical_rank_artifact(
+                    self.rank_artifact,
+                    proposer=self.rank_artifact.rank_input.proposer_result,
+                    side0_space=self.side0_version_space,
+                    side1_space=self.side1_version_space,
+                )
+            except Exception as exc:
+                raise PanelFeatureTaskRunnerError(
+                    "freeze rank artifact does not bind the exact support spaces"
+                ) from exc
+        rank_shape = (
+            self.rank_artifact is None
+            and self.rank_artifact_digest is None
+            and survivor_counts == (1, 1)
+            and self.predicate_pair.selection_mode == "unique_support_survivor"
+        ) or (
+            verified_rank is not None
+            and survivor_counts != (1, 1)
+            and self.rank_artifact_digest == verified_rank.artifact_digest
+            and self.proposer_result_digest
+            == verified_rank.rank_input.proposer_result.result_digest
+            and self.predicate_pair.selection_mode
+            == "verified_support_rank_artifact"
+            and self.predicate_pair.selected_formula_digests
+            == verified_rank.selected_formula_digests
+        )
+        if (
+            type(self.side0_version_space) is not EngineeringFeatureVersionSpace
+            or type(self.side1_version_space) is not EngineeringFeatureVersionSpace
+            or type(self.predicate_pair) is not PanelFeatureSelectedPredicatePair
             or self.side0_version_space.support_table
             != self.side1_version_space.support_table
             or self.support_table_digest
             != self.side0_version_space.support_table.table_digest
-            or tuple(
-                len(item.survivor_formula_digests)
-                for item in (self.side0_version_space, self.side1_version_space)
-            )
-            != (1, 1)
-            or self.predicate_pair
-            != FrozenEngineeringFeaturePredicatePair.create(
-                self.side0_version_space, self.side1_version_space
+            or not self.side0_version_space.survivor_formula_digests
+            or not self.side1_version_space.survivor_formula_digests
+            or not rank_shape
+            or self.predicate_pair.side0_predicate.version_space
+            != self.side0_version_space
+            or self.predicate_pair.side1_predicate.version_space
+            != self.side1_version_space
+            or self.rank_artifact_digest != self.predicate_pair.rank_artifact_digest
+            or self.rank_response_digest != _selection_response_digest(
+                self.predicate_pair
             )
             or self.selected_predicate_digest != self.predicate_pair.pair_digest
             or self.version_space_digest
@@ -1565,11 +2090,51 @@ class PanelFeatureTaskFreeze:
         proposer: PanelFeatureProposerResult,
         side0_space: EngineeringFeatureVersionSpace,
         side1_space: EngineeringFeatureVersionSpace,
-        rank_response_digest: str,
+        rank_artifact: PanelFeatureRankArtifact | None,
     ) -> "PanelFeatureTaskFreeze":
-        if type(task) is not ObjectBongardTaskPlan:
-            raise TypeError("freeze task must be exact ObjectBongardTaskPlan")
-        pair = FrozenEngineeringFeaturePredicatePair.create(side0_space, side1_space)
+        if (
+            type(task) is not ObjectBongardTaskPlan
+            or type(proposer) is not PanelFeatureProposerResult
+            or type(side0_space) is not EngineeringFeatureVersionSpace
+            or type(side1_space) is not EngineeringFeatureVersionSpace
+        ):
+            raise TypeError("freeze task, proposer, or version spaces differ")
+        survivor_counts = (
+            len(side0_space.survivor_formula_digests),
+            len(side1_space.survivor_formula_digests),
+        )
+        if 0 in survivor_counts:
+            raise PanelFeatureTaskRunnerError(
+                "cannot freeze an empty support version space"
+            )
+        verified_rank: PanelFeatureRankArtifact | None
+        if survivor_counts == (1, 1):
+            if rank_artifact is not None:
+                raise PanelFeatureTaskRunnerError(
+                    "unique support pair cannot freeze an unnecessary rank artifact"
+                )
+            verified_rank = None
+            selected_formula_digests = (
+                side0_space.survivor_formula_digests[0],
+                side1_space.survivor_formula_digests[0],
+            )
+        else:
+            verified_rank = _canonical_rank_artifact(
+                rank_artifact,
+                proposer=proposer,
+                side0_space=side0_space,
+                side1_space=side1_space,
+            )
+            selected_formula_digests = verified_rank.selected_formula_digests
+        rank_artifact_digest = (
+            None if verified_rank is None else verified_rank.artifact_digest
+        )
+        pair = PanelFeatureSelectedPredicatePair.create(
+            side0_space,
+            side1_space,
+            selected_formula_digests,
+            rank_artifact_digest=rank_artifact_digest,
+        )
         combined = _combined_version_space_digest(side0_space, side1_space)
         values = {
             "task_id": task.task_id,
@@ -1583,9 +2148,9 @@ class PanelFeatureTaskFreeze:
             "side1_version_space": side1_space,
             "version_space_digest": combined,
             "support_version_space_digest": combined,
-            "rank_response_digest": _raw_digest(
-                rank_response_digest, "rank response digest"
-            ),
+            "rank_response_digest": _selection_response_digest(pair),
+            "rank_artifact": verified_rank,
+            "rank_artifact_digest": rank_artifact_digest,
             "predicate_pair": pair,
             "selected_predicate_digest": pair.pair_digest,
             "sealed_query_panel_ids": (
@@ -1621,6 +2186,10 @@ class PanelFeatureTaskFreeze:
                 "version_space_digest",
                 "support_version_space_digest",
                 "rank_response_digest",
+                "rank_artifact",
+                "rank_artifact_digest",
+                "selection_mode",
+                "selected_formula_digests",
                 "predicate_pair",
                 "selected_predicate_digest",
                 "sealed_query_panel_ids",
@@ -1628,7 +2197,8 @@ class PanelFeatureTaskFreeze:
                 "query_bytes_included",
                 "query_observations_included",
                 "implicit_survivor_selection_used",
-                "exactly_one_survivor_per_orientation",
+                "one_explicit_selected_survivor_per_orientation",
+                "all_version_space_survivors_retained",
                 *_authority_data(),
                 "record_digest",
             },
@@ -1642,7 +2212,9 @@ class PanelFeatureTaskFreeze:
             or raw["query_bytes_included"] is not False
             or raw["query_observations_included"] is not False
             or raw["implicit_survivor_selection_used"] is not False
-            or raw["exactly_one_survivor_per_orientation"] is not True
+            or raw["one_explicit_selected_survivor_per_orientation"] is not True
+            or raw["all_version_space_survivors_retained"] is not True
+            or type(raw["selected_formula_digests"]) is not list
             or any(raw[key] != item for key, item in _authority_data().items())
             or type(raw["sealed_query_panel_ids"]) is not list
         ):
@@ -1658,12 +2230,23 @@ class PanelFeatureTaskFreeze:
             raw["version_space_digest"],
             raw["support_version_space_digest"],
             raw["rank_response_digest"],
-            FrozenEngineeringFeaturePredicatePair.from_data(raw["predicate_pair"]),
+            (
+                None
+                if raw["rank_artifact"] is None
+                else PanelFeatureRankArtifact.from_data(raw["rank_artifact"])
+            ),
+            raw["rank_artifact_digest"],
+            PanelFeatureSelectedPredicatePair.from_data(raw["predicate_pair"]),
             raw["selected_predicate_digest"],
             tuple(raw["sealed_query_panel_ids"]),
             raw["record_digest"],
         )
-        if result.to_data() != dict(raw):
+        if (
+            raw["selection_mode"] != result.predicate_pair.selection_mode
+            or raw["selected_formula_digests"]
+            != list(result.predicate_pair.selected_formula_digests)
+            or result.to_data() != dict(raw)
+        ):
             raise PanelFeatureTaskRunnerError("task freeze is not canonical")
         return result
 
@@ -1886,6 +2469,14 @@ def _archive_content(value: "PanelFeatureTaskArchive") -> dict[str, object]:
         "selection_gap": (
             None if value.selection_gap is None else value.selection_gap.to_data()
         ),
+        "rank_artifact": (
+            None if value.rank_artifact is None else value.rank_artifact.to_data()
+        ),
+        "rank_artifact_digest": (
+            None
+            if value.rank_artifact is None
+            else value.rank_artifact.artifact_digest
+        ),
         "predicate_pair": (
             None if value.predicate_pair is None else value.predicate_pair.to_data()
         ),
@@ -1952,7 +2543,8 @@ class PanelFeatureTaskArchive:
     status: PanelFeatureTaskRunStatus
     support_gap: PanelFeatureTaskSupportGap | None
     selection_gap: PanelFeatureTaskSelectionGap | None
-    predicate_pair: FrozenEngineeringFeaturePredicatePair | None
+    rank_artifact: PanelFeatureRankArtifact | None
+    predicate_pair: PanelFeatureSelectedPredicatePair | None
     task_freeze: PanelFeatureTaskFreeze | None
     task_freeze_store_receipt: ObjectBongardWriteOnceReceipt | None
     task_freeze_commit: PanelFeatureTaskFreezeCommit | None
@@ -1961,7 +2553,7 @@ class PanelFeatureTaskArchive:
     query_released_panels: tuple[AuthenticatedReleasedPanel, ...]
     query_release_store_receipts: tuple[ObjectBongardWriteOnceReceipt, ...]
     query_observations: tuple[PanelFeatureObservationSet, ...]
-    query_decisions: tuple[EngineeringQueryDecision, ...]
+    query_decisions: tuple[PanelFeatureQueryDecision, ...]
     freeze_persist_reload_invocations: int
     query_release_invocations: int
     query_observer_invocations: int
@@ -2010,7 +2602,7 @@ class PanelFeatureTaskArchive:
                 type(item) is not PanelFeatureObservationSet
                 for item in self.query_observations
             )
-            or any(type(item) is not EngineeringQueryDecision for item in self.query_decisions)
+            or any(type(item) is not PanelFeatureQueryDecision for item in self.query_decisions)
             or type(self.freeze_persist_reload_invocations) is not int
             or type(self.query_release_invocations) is not int
             or type(self.query_observer_invocations) is not int
@@ -2069,8 +2661,25 @@ class PanelFeatureTaskArchive:
         complete_shape = (
             self.support_gap is None
             and self.selection_gap is None
-            and type(self.predicate_pair) is FrozenEngineeringFeaturePredicatePair
+            and type(self.predicate_pair) is PanelFeatureSelectedPredicatePair
+            and (
+                (
+                    self.rank_artifact is None
+                    and self.predicate_pair.rank_artifact_digest is None
+                    and self.predicate_pair.selection_mode
+                    == "unique_support_survivor"
+                )
+                or (
+                    type(self.rank_artifact) is PanelFeatureRankArtifact
+                    and self.predicate_pair.rank_artifact_digest
+                    == self.rank_artifact.artifact_digest
+                    and self.predicate_pair.selection_mode
+                    == "verified_support_rank_artifact"
+                )
+            )
             and type(self.task_freeze) is PanelFeatureTaskFreeze
+            and self.task_freeze.predicate_pair == self.predicate_pair
+            and self.task_freeze.rank_artifact == self.rank_artifact
             and type(self.task_freeze_store_receipt) is ObjectBongardWriteOnceReceipt
             and type(self.task_freeze_commit) is PanelFeatureTaskFreezeCommit
             and type(self.task_freeze_commit_store_receipt) is ObjectBongardWriteOnceReceipt
@@ -2089,6 +2698,7 @@ class PanelFeatureTaskArchive:
         gap_shape = (
             type(self.support_gap) is PanelFeatureTaskSupportGap
             and self.selection_gap is None
+            and self.rank_artifact is None
             and self.predicate_pair is None
             and self.task_freeze is None
             and self.task_freeze_store_receipt is None
@@ -2109,6 +2719,7 @@ class PanelFeatureTaskArchive:
         selection_gap_shape = (
             self.support_gap is None
             and type(self.selection_gap) is PanelFeatureTaskSelectionGap
+            and self.rank_artifact is None
             and self.predicate_pair is None
             and self.task_freeze is None
             and self.task_freeze_store_receipt is None
@@ -2181,6 +2792,8 @@ class PanelFeatureTaskArchive:
                 "status",
                 "support_gap",
                 "selection_gap",
+                "rank_artifact",
+                "rank_artifact_digest",
                 "predicate_pair",
                 "task_freeze",
                 "task_freeze_store_receipt",
@@ -2296,8 +2909,13 @@ class PanelFeatureTaskArchive:
             ),
             (
                 None
+                if raw["rank_artifact"] is None
+                else PanelFeatureRankArtifact.from_data(raw["rank_artifact"])
+            ),
+            (
+                None
                 if raw["predicate_pair"] is None
-                else FrozenEngineeringFeaturePredicatePair.from_data(
+                else PanelFeatureSelectedPredicatePair.from_data(
                     raw["predicate_pair"]
                 )
             ),
@@ -2341,7 +2959,7 @@ class PanelFeatureTaskArchive:
                 for item in raw["query_observations"]
             ),
             tuple(
-                EngineeringQueryDecision.from_data(item)
+                PanelFeatureQueryDecision.from_data(item)
                 for item in raw["query_decisions"]
             ),
             raw["freeze_persist_reload_invocations"],
@@ -2349,7 +2967,16 @@ class PanelFeatureTaskArchive:
             raw["query_observer_invocations"],
             raw["record_digest"],
         )
-        if raw["archive_address"] != result.archive_address or result.to_data() != dict(raw):
+        if (
+            raw["rank_artifact_digest"]
+            != (
+                None
+                if result.rank_artifact is None
+                else result.rank_artifact.artifact_digest
+            )
+            or raw["archive_address"] != result.archive_address
+            or result.to_data() != dict(raw)
+        ):
             raise PanelFeatureTaskRunnerError("task archive is not canonical")
         return result
 
@@ -2380,8 +3007,51 @@ PanelObserverCallback = Callable[
 SupportProposerCallback = Callable[
     [tuple[bytes, ...], str], PanelFeatureProposerResult
 ]
+SupportRankCallback = Callable[
+    [
+        EngineeringFeatureVersionSpace,
+        EngineeringFeatureVersionSpace,
+        PanelFeatureProposerResult,
+    ],
+    PanelFeatureRankArtifact,
+]
 SupportObserverCallback = PanelObserverCallback
 QueryObserverCallback = PanelObserverCallback
+
+
+def _canonical_rank_artifact(
+    value: object,
+    *,
+    proposer: PanelFeatureProposerResult,
+    side0_space: EngineeringFeatureVersionSpace,
+    side1_space: EngineeringFeatureVersionSpace,
+) -> PanelFeatureRankArtifact:
+    if type(value) is not PanelFeatureRankArtifact:
+        raise PanelFeatureTaskRunnerError(
+            "rank resolution returned no exact PanelFeatureRankArtifact"
+        )
+    try:
+        restored = PanelFeatureRankArtifact.from_data(value.to_data())
+        expected_input = PanelFeatureRankInput.freeze(
+            side0_space, side1_space, proposer
+        )
+    except Exception as exc:
+        raise PanelFeatureTaskRunnerError(
+            "rank artifact canonical replay failed"
+        ) from exc
+    if (
+        restored != value
+        or restored.rank_input != expected_input
+        or not restored.transport_provenance.benchmark_sealable
+        or restored.selected_side0_formula_digest
+        not in side0_space.survivor_formula_digests
+        or restored.selected_side1_formula_digest
+        not in side1_space.survivor_formula_digests
+    ):
+        raise PanelFeatureTaskRunnerError(
+            "rank artifact is unsealable or bound to different support inputs"
+        )
+    return restored
 
 
 def _query_release_rows(
@@ -2444,7 +3114,8 @@ def run_panel_feature_task(
     *,
     execution_precommit_digest: str,
     exposure_successor_digest: str,
-    rank_response_digest: str,
+    rank_artifact: PanelFeatureRankArtifact | None = None,
+    rank_callback: SupportRankCallback | None = None,
     freeze_persist_reload: FreezePersistReload | None,
     query_release_callback: QueryReleaseCallback | None,
     query_observation_callback: QueryObserverCallback | None,
@@ -2507,6 +3178,7 @@ def run_panel_feature_task(
             status=PanelFeatureTaskRunStatus.SUPPORT_GAP,
             support_gap=gap,
             selection_gap=None,
+            rank_artifact=None,
             predicate_pair=None,
             task_freeze=None,
             task_freeze_store_receipt=None,
@@ -2528,37 +3200,56 @@ def run_panel_feature_task(
         len(side0_space.survivor_formula_digests),
         len(side1_space.survivor_formula_digests),
     )
+    verified_rank: PanelFeatureRankArtifact | None = None
     if survivor_counts != (1, 1):
-        gap = PanelFeatureTaskSelectionGap.create(side0_space, side1_space)
-        archive = _make_archive(
-            **common,
-            status=PanelFeatureTaskRunStatus.SELECTION_GAP,
-            support_gap=None,
-            selection_gap=gap,
-            predicate_pair=None,
-            task_freeze=None,
-            task_freeze_store_receipt=None,
-            task_freeze_commit=None,
-            task_freeze_commit_store_receipt=None,
-            query_png_base64_by_side=(),
-            query_released_panels=(),
-            query_release_store_receipts=(),
-            query_observations=(),
-            query_decisions=(),
-            freeze_persist_reload_invocations=0,
-            query_release_invocations=0,
-            query_observer_invocations=0,
-        )
-        return cold_replay_panel_feature_task(
-            archive, expected_archive_address=archive.archive_address
-        )
+        try:
+            if rank_artifact is not None and rank_callback is not None:
+                raise PanelFeatureTaskRunnerError(
+                    "rank artifact and callback are mutually exclusive"
+                )
+            candidate = (
+                rank_callback(side0_space, side1_space, proposer)
+                if rank_callback is not None and callable(rank_callback)
+                else rank_artifact
+            )
+            verified_rank = _canonical_rank_artifact(
+                candidate,
+                proposer=proposer,
+                side0_space=side0_space,
+                side1_space=side1_space,
+            )
+        except Exception:
+            gap = PanelFeatureTaskSelectionGap.create(side0_space, side1_space)
+            archive = _make_archive(
+                **common,
+                status=PanelFeatureTaskRunStatus.SELECTION_GAP,
+                support_gap=None,
+                selection_gap=gap,
+                rank_artifact=None,
+                predicate_pair=None,
+                task_freeze=None,
+                task_freeze_store_receipt=None,
+                task_freeze_commit=None,
+                task_freeze_commit_store_receipt=None,
+                query_png_base64_by_side=(),
+                query_released_panels=(),
+                query_release_store_receipts=(),
+                query_observations=(),
+                query_decisions=(),
+                freeze_persist_reload_invocations=0,
+                query_release_invocations=0,
+                query_observer_invocations=0,
+            )
+            return cold_replay_panel_feature_task(
+                archive, expected_archive_address=archive.archive_address
+            )
     if (
         not callable(freeze_persist_reload)
         or not callable(query_release_callback)
         or not callable(query_observation_callback)
     ):
         raise TypeError(
-            "a unique support pair requires freeze, query release, and query observer callbacks"
+            "a selected support pair requires freeze, query release, and query observer callbacks"
         )
     freeze = PanelFeatureTaskFreeze.seal(
         task=task,
@@ -2566,7 +3257,7 @@ def run_panel_feature_task(
         proposer=proposer,
         side0_space=side0_space,
         side1_space=side1_space,
-        rank_response_digest=rank_response_digest,
+        rank_artifact=verified_rank,
     )
     durable = freeze_persist_reload(freeze)
     if type(durable) is not tuple or len(durable) != 3:
@@ -2594,11 +3285,11 @@ def run_panel_feature_task(
         label="query",
     )
     reloaded_pair = reloaded_freeze.predicate_pair
-    decisions: list[EngineeringQueryDecision] = []
+    decisions: list[PanelFeatureQueryDecision] = []
     for observation in query_observations:
         query_table = _table_for_observations(vocabulary, (observation,))
         decisions.append(
-            EngineeringQueryDecision.create(
+            PanelFeatureQueryDecision.create(
                 reloaded_pair, query_table, observation.panel_digest
             )
         )
@@ -2607,6 +3298,7 @@ def run_panel_feature_task(
         status=PanelFeatureTaskRunStatus.COMPLETE,
         support_gap=None,
         selection_gap=None,
+        rank_artifact=verified_rank,
         predicate_pair=reloaded_pair,
         task_freeze=reloaded_freeze,
         task_freeze_store_receipt=freeze_receipt,
@@ -2632,9 +3324,9 @@ def run_panel_feature_task_with_support_callbacks(
     *,
     proposer_callback: SupportProposerCallback,
     observation_callback: SupportObserverCallback,
+    rank_callback: SupportRankCallback | None = None,
     execution_precommit_digest: str,
     exposure_successor_digest: str,
-    rank_response_digest: str,
     freeze_persist_reload: FreezePersistReload | None,
     query_release_callback: QueryReleaseCallback | None,
     query_observation_callback: QueryObserverCallback | None,
@@ -2672,7 +3364,7 @@ def run_panel_feature_task_with_support_callbacks(
         observations,
         execution_precommit_digest=execution_precommit_digest,
         exposure_successor_digest=exposure_successor_digest,
-        rank_response_digest=rank_response_digest,
+        rank_callback=rank_callback,
         freeze_persist_reload=freeze_persist_reload,
         query_release_callback=query_release_callback,
         query_observation_callback=query_observation_callback,
@@ -2687,7 +3379,7 @@ def run_panel_feature_task_with_official_release(
     proposer_callback: SupportProposerCallback,
     observation_callback: SupportObserverCallback,
     query_observation_callback: QueryObserverCallback,
-    rank_response_digest: str,
+    rank_callback: SupportRankCallback | None = None,
 ) -> PanelFeatureTaskArchive:
     """Release pixels through the repository's trusted official gate directly."""
 
@@ -2763,9 +3455,9 @@ def run_panel_feature_task_with_official_release(
         support_releases,
         proposer_callback=proposer_callback,
         observation_callback=observation_callback,
+        rank_callback=rank_callback,
         execution_precommit_digest=prepared.precommit.record_digest,
         exposure_successor_digest=prepared.successor.digest,
-        rank_response_digest=rank_response_digest,
         freeze_persist_reload=persist_freeze,
         query_release_callback=release_queries,
         query_observation_callback=query_observation_callback,
@@ -2828,6 +3520,7 @@ def cold_replay_panel_feature_task(
             restored.status is not PanelFeatureTaskRunStatus.SUPPORT_GAP
             or restored.support_gap != gap
             or restored.selection_gap is not None
+            or restored.rank_artifact is not None
             or restored.predicate_pair is not None
             or restored.task_freeze is not None
             or restored.task_freeze_store_receipt is not None
@@ -2851,12 +3544,14 @@ def cold_replay_panel_feature_task(
         len(side0_space.survivor_formula_digests),
         len(side1_space.survivor_formula_digests),
     )
-    if counts != (1, 1):
+    verified_rank: PanelFeatureRankArtifact | None = None
+    if counts != (1, 1) and restored.rank_artifact is None:
         gap = PanelFeatureTaskSelectionGap.create(side0_space, side1_space)
         if (
             restored.status is not PanelFeatureTaskRunStatus.SELECTION_GAP
             or restored.support_gap is not None
             or restored.selection_gap != gap
+            or restored.rank_artifact is not None
             or restored.predicate_pair is not None
             or restored.task_freeze is not None
             or restored.task_freeze_store_receipt is not None
@@ -2876,8 +3571,30 @@ def cold_replay_panel_feature_task(
         ):
             raise PanelFeatureTaskRunnerError("selection-gap cold replay differs")
         return restored
-    expected_pair = FrozenEngineeringFeaturePredicatePair.create(
-        side0_space, side1_space
+    if counts != (1, 1):
+        verified_rank = _canonical_rank_artifact(
+            restored.rank_artifact,
+            proposer=proposer,
+            side0_space=side0_space,
+            side1_space=side1_space,
+        )
+        selected_formula_digests = verified_rank.selected_formula_digests
+    else:
+        if restored.rank_artifact is not None:
+            raise PanelFeatureTaskRunnerError(
+                "unique support pair cannot archive an unnecessary rank artifact"
+            )
+        selected_formula_digests = (
+            side0_space.survivor_formula_digests[0],
+            side1_space.survivor_formula_digests[0],
+        )
+    expected_pair = PanelFeatureSelectedPredicatePair.create(
+        side0_space,
+        side1_space,
+        selected_formula_digests,
+        rank_artifact_digest=(
+            None if verified_rank is None else verified_rank.artifact_digest
+        ),
     )
     if (
         restored.status is not PanelFeatureTaskRunStatus.COMPLETE
@@ -2908,7 +3625,7 @@ def cold_replay_panel_feature_task(
         proposer=proposer,
         side0_space=side0_space,
         side1_space=side1_space,
-        rank_response_digest=restored.task_freeze.rank_response_digest,
+        rank_artifact=verified_rank,
     )
     frozen, committed, freeze_receipt, commit_receipt = _verify_durable_freeze(
         restored.task_freeze,
@@ -2957,7 +3674,7 @@ def cold_replay_panel_feature_task(
         label="query",
     )
     decisions = tuple(
-        EngineeringQueryDecision.create(
+        PanelFeatureQueryDecision.create(
             expected_pair,
             _table_for_observations(vocabulary, (observation,)),
             observation.panel_digest,
@@ -2977,6 +3694,9 @@ __all__ = (
     "PANEL_FEATURE_SUPPORT_DERIVATION_SCHEMA",
     "PanelFeatureSupportDerivation",
     "PanelFeatureSupportDerivationStatus",
+    "PanelFeatureQueryDecision",
+    "PanelFeatureSelectedPredicate",
+    "PanelFeatureSelectedPredicatePair",
     "PanelFeatureTaskArchive",
     "PanelFeatureTaskFreeze",
     "PanelFeatureTaskFreezeCommit",
@@ -2991,6 +3711,7 @@ __all__ = (
     "ReleasedPanelRow",
     "SupportObserverCallback",
     "SupportProposerCallback",
+    "SupportRankCallback",
     "cold_replay_panel_feature_task",
     "derive_panel_feature_support",
     "engineering_disposition_from_observation",

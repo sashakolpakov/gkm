@@ -6,9 +6,11 @@ import hashlib
 import inspect
 import json
 from pathlib import Path
+from typing import Any, Mapping
 
 import pytest
 
+import bongard.transport as transport_runtime
 from bongard.canonical import canonical_digest, canonical_json
 from bongard.object_bongard_batch import ObjectBongardTaskPlan
 from bongard.object_bongard_release_gate import (
@@ -49,6 +51,13 @@ from bongard.panel_feature_proposer import (
     panel_feature_spec_to_wire,
     parse_panel_feature_proposer_payload,
 )
+from bongard.panel_feature_ranker import (
+    PanelFeatureRankArtifact,
+    PanelFeatureRankInput,
+    PanelFeatureRankTransportProvenance,
+    panel_feature_ranker_output_schema,
+    panel_feature_ranker_prompt,
+)
 from bongard.panel_feature_task_runner import (
     PanelFeatureSupportDerivation,
     PanelFeatureSupportDerivationStatus,
@@ -83,6 +92,18 @@ from bongard.panel_soft_ontology import (
     SubjectScope,
 )
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
+from bongard.tests.no_tools_fixture import canonical_no_tools_runtime
+from bongard.transport import (
+    CODEX_APPLY_PATCH_TOOL_TYPE,
+    CODEX_EFFECTIVE_TOOL_MODE,
+    CODEX_ISOLATION_POLICY,
+    CODEX_RECEIPT_SCHEMA,
+    CODEX_TOOL_SURFACE_DIGEST,
+    CODEX_TRANSPORT_POLICY_DIGEST,
+    PINNED_CODEX_CLI_VERSION,
+    CloudPolicyCacheSnapshot,
+    CodexReceipt,
+)
 
 
 _TASK_SEED = "sha256:" + "7" * 64
@@ -94,7 +115,13 @@ _EXPOSURE = "sha256:" + "c" * 64
 _RELEASE_DESCRIPTOR = "sha256:" + "d" * 64
 _ARCHIVE = "sha256:" + "e" * 64
 _CENTRAL = "sha256:" + "f" * 64
-_RANK = "1" * 64
+_RANK_MODEL = "gpt-5.6-sol"
+_RANK_EFFORT = "medium"
+_RANK_LAUNCHER = "1" * 64
+_RANK_POLICY = CloudPolicyCacheSnapshot(None)
+_RANK_MODEL_CATALOG, _RANK_NO_TOOLS = canonical_no_tools_runtime(
+    _RANK_LAUNCHER
+)
 
 
 def _task() -> ObjectBongardTaskPlan:
@@ -183,7 +210,7 @@ def _payload(*, multiple: bool = False, local: bool = False) -> dict[str, object
             result[f"{block}_candidate_{slot}"] = _candidate(
                 spec,
                 native_block=block,
-                suffix=f"{block}-{slot}",
+                suffix=f"candidate-{block_index}-{slot}",
             )
     return result
 
@@ -438,6 +465,102 @@ def _fixture(tmp_path: Path, *, incomplete: bool = False, multiple: bool = False
     return task, support_pngs, proposer, observations, store, releases
 
 
+def _rank_receipt(
+    prompt: str,
+    schema: Mapping[str, Any],
+    payload: Mapping[str, Any],
+) -> CodexReceipt:
+    schema_digest = canonical_digest(dict(schema))
+    capture = next(
+        row
+        for row in _RANK_NO_TOOLS.to_dict()["captures"]
+        if row["modality"] == "text"
+    )
+    binding = {
+        "model_catalog_digest": _RANK_MODEL_CATALOG.raw_digest,
+        "transport_policy_digest": CODEX_TRANSPORT_POLICY_DIGEST,
+        "command_digest": capture["normalized_command_digest"],
+        "effective_tool_mode": CODEX_EFFECTIVE_TOOL_MODE,
+        "apply_patch_tool_type": CODEX_APPLY_PATCH_TOOL_TYPE,
+        "tool_surface_digest": CODEX_TOOL_SURFACE_DIGEST,
+        "tool_surface_attestation_digest": _RANK_NO_TOOLS.attestation_digest,
+    }
+    causal = transport_runtime._causal_text_input_metadata(
+        prompt, schema_digest, binding
+    )
+    body: dict[str, Any] = {
+        "schema": CODEX_RECEIPT_SCHEMA,
+        "source": "codex-cli",
+        "requested_model": _RANK_MODEL,
+        "reported_model": "",
+        "model_identity_evidence": "explicit-cli-model-flag;jsonl-omits-model",
+        "requested_reasoning_effort": _RANK_EFFORT,
+        "input_tokens": 100,
+        "cached_input_tokens": 0,
+        "output_tokens": 20,
+        "reasoning_output_tokens": 5,
+        "thread_id": "00000000-0000-4000-8000-000000000197",
+        "codex_cli_version": PINNED_CODEX_CLI_VERSION,
+        "codex_launcher_digest": _RANK_LAUNCHER,
+        "cloud_config_bundle_cache_binding": _RANK_POLICY.binding,
+        **causal,
+        "output_schema_digest": schema_digest,
+        "structured_output_digest": canonical_digest(dict(payload)),
+        "proposed_source_digest": "",
+        "proposed_log_digest": "",
+        "event_stream_digest": "6" * 64,
+        "event_types": [
+            "thread.started",
+            "turn.started",
+            "item.completed",
+            "turn.completed",
+        ],
+        "item_types": ["agent_message"],
+        "isolation_policy": CODEX_ISOLATION_POLICY,
+        "outcome": "success",
+    }
+    body["receipt_digest"] = canonical_digest(body)
+    return CodexReceipt(
+        **{
+            **body,
+            "event_types": tuple(body["event_types"]),
+            "item_types": tuple(body["item_types"]),
+        }
+    )
+
+
+def _rank_artifact(
+    derivation: PanelFeatureSupportDerivation,
+    *,
+    benchmark_sealable: bool = True,
+) -> PanelFeatureRankArtifact:
+    rank_input = PanelFeatureRankInput.freeze(
+        derivation.side0_version_space,
+        derivation.side1_version_space,
+        derivation.proposer_result,
+    )
+    payload = {"ordered_aliases": list(reversed(rank_input.candidate_aliases))}
+    prompt = panel_feature_ranker_prompt(rank_input)
+    schema = panel_feature_ranker_output_schema(rank_input)
+    provenance = PanelFeatureRankTransportProvenance.create(
+        "production_exactly_once_journal"
+        if benchmark_sealable
+        else "injected_unverified"
+    )
+    return PanelFeatureRankArtifact.seal(
+        rank_input=rank_input,
+        model_payload=payload,
+        model=_RANK_MODEL,
+        reasoning_effort=_RANK_EFFORT,
+        expected_launcher_digest=_RANK_LAUNCHER,
+        cloud_policy_cache_binding=_RANK_POLICY.binding,
+        model_catalog_digest=_RANK_MODEL_CATALOG.raw_digest,
+        no_tools_attestation_digest=_RANK_NO_TOOLS.attestation_digest,
+        transport_provenance=provenance,
+        receipt=_rank_receipt(prompt, schema, payload),
+    )
+
+
 def _freeze_callback(store: ObjectBongardReleaseStore, events: list[str]):
     def callback(freeze: PanelFeatureTaskFreeze):
         events.append("freeze")
@@ -498,7 +621,6 @@ def _run_complete(tmp_path: Path):
         observations,
         execution_precommit_digest=_PRECOMMIT,
         exposure_successor_digest=_EXPOSURE,
-        rank_response_digest=_RANK,
         freeze_persist_reload=_freeze_callback(store, events),
         query_release_callback=release,
         query_observation_callback=observe,
@@ -573,7 +695,6 @@ def test_empty_version_space_returns_gap_without_callbacks(tmp_path: Path) -> No
         observations,
         execution_precommit_digest=_PRECOMMIT,
         exposure_successor_digest=_EXPOSURE,
-        rank_response_digest=_RANK,
         freeze_persist_reload=forbidden,
         query_release_callback=forbidden,
         query_observation_callback=forbidden,
@@ -602,7 +723,6 @@ def test_multiple_survivors_are_selection_gap_not_digest_order_choice(
         observations,
         execution_precommit_digest=_PRECOMMIT,
         exposure_successor_digest=_EXPOSURE,
-        rank_response_digest=_RANK,
         freeze_persist_reload=forbidden,
         query_release_callback=forbidden,
         query_observation_callback=forbidden,
@@ -619,6 +739,168 @@ def test_multiple_survivors_are_selection_gap_not_digest_order_choice(
     )
     assert derived.status is PanelFeatureSupportDerivationStatus.SELECTION_GAP
     assert derived.selection_gap == archive.selection_gap
+
+
+def test_benchmark_sealable_rank_artifact_is_only_multi_survivor_resolution(
+    tmp_path: Path,
+) -> None:
+    task, support_pngs, proposer, observations, store, releases = _fixture(
+        tmp_path, multiple=True
+    )
+    derivation = derive_panel_feature_support(
+        task, support_pngs, proposer, observations
+    )
+    assert derivation.status is PanelFeatureSupportDerivationStatus.SELECTION_GAP
+    artifact = _rank_artifact(derivation)
+    events: list[str] = []
+    rank_calls = 0
+
+    def rank(
+        side0_space,
+        side1_space,
+        exact_proposer,
+    ) -> PanelFeatureRankArtifact:
+        nonlocal rank_calls
+        rank_calls += 1
+        events.append("rank")
+        assert side0_space == derivation.side0_version_space
+        assert side1_space == derivation.side1_version_space
+        assert exact_proposer == proposer
+        return artifact
+
+    release, observe = _query_callbacks(task, store, events)
+    archive = run_panel_feature_task(
+        task,
+        releases,
+        proposer,
+        observations,
+        execution_precommit_digest=_PRECOMMIT,
+        exposure_successor_digest=_EXPOSURE,
+        rank_callback=rank,
+        freeze_persist_reload=_freeze_callback(store, events),
+        query_release_callback=release,
+        query_observation_callback=observe,
+    )
+
+    assert rank_calls == 1
+    assert events == ["rank", "freeze", "release", "observe", "observe"]
+    assert archive.status is PanelFeatureTaskRunStatus.COMPLETE
+    assert archive.rank_artifact == artifact
+    assert archive.selection_gap is None
+    assert archive.predicate_pair is not None
+    assert archive.predicate_pair.selection_mode == "verified_support_rank_artifact"
+    assert archive.predicate_pair.rank_artifact_digest == artifact.artifact_digest
+    assert archive.predicate_pair.selected_formula_digests == (
+        artifact.selected_formula_digests
+    )
+    assert archive.task_freeze is not None
+    assert archive.task_freeze.rank_artifact == artifact
+    assert archive.task_freeze.rank_artifact_digest == artifact.artifact_digest
+    assert archive.task_freeze.predicate_pair == archive.predicate_pair
+    assert archive.task_freeze.to_data()["implicit_survivor_selection_used"] is False
+    assert PanelFeatureTaskArchive.from_data(archive.to_data()) == archive
+    assert cold_replay_panel_feature_task(
+        archive, expected_archive_address=archive.archive_address
+    ) == archive
+
+
+def test_unsealable_or_support_mismatched_rank_artifact_stays_query_closed(
+    tmp_path: Path,
+) -> None:
+    task, support_pngs, proposer, observations, _, releases = _fixture(
+        tmp_path, multiple=True
+    )
+    derivation = derive_panel_feature_support(
+        task, support_pngs, proposer, observations
+    )
+    unsealable = _rank_artifact(derivation, benchmark_sealable=False)
+
+    altered_observations = (
+        _observation(
+            support_pngs[0],
+            1,
+            complete=False,
+            observed_gestalt=GestaltKind.BIRD_LIKE,
+        ),
+        *observations[1:],
+    )
+    altered = derive_panel_feature_support(
+        task, support_pngs, proposer, altered_observations
+    )
+    mismatched = _rank_artifact(altered)
+    assert mismatched.rank_input != PanelFeatureRankInput.freeze(
+        derivation.side0_version_space,
+        derivation.side1_version_space,
+        proposer,
+    )
+
+    def forbidden(*_args):
+        raise AssertionError("invalid rank artifact reached freeze or query")
+
+    for artifact in (unsealable, mismatched):
+        with pytest.raises(PanelFeatureTaskRunnerError):
+            PanelFeatureTaskFreeze.seal(
+                task=task,
+                execution_precommit_digest=_PRECOMMIT,
+                proposer=proposer,
+                side0_space=derivation.side0_version_space,
+                side1_space=derivation.side1_version_space,
+                rank_artifact=artifact,
+            )
+        archive = run_panel_feature_task(
+            task,
+            releases,
+            proposer,
+            observations,
+            execution_precommit_digest=_PRECOMMIT,
+            exposure_successor_digest=_EXPOSURE,
+            rank_artifact=artifact,
+            freeze_persist_reload=forbidden,
+            query_release_callback=forbidden,
+            query_observation_callback=forbidden,
+        )
+        assert archive.status is PanelFeatureTaskRunStatus.SELECTION_GAP
+        assert archive.selection_gap is not None
+        assert archive.rank_artifact is None
+        assert archive.predicate_pair is None
+        assert archive.query_release_invocations == 0
+        assert archive.query_observer_invocations == 0
+    assert "selected_formula_digests" not in inspect.signature(
+        PanelFeatureTaskFreeze.seal
+    ).parameters
+    assert "rank_artifact_digest" not in inspect.signature(
+        PanelFeatureTaskFreeze.seal
+    ).parameters
+
+
+def test_unique_pair_never_invokes_optional_rank_callback(tmp_path: Path) -> None:
+    task, _, proposer, observations, store, releases = _fixture(tmp_path)
+    events: list[str] = []
+    rank_calls = 0
+
+    def rank(*_args):
+        nonlocal rank_calls
+        rank_calls += 1
+        raise AssertionError("unique support pair invoked ranker")
+
+    release, observe = _query_callbacks(task, store, events)
+    archive = run_panel_feature_task(
+        task,
+        releases,
+        proposer,
+        observations,
+        execution_precommit_digest=_PRECOMMIT,
+        exposure_successor_digest=_EXPOSURE,
+        rank_callback=rank,
+        freeze_persist_reload=_freeze_callback(store, events),
+        query_release_callback=release,
+        query_observation_callback=observe,
+    )
+    assert archive.status is PanelFeatureTaskRunStatus.COMPLETE
+    assert rank_calls == 0
+    assert archive.rank_artifact is None
+    assert archive.predicate_pair is not None
+    assert archive.predicate_pair.selection_mode == "unique_support_survivor"
 
 
 def test_support_observer_gets_no_candidate_specs_labels_or_positions(
@@ -649,7 +931,6 @@ def test_support_observer_gets_no_candidate_specs_labels_or_positions(
         observation_callback=observe,
         execution_precommit_digest=_PRECOMMIT,
         exposure_successor_digest=_EXPOSURE,
-        rank_response_digest=_RANK,
         freeze_persist_reload=_freeze_callback(store, events),
         query_release_callback=release,
         query_observation_callback=query_observer,
@@ -680,7 +961,6 @@ def test_query_observer_api_never_receives_frozen_formula(tmp_path: Path) -> Non
         observations,
         execution_precommit_digest=_PRECOMMIT,
         exposure_successor_digest=_EXPOSURE,
-        rank_response_digest=_RANK,
         freeze_persist_reload=_freeze_callback(store, events),
         query_release_callback=release,
         query_observation_callback=observer,
@@ -716,7 +996,6 @@ def test_wrong_freeze_receipt_rejects_before_query_release(tmp_path: Path) -> No
             observations,
             execution_precommit_digest=_PRECOMMIT,
             exposure_successor_digest=_EXPOSURE,
-            rank_response_digest=_RANK,
             freeze_persist_reload=bad_freeze,
             query_release_callback=query_release,
             query_observation_callback=lambda *_args: None,  # type: ignore[arg-type]
@@ -735,7 +1014,6 @@ def test_mislabeled_pixels_and_release_receipts_reject(tmp_path: Path) -> None:
             observations,
             execution_precommit_digest=_PRECOMMIT,
             exposure_successor_digest=_EXPOSURE,
-            rank_response_digest=_RANK,
             freeze_persist_reload=None,
             query_release_callback=None,
             query_observation_callback=None,
@@ -750,7 +1028,6 @@ def test_mislabeled_pixels_and_release_receipts_reject(tmp_path: Path) -> None:
             observations,
             execution_precommit_digest=_PRECOMMIT,
             exposure_successor_digest=_EXPOSURE,
-            rank_response_digest=_RANK,
             freeze_persist_reload=None,
             query_release_callback=None,
             query_observation_callback=None,
@@ -780,7 +1057,6 @@ def test_observation_requires_fixed_complete_whole_panel_catalog(
             (missing, *observations[1:]),
             execution_precommit_digest=_PRECOMMIT,
             exposure_successor_digest=_EXPOSURE,
-            rank_response_digest=_RANK,
             freeze_persist_reload=None,
             query_release_callback=None,
             query_observation_callback=None,
@@ -805,7 +1081,6 @@ def test_observation_rejects_old_all_scope_catalog_and_reordered_rows(
             (old_all_scope, *observations[1:]),
             execution_precommit_digest=_PRECOMMIT,
             exposure_successor_digest=_EXPOSURE,
-            rank_response_digest=_RANK,
             freeze_persist_reload=None,
             query_release_callback=None,
             query_observation_callback=None,
@@ -831,7 +1106,6 @@ def test_observation_rejects_old_all_scope_catalog_and_reordered_rows(
             (reordered, *observations[1:]),
             execution_precommit_digest=_PRECOMMIT,
             exposure_successor_digest=_EXPOSURE,
-            rank_response_digest=_RANK,
             freeze_persist_reload=None,
             query_release_callback=None,
             query_observation_callback=None,
@@ -859,7 +1133,6 @@ def test_local_nominations_are_retained_and_evaluate_indeterminate(
         observations,
         execution_precommit_digest=_PRECOMMIT,
         exposure_successor_digest=_EXPOSURE,
-        rank_response_digest=_RANK,
         freeze_persist_reload=forbidden,
         query_release_callback=forbidden,
         query_observation_callback=forbidden,
@@ -894,7 +1167,6 @@ def test_proposer_provenance_and_disposition_mapping_remain_fail_closed(
             observations,
             execution_precommit_digest=_PRECOMMIT,
             exposure_successor_digest=_EXPOSURE,
-            rank_response_digest=_RANK,
             freeze_persist_reload=None,
             query_release_callback=None,
             query_observation_callback=None,
