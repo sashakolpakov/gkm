@@ -268,6 +268,32 @@ def test_one_call_square_ignores_micro_marker_for_vertices_and_cold_replays() ->
         HierarchicalPanelCodexArtifact.from_data(tampered)
 
 
+def test_repeated_marker_locations_expand_without_splitting_macro_carrier() -> None:
+    panel = _png(89)
+    request = _request(panel)
+    payload = _payload(request, _square_spans())
+    payload["macro_action_geometry"]["micro_texture_evidence"]["primitives"] = [
+        {
+            "kind": "marker_square",
+            "ordered_points": [
+                {"x": 3, "y": 2},
+                {"x": 5, "y": 2},
+                {"x": 7, "y": 2},
+            ],
+        }
+    ]
+    calls: list[dict[str, object]] = []
+
+    artifact = _observe(panel, request, payload, calls)
+
+    markers = artifact.geometry_replay.evidence.micro_texture_evidence.primitives
+    assert len(markers) == 3
+    assert all(len(item.points) == 1 for item in markers)
+    assert len(artifact.geometry_replay.evidence.macro_action_trace.spans) == 4
+    assert artifact.geometry_replay.straight_span_count.lower_bound == 4
+    assert len(calls) == 1
+
+
 def test_any_arc_makes_convexity_indeterminate_but_line_count_is_derived() -> None:
     panel = _png(84)
     request = _request(panel)

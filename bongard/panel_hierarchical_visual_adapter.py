@@ -559,7 +559,9 @@ def hierarchical_panel_prompt(request: HierarchicalPanelObservationRequest) -> s
         "action direction changes. A transition between solid, zigzag, dot-marker, "
         "circle-marker, square-marker, or triangle-marker rendering is micro texture "
         "and MUST NOT split a line or create a carrier vertex. Record those decorations "
-        "only in micro_texture_evidence.\n\n"
+        "only in micro_texture_evidence. A marker primitive may list one or more "
+        "marker-center locations; Python expands them into separate marker instances. "
+        "A zigzag_stroke primitive uses two through sixteen ordered points.\n\n"
         "Use macro trace resolution complete only for one unambiguous, continuous, "
         "explicitly closed whole carrier. If object segmentation, primitive type, "
         "closure, shared endpoints, or geometry is ambiguous, return resolution "
@@ -954,7 +956,23 @@ def _parse_micro_texture(value: object) -> MicroTextureEvidence:
             _parse_grid16_point(point, f"micro primitive {index} point {point_index}")
             for point_index, point in enumerate(item["ordered_points"])
         )
-        primitives.append(MicroTexturePrimitive(kind, points))
+        if kind is MicroTexturePrimitiveKind.ZIGZAG_STROKE:
+            if not 2 <= len(points) <= 16:
+                return MicroTextureEvidence.gap(
+                    TraceResolution.ERROR, GeometryTraceIssue.PARSER_FAILURE
+                )
+            primitives.append(MicroTexturePrimitive(kind, points))
+        else:
+            if not points:
+                return MicroTextureEvidence.gap(
+                    TraceResolution.ERROR, GeometryTraceIssue.PARSER_FAILURE
+                )
+            # The visual payload describes a repeated marker run compactly.  The
+            # geometry authority represents each marker at one exact location,
+            # so expand the run without changing any point or macro geometry.
+            primitives.extend(
+                MicroTexturePrimitive(kind, (point,)) for point in points
+            )
     try:
         return MicroTextureEvidence.complete(primitives)
     except Exception as exc:
