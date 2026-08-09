@@ -33,10 +33,12 @@ from bongard.panel_soft_ontology import (
     PanelSoftOntologyError,
     QuantizedPoint,
     QuantizedRegion,
+    QuantizedSegment,
     ReferenceFrame,
     SubjectBinding,
     SubjectBindingKind,
     SubjectScope,
+    StraightSegmentCountParameters,
     FeatureFamily,
     coherent_top_level_component_owner_ids,
     descendant_segment_owner_ids,
@@ -47,13 +49,13 @@ from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 
 FEATURE_AXIS_SCHEMA = "gkm.bongard-panel-feature-axis.v1"
-BINDING_OBSERVATION_SCHEMA = "gkm.bongard-panel-binding-feature-observation.v2"
+BINDING_OBSERVATION_SCHEMA = "gkm.bongard-panel-binding-feature-observation.v3"
 ELIGIBLE_DOMAIN_GAP_SCHEMA = "gkm.bongard-panel-eligible-domain-gap.v2"
-PANEL_AXIS_OBSERVATION_SCHEMA = "gkm.bongard-panel-axis-observation.v4"
-PANEL_FEATURE_OBSERVATION_SET_SCHEMA = "gkm.bongard-panel-feature-observation-set.v4"
+PANEL_AXIS_OBSERVATION_SCHEMA = "gkm.bongard-panel-axis-observation.v5"
+PANEL_FEATURE_OBSERVATION_SET_SCHEMA = "gkm.bongard-panel-feature-observation-set.v5"
 ENGINEERING_FEATURE_CELL_SCHEMA = "gkm.bongard-engineering-feature-cell.v1"
 FEATURE_OBSERVATION_PROTOCOL_ID = (
-    "bongard.panel-feature-observation/complete-closed-variants-per-binding-v4"
+    "bongard.panel-feature-observation/complete-closed-variants-per-binding-v5"
 )
 PANEL_ONLY_CONTEXT_PROTOCOL_ID = (
     "bongard.panel-feature-observation/exact-panel-binding-context-v1"
@@ -79,6 +81,7 @@ class ObservationIssue(str, Enum):
     UNVERIFIED_EMPTY_DOMAIN = "unverified_empty_domain"
     AMBIGUOUS_GEOMETRY = "ambiguous_geometry"
     AMBIGUOUS_OWNERSHIP = "ambiguous_ownership"
+    MISSING_STRAIGHTNESS_EVIDENCE = "missing_straightness_evidence"
     OUTSIDE_CLOSED_CATALOG = "outside_closed_catalog"
     RESOLUTION_LIMIT = "resolution_limit"
     CAPACITY_LIMIT = "capacity_limit"
@@ -91,6 +94,7 @@ _UNCLEAR_ISSUES = frozenset(
     {
         ObservationIssue.AMBIGUOUS_GEOMETRY,
         ObservationIssue.AMBIGUOUS_OWNERSHIP,
+        ObservationIssue.MISSING_STRAIGHTNESS_EVIDENCE,
         ObservationIssue.OUTSIDE_CLOSED_CATALOG,
         ObservationIssue.RESOLUTION_LIMIT,
         ObservationIssue.CAPACITY_LIMIT,
@@ -108,6 +112,7 @@ _SINGLE_VALUED_FAMILIES = frozenset(
     {
         FeatureFamily.COMPONENT_COUNT,
         FeatureFamily.EXACT_SEGMENT_COUNT,
+        FeatureFamily.STRAIGHT_SEGMENT_COUNT,
         FeatureFamily.TURN_PROFILE,
         FeatureFamily.OPEN_TRACE,
         FeatureFamily.CLOSED_LOOP,
@@ -116,6 +121,7 @@ _SINGLE_VALUED_FAMILIES = frozenset(
     }
 )
 _COUNT_BY_INT = {index: item for index, item in enumerate(ClosedCount, start=1)}
+_INT_BY_COUNT = {item: index for index, item in _COUNT_BY_INT.items()}
 
 
 class EngineeringFeatureDisposition(str, Enum):
@@ -538,6 +544,7 @@ class BindingFeatureObservation:
     evidence_points: tuple[QuantizedPoint, ...]
     issue: ObservationIssue | None
     observation_receipt_digest: str
+    straight_segment_evidence: tuple[QuantizedSegment, ...] = ()
 
     def __post_init__(self) -> None:
         _digest(self.axis_digest, "binding observation axis digest")
@@ -577,12 +584,56 @@ class BindingFeatureObservation:
             raise TypeError("binding evidence points must be a Grid16 tuple")
         if len(self.evidence_points) > 16:
             raise PanelFeatureObservationError("too many binding evidence points")
+        if type(self.straight_segment_evidence) is not tuple or any(
+            type(item) is not QuantizedSegment
+            for item in self.straight_segment_evidence
+        ):
+            raise TypeError(
+                "straight-segment evidence must be a QuantizedSegment tuple"
+            )
+        if len(self.straight_segment_evidence) > len(ClosedCount):
+            raise PanelFeatureObservationError(
+                "straight-segment evidence exceeds the closed count catalog"
+            )
+        if any(
+            item.start >= item.end for item in self.straight_segment_evidence
+        ):
+            raise PanelFeatureObservationError(
+                "straight-segment evidence endpoints are not canonical"
+            )
+        if (
+            self.straight_segment_evidence
+            != tuple(sorted(self.straight_segment_evidence))
+            or len(self.straight_segment_evidence)
+            != len(set(self.straight_segment_evidence))
+        ):
+            raise PanelFeatureObservationError(
+                "straight-segment evidence must be unique and sorted"
+            )
+        is_straight_count = bool(self.observed_specs) and (
+            self.observed_specs[0].family
+            is FeatureFamily.STRAIGHT_SEGMENT_COUNT
+        )
         if self.resolution is BindingResolution.COMPLETE:
             if self.issue is not None:
                 raise PanelFeatureObservationError(
                     "complete binding observation carries an issue"
                 )
-            if len(self.observed_specs) != len(self.evidence_points):
+            if is_straight_count:
+                count = _INT_BY_COUNT[self.observed_specs[0].parameters.count]  # type: ignore[union-attr]
+                if (
+                    self.evidence_points
+                    or len(self.observed_specs) != 1
+                    or len(self.straight_segment_evidence) != count
+                ):
+                    raise PanelFeatureObservationError(
+                        "straight-segment count needs one explicit line per count"
+                    )
+            elif self.straight_segment_evidence:
+                raise PanelFeatureObservationError(
+                    "non-straight feature cannot carry straight-segment evidence"
+                )
+            elif len(self.observed_specs) != len(self.evidence_points):
                 raise PanelFeatureObservationError(
                     "each observed variant needs its own aligned evidence point"
                 )
@@ -591,7 +642,11 @@ class BindingFeatureObservation:
                 raise PanelFeatureObservationError(
                     "unclear binding observation has the wrong issue"
                 )
-            if self.observed_specs or self.evidence_points:
+            if (
+                self.observed_specs
+                or self.evidence_points
+                or self.straight_segment_evidence
+            ):
                 raise PanelFeatureObservationError(
                     "unclear binding observation cannot claim resolved evidence"
                 )
@@ -600,7 +655,11 @@ class BindingFeatureObservation:
                 raise PanelFeatureObservationError(
                     "errored binding observation has the wrong issue"
                 )
-            if self.observed_specs or self.evidence_points:
+            if (
+                self.observed_specs
+                or self.evidence_points
+                or self.straight_segment_evidence
+            ):
                 raise PanelFeatureObservationError(
                     "errored binding observation cannot claim resolved evidence"
                 )
@@ -618,6 +677,9 @@ class BindingFeatureObservation:
             "resolution": self.resolution.value,
             "observed_specs": [item.to_data() for item in self.observed_specs],
             "evidence_points": [item.to_data() for item in self.evidence_points],
+            "straight_segment_evidence": [
+                item.to_data() for item in self.straight_segment_evidence
+            ],
             "issue": None if self.issue is None else self.issue.value,
             "observation_receipt_digest": self.observation_receipt_digest,
             "engineering_only": True,
@@ -635,6 +697,7 @@ class BindingFeatureObservation:
                 "resolution",
                 "observed_specs",
                 "evidence_points",
+                "straight_segment_evidence",
                 "issue",
                 "observation_receipt_digest",
                 "engineering_only",
@@ -648,6 +711,7 @@ class BindingFeatureObservation:
             or raw["scientific_calibration_supplied"] is not False
             or type(raw["observed_specs"]) is not list
             or type(raw["evidence_points"]) is not list
+            or type(raw["straight_segment_evidence"]) is not list
         ):
             raise PanelFeatureObservationError(
                 "binding feature observation policy differs"
@@ -661,6 +725,10 @@ class BindingFeatureObservation:
                 tuple(QuantizedPoint.from_data(item) for item in raw["evidence_points"]),
                 None if raw["issue"] is None else ObservationIssue(raw["issue"]),
                 raw["observation_receipt_digest"],
+                tuple(
+                    QuantizedSegment.from_data(item)
+                    for item in raw["straight_segment_evidence"]
+                ),
             )
         except (TypeError, ValueError, PanelSoftOntologyError) as exc:
             if isinstance(exc, PanelFeatureObservationError):
@@ -772,6 +840,15 @@ class PanelAxisObservation:
                     raise PanelFeatureObservationError(
                         "complete count row contradicts its authoritative owner graph"
                     )
+        if self.axis.family is FeatureFamily.STRAIGHT_SEGMENT_COUNT:
+            for row in self.binding_observations:
+                if row.resolution is BindingResolution.COMPLETE and (
+                    len(row.observed_specs) != 1
+                    or not row.straight_segment_evidence
+                ):
+                    raise PanelFeatureObservationError(
+                        "complete straight-segment count needs explicit line evidence"
+                    )
         if expected:
             if self.domain_gap is not None:
                 raise PanelFeatureObservationError(
@@ -796,6 +873,14 @@ class PanelAxisObservation:
             ):
                 raise PanelFeatureObservationError(
                     "binding evidence point lies outside its derived search region"
+                )
+            if any(
+                not _point_in_region(point, region.minimum, region.maximum)
+                for segment in item.straight_segment_evidence
+                for point in (segment.start, segment.end)
+            ):
+                raise PanelFeatureObservationError(
+                    "straight-segment evidence lies outside its derived search region"
                 )
 
     @property
@@ -1130,11 +1215,13 @@ def derive_inventory_count_observation(
     observer_contract_digest: str,
     measurement_protocol_digest: str,
 ) -> PanelAxisObservation:
-    """Derive the two exact-count axes from the frozen owner graph.
+    """Derive owner-count axes and fail closed for straight-segment counts.
 
     This is still engineering-only because inventory completeness itself is an
     empirical claim.  It avoids asking vision the redundant candidate-relative
     question "is the count N?" once a complete owner graph has been frozen.
+    Straightness is not an owner property, so that family remains unresolved
+    until explicit line evidence is supplied through the vision protocol.
     """
 
     if type(inventory) is not OwnerInventory or type(axis) is not FeatureAxis:
@@ -1142,13 +1229,19 @@ def derive_inventory_count_observation(
     if axis.family not in {
         FeatureFamily.COMPONENT_COUNT,
         FeatureFamily.EXACT_SEGMENT_COUNT,
+        FeatureFamily.STRAIGHT_SEGMENT_COUNT,
     }:
         raise PanelFeatureObservationError("feature axis is not an exact-count axis")
     _digest(observer_contract_digest, "count observer contract digest")
     _digest(measurement_protocol_digest, "count measurement protocol digest")
     rows: list[BindingFeatureObservation] = []
     for binding in eligible_axis_bindings(axis, inventory):
-        if not inventory.enumeration_complete:
+        if axis.family is FeatureFamily.STRAIGHT_SEGMENT_COUNT:
+            observed_specs = ()
+            points = ()
+            resolution = BindingResolution.UNCLEAR
+            issue = ObservationIssue.MISSING_STRAIGHTNESS_EVIDENCE
+        elif not inventory.enumeration_complete:
             observed_specs: tuple[PanelFeatureSpec, ...] = ()
             points: tuple[QuantizedPoint, ...] = ()
             resolution = BindingResolution.UNCLEAR
@@ -1184,6 +1277,7 @@ def derive_inventory_count_observation(
                     item.spec_digest for item in observed_specs
                 ],
                 "issue": None if issue is None else issue.value,
+                "straightness_evidence_supplied": False,
                 "engineering_only": True,
             }
         )

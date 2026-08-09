@@ -67,6 +67,7 @@ def _row(
     resolution: f.BindingResolution = f.BindingResolution.COMPLETE,
     observed: tuple[o.PanelFeatureSpec, ...] = (),
     point: o.QuantizedPoint | None = None,
+    straight_segments: tuple[o.QuantizedSegment, ...] = (),
     issue: f.ObservationIssue | None = None,
     receipt: str = _d("d"),
 ) -> f.BindingFeatureObservation:
@@ -79,6 +80,7 @@ def _row(
         () if point is None else (point,),
         issue,
         receipt,
+        straight_segments,
     )
 
 
@@ -631,6 +633,83 @@ def test_count_derivation_uses_coherent_roots_and_descendant_segments() -> None:
         whole_panel_observation.evaluate(whole_panel_segment)
         is f.EngineeringFeatureDisposition.MATCH
     )
+
+
+def test_segment_owner_count_never_derives_straight_segment_count() -> None:
+    figure = o.PanelLocalOwner(
+        o.OwnerId("owner_0001"), o.OwnerKind.FIGURE, _region(0, 0, 15, 15)
+    )
+    segments = (
+        o.PanelLocalOwner(
+            o.OwnerId("owner_0002"),
+            o.OwnerKind.SEGMENT,
+            _region(2, 2, 6, 6),
+            (figure.owner_id,),
+        ),
+        o.PanelLocalOwner(
+            o.OwnerId("owner_0003"),
+            o.OwnerKind.SEGMENT,
+            _region(8, 8, 12, 12),
+            (figure.owner_id,),
+        ),
+    )
+    inventory = o.OwnerInventory(
+        _d("a"),
+        _d("b"),
+        o.EnumerationResolution.GRID16_FULL_PANEL,
+        _d("c"),
+        True,
+        (figure, *segments),
+    )
+    two = o.PanelFeatureSpec(
+        o.FeatureFamily.STRAIGHT_SEGMENT_COUNT,
+        o.SubjectScope.ONE_COHERENT_FIGURE,
+        o.ReferenceFrame.NONE,
+        o.StraightSegmentCountParameters(o.ClosedCount.TWO),
+    )
+    one = o.PanelFeatureSpec(
+        o.FeatureFamily.STRAIGHT_SEGMENT_COUNT,
+        o.SubjectScope.ONE_COHERENT_FIGURE,
+        o.ReferenceFrame.NONE,
+        o.StraightSegmentCountParameters(o.ClosedCount.ONE),
+    )
+    axis = f.FeatureAxis.for_spec(two)
+    derived = f.derive_inventory_count_observation(
+        inventory,
+        axis,
+        observer_contract_digest=_d("d"),
+        measurement_protocol_digest=_d("e"),
+    )
+    row = derived.binding_observations[0]
+    assert row.resolution is f.BindingResolution.UNCLEAR
+    assert row.issue is f.ObservationIssue.MISSING_STRAIGHTNESS_EVIDENCE
+    assert derived.evaluate(two) is f.EngineeringFeatureDisposition.INDETERMINATE
+
+    lines = (
+        o.QuantizedSegment(o.QuantizedPoint(2, 2), o.QuantizedPoint(6, 6)),
+        o.QuantizedSegment(o.QuantizedPoint(8, 8), o.QuantizedPoint(12, 12)),
+    )
+    binding = f.eligible_axis_bindings(axis, inventory)[0]
+    explicit = f.PanelAxisObservation(
+        inventory,
+        axis,
+        _d("d"),
+        _d("e"),
+        (
+            _row(
+                axis,
+                binding,
+                observed=(two,),
+                straight_segments=lines,
+            ),
+        ),
+    )
+    assert explicit.evaluate(two) is f.EngineeringFeatureDisposition.MATCH
+    assert explicit.evaluate(one) is f.EngineeringFeatureDisposition.NONMATCH
+    assert f.PanelAxisObservation.from_data(explicit.to_data()) == explicit
+
+    with pytest.raises(f.PanelFeatureObservationError, match="explicit line"):
+        _row(axis, binding, observed=(two,))
 
 
 def test_zero_count_is_an_explicit_outside_catalog_gap() -> None:

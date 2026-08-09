@@ -98,6 +98,7 @@ class PanelFeatureNominationGapCode(str, Enum):
 _PARAMETER_FIELDS: Mapping[FeatureFamily, tuple[str, ...]] = {
     FeatureFamily.COMPONENT_COUNT: ("count",),
     FeatureFamily.EXACT_SEGMENT_COUNT: ("count",),
+    FeatureFamily.STRAIGHT_SEGMENT_COUNT: ("count",),
     FeatureFamily.MARKER_PATTERN: ("primitive", "repetition", "arrangement"),
     FeatureFamily.GESTALT_RESEMBLANCE: ("kind",),
     FeatureFamily.SEGMENT_ORIENTATION: ("orientation", "aggregation"),
@@ -240,9 +241,11 @@ def panel_feature_proposer_output_schema() -> dict[str, object]:
 
 
 def _wire_catalog() -> dict[str, object]:
+    feature_catalog = feature_catalog_data()
     catalog_by_family = {
-        row["family"]: row for row in feature_catalog_data()["families"]  # type: ignore[index]
+        row["family"]: row for row in feature_catalog["families"]  # type: ignore[index]
     }
+    count_membership_rules = feature_catalog["count_membership_rules"]
     return {
         "catalog_digest": feature_catalog_digest(),
         "unused_parameter_token": PANEL_FEATURE_NONE,
@@ -254,6 +257,9 @@ def _wire_catalog() -> dict[str, object]:
                 "allowed_scope_frames": catalog_by_family[family.value][
                     "allowed_scope_frames"
                 ],
+                "count_membership_rule_id": count_membership_rules.get(  # type: ignore[union-attr]
+                    family.value, PANEL_FEATURE_NONE
+                ),
             }
             for family in sorted(FeatureFamily, key=lambda item: item.value)
         ],
@@ -275,7 +281,11 @@ def panel_feature_proposer_prompt() -> str:
         "does not count as does_not_support, and at most one image per block may be unclear. "
         "Do not encode comparison, absence, a complement, a task label, a class label, "
         "a path, or an image role in the feature fields. Select semantics only from the "
-        "closed catalog. If the needed visual concept is outside the catalog, emit a "
+        "closed catalog. exact_segment_count counts every registered segment owner, "
+        "whether straight or curved; straight_segment_count counts only visibly straight "
+        "structural contour or boundary segments backed by explicit line evidence; it "
+        "excludes marker strokes, hatching, and texture lines and must never be inferred "
+        "from the segment-owner count. If the needed visual concept is outside the catalog, emit a "
         "language_gap slot with all feature and parameter fields set to unset. Archival "
         "summary and indicator fields are non-executable narration; phrase them as "
         "affirmative visible descriptions. Fill exactly four slots per block and all "

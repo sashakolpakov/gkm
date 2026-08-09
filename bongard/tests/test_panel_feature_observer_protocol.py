@@ -60,6 +60,15 @@ def _contact() -> o.PanelFeatureSpec:
     )
 
 
+def _straight_count(count: o.ClosedCount) -> o.PanelFeatureSpec:
+    return o.PanelFeatureSpec(
+        o.FeatureFamily.STRAIGHT_SEGMENT_COUNT,
+        o.SubjectScope.WHOLE_PANEL,
+        o.ReferenceFrame.NONE,
+        o.StraightSegmentCountParameters(count),
+    )
+
+
 def _empty_payload(view: p.FeatureAxisObservationView) -> dict[str, object]:
     return {
         item.alias: {
@@ -138,6 +147,102 @@ def test_strict_payload_resolves_variants_then_python_compares_specs() -> None:
     prompt = p.feature_axis_observer_prompt(view)
     assert "preferred answer" in prompt
     assert "group 0" not in prompt.lower() and "group 1" not in prompt.lower()
+
+
+def test_straight_count_is_derived_only_from_explicit_line_records() -> None:
+    context = f.panel_only_observation_inventory(
+        panel_digest=_d("a"),
+        observer_contract_digest=_d("d"),
+        panel_context_receipt_digest=_d("c"),
+    )
+    two = _straight_count(o.ClosedCount.TWO)
+    one = _straight_count(o.ClosedCount.ONE)
+    view = p.FeatureAxisObservationView.build(context, f.FeatureAxis.for_spec(two))
+    schema = p.feature_axis_observer_output_schema(view)
+    validate_codex_strict_output_schema(schema)
+    row_schema = schema["properties"][view.bindings[0].alias]
+    assert "straight_segment_evidence" in row_schema["properties"]
+    assert "variant_evidence" not in row_schema["properties"]
+    prompt = p.feature_axis_observer_prompt(view)
+    assert "structural contour or boundary segments" in prompt
+    assert "not generic segment owners" in prompt
+    assert "Do not select a count alias" in prompt
+
+    payload = {
+        view.bindings[0].alias: {
+            "resolution": "complete",
+            # Endpoint direction and record order are deliberately noncanonical;
+            # Python canonicalizes geometry before deriving the count.
+            "straight_segment_evidence": [
+                {"start_x": 12, "start_y": 12, "end_x": 8, "end_y": 8},
+                {"start_x": 6, "start_y": 6, "end_x": 2, "end_y": 2},
+            ],
+            "issue": "none",
+        }
+    }
+    observation = p.parse_feature_axis_observer_payload(
+        view,
+        payload,
+        observer_contract_digest=_d("d"),
+        measurement_protocol_digest=_d("e"),
+        observation_receipt_digest=_d("f"),
+    )
+    row = observation.binding_observations[0]
+    assert row.observed_specs == (two,)
+    assert len(row.straight_segment_evidence) == 2
+    assert row.evidence_points == ()
+    assert observation.evaluate(two) is f.EngineeringFeatureDisposition.MATCH
+    assert observation.evaluate(one) is f.EngineeringFeatureDisposition.NONMATCH
+
+
+def test_missing_or_out_of_catalog_straightness_stays_indeterminate() -> None:
+    context = f.panel_only_observation_inventory(
+        panel_digest=_d("a"),
+        observer_contract_digest=_d("d"),
+        panel_context_receipt_digest=_d("c"),
+    )
+    one = _straight_count(o.ClosedCount.ONE)
+    view = p.FeatureAxisObservationView.build(context, f.FeatureAxis.for_spec(one))
+    binding_alias = view.bindings[0].alias
+
+    unclear = p.parse_feature_axis_observer_payload(
+        view,
+        {
+            binding_alias: {
+                "resolution": "unclear",
+                "straight_segment_evidence": [],
+                "issue": "missing_straightness_evidence",
+            }
+        },
+        observer_contract_digest=_d("d"),
+        measurement_protocol_digest=_d("e"),
+        observation_receipt_digest=_d("f"),
+    )
+    assert (
+        unclear.binding_observations[0].issue
+        is f.ObservationIssue.MISSING_STRAIGHTNESS_EVIDENCE
+    )
+    assert unclear.evaluate(one) is f.EngineeringFeatureDisposition.INDETERMINATE
+
+    zero = p.parse_feature_axis_observer_payload(
+        view,
+        {
+            binding_alias: {
+                "resolution": "complete",
+                "straight_segment_evidence": [],
+                "issue": "none",
+            }
+        },
+        observer_contract_digest=_d("d"),
+        measurement_protocol_digest=_d("e"),
+        observation_receipt_digest=_d("f"),
+    )
+    assert zero.binding_observations[0].resolution is f.BindingResolution.UNCLEAR
+    assert (
+        zero.binding_observations[0].issue
+        is f.ObservationIssue.OUTSIDE_CLOSED_CATALOG
+    )
+    assert zero.evaluate(one) is f.EngineeringFeatureDisposition.INDETERMINATE
 
 
 def test_complete_empty_payload_stays_indeterminate() -> None:

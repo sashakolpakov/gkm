@@ -29,6 +29,9 @@ from bongard.panel_soft_ontology import (
     NativeOrientation,
     PanelFeatureSpec,
     ReferenceFrame,
+    SEGMENT_MEMBERSHIP_RULE_ID,
+    STRAIGHT_SEGMENT_CLASSIFICATION_RULE_ID,
+    StraightSegmentCountParameters,
     SubjectScope,
 )
 from bongard.transport import validate_codex_strict_output_schema
@@ -45,6 +48,15 @@ def _count_spec(count: ClosedCount) -> PanelFeatureSpec:
         SubjectScope.WHOLE_PANEL,
         ReferenceFrame.NONE,
         ComponentCountParameters(count),
+    )
+
+
+def _straight_count_spec(count: ClosedCount) -> PanelFeatureSpec:
+    return PanelFeatureSpec(
+        FeatureFamily.STRAIGHT_SEGMENT_COUNT,
+        SubjectScope.WHOLE_PANEL,
+        ReferenceFrame.NONE,
+        StraightSegmentCountParameters(count),
     )
 
 
@@ -159,6 +171,16 @@ def test_closed_wire_round_trip_does_not_consult_narration() -> None:
     bad["parameter_b"] = "unexpected"
     with pytest.raises(PanelFeatureProposerError, match="unused"):
         panel_feature_spec_from_wire(bad)
+
+
+def test_straight_and_generic_segment_counts_have_distinct_wire_semantics() -> None:
+    straight = _straight_count_spec(ClosedCount.FOUR)
+    assert panel_feature_spec_from_wire(panel_feature_spec_to_wire(straight)) == straight
+    prompt = panel_feature_proposer_prompt()
+    assert "exact_segment_count counts every registered segment owner" in prompt
+    assert "straight_segment_count counts only visibly straight" in prompt
+    assert SEGMENT_MEMBERSHIP_RULE_ID in prompt
+    assert STRAIGHT_SEGMENT_CLASSIFICATION_RULE_ID in prompt
 
 
 def test_exact_admission_boundary_and_global_observer_vocabulary() -> None:

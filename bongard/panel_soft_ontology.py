@@ -56,8 +56,8 @@ ABSENCE_GRANT_SCHEMA = "gkm.bongard-feature-absence-calibration-grant.v1"
 CALIBRATION_AUTHORITY_SCHEMA = "gkm.bongard-feature-calibration-authority.v1"
 CALIBRATION_ASSESSMENT_SCHEMA = "gkm.bongard-feature-calibration-assessment.v1"
 
-FEATURE_CATALOG_SCHEMA = "gkm.bongard-panel-feature-catalog.v3"
-FEATURE_CATALOG_ID = "bongard.panel-feature-catalog/typed-visual-v3"
+FEATURE_CATALOG_SCHEMA = "gkm.bongard-panel-feature-catalog.v4"
+FEATURE_CATALOG_ID = "bongard.panel-feature-catalog/typed-visual-v4"
 OWNER_ENUMERATION_PROTOCOL_ID = (
     "bongard.panel-owner-enumeration/candidate-independent-grid16-v1"
 )
@@ -69,6 +69,10 @@ COMPONENT_MEMBERSHIP_RULE_ID = (
 )
 SEGMENT_MEMBERSHIP_RULE_ID = (
     "bongard.panel-segment-membership/transitive-descendant-closure-v1"
+)
+STRAIGHT_SEGMENT_CLASSIFICATION_RULE_ID = (
+    "bongard.panel-straight-segment-membership/"
+    "explicit-exhaustive-grid16-line-evidence-v1"
 )
 GRID16_BIN_COUNT = 16
 
@@ -85,6 +89,7 @@ class PanelSoftOntologyError(ValueError):
 class FeatureFamily(str, Enum):
     COMPONENT_COUNT = "component_count"
     EXACT_SEGMENT_COUNT = "exact_segment_count"
+    STRAIGHT_SEGMENT_COUNT = "straight_segment_count"
     MARKER_PATTERN = "marker_pattern"
     GESTALT_RESEMBLANCE = "gestalt_resemblance"
     SEGMENT_ORIENTATION = "segment_orientation"
@@ -318,6 +323,21 @@ class ExactSegmentCountParameters(_OneEnumParameter):
 
     def __post_init__(self) -> None:
         _enum_instance(self.count, ClosedCount, "segment count")
+
+    to_data = _OneEnumParameter._one_enum_to_data
+    from_data = classmethod(_OneEnumParameter._one_enum_from_data.__func__)
+
+
+@dataclass(frozen=True, order=True, slots=True)
+class StraightSegmentCountParameters(_OneEnumParameter):
+    """Exact count of visibly straight segments, not generic segment owners."""
+
+    count: ClosedCount
+    _field_name = "count"
+    _enum_type = ClosedCount
+
+    def __post_init__(self) -> None:
+        _enum_instance(self.count, ClosedCount, "straight-segment count")
 
     to_data = _OneEnumParameter._one_enum_to_data
     from_data = classmethod(_OneEnumParameter._one_enum_from_data.__func__)
@@ -562,6 +582,7 @@ class TextureCompositionParameters(_OneEnumParameter):
 FeatureParameters: TypeAlias = (
     ComponentCountParameters
     | ExactSegmentCountParameters
+    | StraightSegmentCountParameters
     | MarkerPatternParameters
     | GestaltResemblanceParameters
     | SegmentOrientationParameters
@@ -636,6 +657,24 @@ FAMILY_CONTRACTS: Mapping[FeatureFamily, FamilyContract] = MappingProxyType(
         ),
         FeatureFamily.EXACT_SEGMENT_COUNT: _contract(
             ExactSegmentCountParameters,
+            [
+                (SubjectScope.WHOLE_PANEL, ReferenceFrame.NONE),
+                (SubjectScope.ONE_COHERENT_FIGURE, ReferenceFrame.NONE),
+                (SubjectScope.ONE_TRACE, ReferenceFrame.NONE),
+            ],
+            {
+                SubjectScope.WHOLE_PANEL: _PANEL,
+                SubjectScope.ONE_COHERENT_FIGURE: _UNARY,
+                SubjectScope.ONE_TRACE: _UNARY,
+            },
+            {
+                SubjectScope.WHOLE_PANEL: (),
+                SubjectScope.ONE_COHERENT_FIGURE: _FIGURE,
+                SubjectScope.ONE_TRACE: _TRACE,
+            },
+        ),
+        FeatureFamily.STRAIGHT_SEGMENT_COUNT: _contract(
+            StraightSegmentCountParameters,
             [
                 (SubjectScope.WHOLE_PANEL, ReferenceFrame.NONE),
                 (SubjectScope.ONE_COHERENT_FIGURE, ReferenceFrame.NONE),
@@ -816,6 +855,7 @@ def _parameter_semantic_schema(family: FeatureFamily) -> dict[str, object]:
     one_field: dict[FeatureFamily, tuple[str, type[Enum]]] = {
         FeatureFamily.COMPONENT_COUNT: ("count", ClosedCount),
         FeatureFamily.EXACT_SEGMENT_COUNT: ("count", ClosedCount),
+        FeatureFamily.STRAIGHT_SEGMENT_COUNT: ("count", ClosedCount),
         FeatureFamily.GESTALT_RESEMBLANCE: ("kind", GestaltKind),
         FeatureFamily.TURN_PROFILE: ("profile", TurnProfileClass),
         FeatureFamily.OPEN_TRACE: ("kind", OpenTraceKind),
@@ -898,6 +938,9 @@ def feature_catalog_data() -> dict[str, object]:
         "count_membership_rules": {
             FeatureFamily.COMPONENT_COUNT.value: COMPONENT_MEMBERSHIP_RULE_ID,
             FeatureFamily.EXACT_SEGMENT_COUNT.value: SEGMENT_MEMBERSHIP_RULE_ID,
+            FeatureFamily.STRAIGHT_SEGMENT_COUNT.value: (
+                STRAIGHT_SEGMENT_CLASSIFICATION_RULE_ID
+            ),
         },
         "families": rows,
         "sibling_registry": sorted(
@@ -924,7 +967,10 @@ def feature_catalog_data() -> dict[str, object]:
             },
             {
                 "relation_id": "distinct-exact-counts-v1",
-                "left_family": "component_count|exact_segment_count|marker_pattern",
+                "left_family": (
+                    "component_count|exact_segment_count|marker_pattern|"
+                    "straight_segment_count"
+                ),
                 "right_family": "same_as_left",
                 "parameter_rule_id": "distinct_count_same_marker_context_v1",
                 "mutually_exclusive": True,
@@ -1772,6 +1818,33 @@ def descendant_segment_owner_ids(
     )
 
 
+def segment_owner_ids_for_subject(
+    subject: SubjectBinding,
+    inventory: OwnerInventory,
+) -> tuple[OwnerId, ...]:
+    """Return the generic segment-owner universe for a panel or unary subject.
+
+    This function deliberately says nothing about straightness.  A segment
+    owner enters the straight-segment subset only through explicit geometric
+    classification evidence.
+    """
+
+    if type(subject) is not SubjectBinding or type(inventory) is not OwnerInventory:
+        raise TypeError("segment membership requires typed subject and inventory")
+    subject.validate_inventory(inventory)
+    if subject.kind is SubjectBindingKind.PANEL:
+        return tuple(
+            item.owner_id
+            for item in inventory.owners
+            if item.kind is OwnerKind.SEGMENT
+        )
+    if subject.kind is SubjectBindingKind.UNARY:
+        return descendant_segment_owner_ids(subject.owner_ids[0], inventory)
+    raise PanelSoftOntologyError(
+        "segment membership is defined only for panel or unary subjects"
+    )
+
+
 def _closed_count_value(value: ClosedCount) -> int:
     return _CLOSED_COUNT_TO_INT[value]
 
@@ -1842,6 +1915,120 @@ class CountWitnessPayload:
             raw["membership_receipt_digest"],
         )
         _require_canonical(result, raw, "count witness payload")
+        return result
+
+
+@dataclass(frozen=True, slots=True)
+class StraightSegmentCountWitnessPayload:
+    """Complete explicit straight/non-straight classification of segment owners.
+
+    ``eligible_segment_owner_ids`` freezes the generic segment-owner universe.
+    ``straight_segment_owner_ids`` is an explicit subset, positionally aligned
+    with non-degenerate Grid16 line evidence.  Owner kind alone never places an
+    item in that subset.
+    """
+
+    eligible_segment_owner_ids: tuple[OwnerId, ...]
+    straight_segment_owner_ids: tuple[OwnerId, ...]
+    straight_segments: tuple[QuantizedSegment, ...]
+    classification_complete: bool
+    classification_receipt_digest: str
+
+    def __post_init__(self) -> None:
+        for label, row in (
+            ("eligible", self.eligible_segment_owner_ids),
+            ("straight", self.straight_segment_owner_ids),
+        ):
+            if type(row) is not tuple or any(type(item) is not OwnerId for item in row):
+                raise TypeError(
+                    f"straight-segment {label} owner IDs must be an OwnerId tuple"
+                )
+            values = tuple(item.value for item in row)
+            if values != tuple(sorted(values)) or len(values) != len(set(values)):
+                raise PanelSoftOntologyError(
+                    f"straight-segment {label} owner IDs must be unique and sorted"
+                )
+        if (
+            not self.straight_segment_owner_ids
+            or not set(self.straight_segment_owner_ids)
+            <= set(self.eligible_segment_owner_ids)
+        ):
+            raise PanelSoftOntologyError(
+                "straight-segment owners must be a nonempty eligible subset"
+            )
+        if (
+            type(self.straight_segments) is not tuple
+            or len(self.straight_segments) != len(self.straight_segment_owner_ids)
+            or any(type(item) is not QuantizedSegment for item in self.straight_segments)
+        ):
+            raise TypeError(
+                "straight-segment owners need one aligned QuantizedSegment each"
+            )
+        if any(item.start >= item.end for item in self.straight_segments):
+            raise PanelSoftOntologyError(
+                "straight-segment endpoints must use canonical ascending order"
+            )
+        if len(set(self.straight_segments)) != len(self.straight_segments):
+            raise PanelSoftOntologyError(
+                "straight-segment line evidence must be unique"
+            )
+        if (
+            type(self.classification_complete) is not bool
+            or self.classification_complete is not True
+        ):
+            raise PanelSoftOntologyError(
+                "straight-segment count requires complete classification"
+            )
+        _digest(
+            self.classification_receipt_digest,
+            "straight-segment classification receipt digest",
+        )
+
+    def to_data(self) -> dict[str, object]:
+        return {
+            "kind": "straight_segment_count",
+            "eligible_segment_owner_ids": [
+                item.value for item in self.eligible_segment_owner_ids
+            ],
+            "straight_segment_owner_ids": [
+                item.value for item in self.straight_segment_owner_ids
+            ],
+            "straight_segments": [item.to_data() for item in self.straight_segments],
+            "classification_complete": self.classification_complete,
+            "classification_receipt_digest": self.classification_receipt_digest,
+        }
+
+    @classmethod
+    def from_data(cls, value: object) -> "StraightSegmentCountWitnessPayload":
+        raw = _fields(
+            value,
+            {
+                "kind",
+                "eligible_segment_owner_ids",
+                "straight_segment_owner_ids",
+                "straight_segments",
+                "classification_complete",
+                "classification_receipt_digest",
+            },
+            "straight-segment count witness payload",
+        )
+        if (
+            raw["kind"] != "straight_segment_count"
+            or type(raw["eligible_segment_owner_ids"]) is not list
+            or type(raw["straight_segment_owner_ids"]) is not list
+            or type(raw["straight_segments"]) is not list
+        ):
+            raise PanelSoftOntologyError(
+                "straight-segment count witness payload differs"
+            )
+        result = cls(
+            tuple(OwnerId(item) for item in raw["eligible_segment_owner_ids"]),
+            tuple(OwnerId(item) for item in raw["straight_segment_owner_ids"]),
+            tuple(QuantizedSegment.from_data(item) for item in raw["straight_segments"]),
+            raw["classification_complete"],
+            raw["classification_receipt_digest"],
+        )
+        _require_canonical(result, raw, "straight-segment count witness payload")
         return result
 
 
@@ -2167,6 +2354,7 @@ class EnclosureWitnessPayload:
 
 FeatureWitnessPayload: TypeAlias = (
     CountWitnessPayload
+    | StraightSegmentCountWitnessPayload
     | MarkerWitnessPayload
     | UnaryGeometryWitnessPayload
     | PointContactWitnessPayload
@@ -2181,6 +2369,7 @@ def _payload_from_data(value: object) -> FeatureWitnessPayload:
     kind = value.get("kind")
     parser = {
         "count": CountWitnessPayload,
+        "straight_segment_count": StraightSegmentCountWitnessPayload,
         "marker_pattern": MarkerWitnessPayload,
         "unary_geometry": UnaryGeometryWitnessPayload,
         "point_contact": PointContactWitnessPayload,
@@ -2195,6 +2384,8 @@ def _payload_from_data(value: object) -> FeatureWitnessPayload:
 def _payload_type_for_family(family: FeatureFamily) -> type:
     if family in {FeatureFamily.COMPONENT_COUNT, FeatureFamily.EXACT_SEGMENT_COUNT}:
         return CountWitnessPayload
+    if family is FeatureFamily.STRAIGHT_SEGMENT_COUNT:
+        return StraightSegmentCountWitnessPayload
     if family is FeatureFamily.MARKER_PATTERN:
         return MarkerWitnessPayload
     if family in _UNARY_WITNESS_FAMILIES:
@@ -2249,13 +2440,42 @@ class PanelFeatureWitness:
                     self.inventory
                 )
             else:
-                parent = self.subject.owner_ids[0]
-                expected_owners = descendant_segment_owner_ids(
-                    parent,
-                    self.inventory,
+                expected_owners = segment_owner_ids_for_subject(
+                    self.subject, self.inventory
                 )
             if self.payload.counted_owner_ids != expected_owners:
                 raise PanelSoftOntologyError("exact count does not cover registered membership")
+        if isinstance(self.payload, StraightSegmentCountWitnessPayload):
+            if self.inventory.enumeration_complete is not True:
+                raise PanelSoftOntologyError(
+                    "straight-segment count needs a complete owner inventory"
+                )
+            eligible = segment_owner_ids_for_subject(self.subject, self.inventory)
+            if self.payload.eligible_segment_owner_ids != eligible:
+                raise PanelSoftOntologyError(
+                    "straight-segment classification does not cover exact membership"
+                )
+            expected_count = _closed_count_value(self.spec.parameters.count)  # type: ignore[union-attr]
+            if len(self.payload.straight_segment_owner_ids) != expected_count:
+                raise PanelSoftOntologyError(
+                    "straight-segment evidence does not match feature count"
+                )
+            owner_by_id = {item.owner_id: item for item in self.inventory.owners}
+            subject_region = subject_search_region(self.subject, self.inventory)
+            for owner_id, segment in zip(
+                self.payload.straight_segment_owner_ids,
+                self.payload.straight_segments,
+                strict=True,
+            ):
+                owner_region = owner_by_id[owner_id].region
+                if any(
+                    not _point_within_region(point, owner_region)
+                    or not _point_within_region(point, subject_region)
+                    for point in (segment.start, segment.end)
+                ):
+                    raise PanelSoftOntologyError(
+                        "straight-segment evidence lies outside its owner or subject"
+                    )
         if isinstance(self.payload, MarkerWitnessPayload):
             expected_count = _closed_count_value(self.spec.parameters.repetition)  # type: ignore[union-attr]
             if len(self.payload.marker_centers) != expected_count:
@@ -2452,6 +2672,7 @@ def registered_sibling_relation(
     if left.family is right.family and left.family in {
         FeatureFamily.COMPONENT_COUNT,
         FeatureFamily.EXACT_SEGMENT_COUNT,
+        FeatureFamily.STRAIGHT_SEGMENT_COUNT,
         FeatureFamily.MARKER_PATTERN,
     }:
         left_count = getattr(left.parameters, "count", None) or left.parameters.repetition  # type: ignore[union-attr]
@@ -2852,6 +3073,7 @@ class RawMeasurementState(str, Enum):
 class MeasurementIssueCode(str, Enum):
     AMBIGUOUS_OWNER = "ambiguous_owner"
     INSUFFICIENT_RESOLUTION = "insufficient_resolution"
+    MISSING_STRAIGHTNESS_EVIDENCE = "missing_straightness_evidence"
     SEARCH_INCOMPLETE = "search_incomplete"
     OBSERVER_FAILURE = "observer_failure"
     PARSER_FAILURE = "parser_failure"
@@ -2905,6 +3127,7 @@ class RawFeatureMeasurement:
         if self.state is RawMeasurementState.UNRESOLVED and self.issue_code not in {
             MeasurementIssueCode.AMBIGUOUS_OWNER,
             MeasurementIssueCode.INSUFFICIENT_RESOLUTION,
+            MeasurementIssueCode.MISSING_STRAIGHTNESS_EVIDENCE,
             MeasurementIssueCode.SEARCH_INCOMPLETE,
         }:
             raise PanelSoftOntologyError("unresolved measurement has an error-only issue code")

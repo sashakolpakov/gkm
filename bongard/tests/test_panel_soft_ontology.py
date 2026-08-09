@@ -17,6 +17,9 @@ def _parameters() -> dict[o.FeatureFamily, o.FeatureParameters]:
     return {
         o.FeatureFamily.COMPONENT_COUNT: o.ComponentCountParameters(o.ClosedCount.TWO),
         o.FeatureFamily.EXACT_SEGMENT_COUNT: o.ExactSegmentCountParameters(o.ClosedCount.TWO),
+        o.FeatureFamily.STRAIGHT_SEGMENT_COUNT: o.StraightSegmentCountParameters(
+            o.ClosedCount.TWO
+        ),
         o.FeatureFamily.MARKER_PATTERN: o.MarkerPatternParameters(
             o.MarkerPrimitive.DOT, o.ClosedCount.TWO, o.MarkerArrangement.LINEAR
         ),
@@ -207,7 +210,7 @@ def _assessment(risk: o.CalibrationRisk, char: str) -> o.CalibrationAssessment:
 def test_total_family_scope_frame_and_parameter_matrix() -> None:
     params = _parameters()
     assert set(o.FAMILY_CONTRACTS) == set(o.FeatureFamily)
-    assert len(o.FeatureFamily) == 16
+    assert len(o.FeatureFamily) == 17
     for family in o.FeatureFamily:
         contract = o.FAMILY_CONTRACTS[family]
         for scope in o.SubjectScope:
@@ -384,6 +387,78 @@ def test_closed_counts_require_exact_registered_membership() -> None:
         verifier_receipt_digest=_d("6"),
     )
     assert o.project_raw_measurement(raw, token, custody) is Disposition.INDETERMINATE
+
+
+def test_straight_segment_count_requires_explicit_exhaustive_classification() -> None:
+    inventory = _inventory()
+    spec = o.PanelFeatureSpec(
+        o.FeatureFamily.STRAIGHT_SEGMENT_COUNT,
+        o.SubjectScope.ONE_COHERENT_FIGURE,
+        o.ReferenceFrame.NONE,
+        o.StraightSegmentCountParameters(o.ClosedCount.TWO),
+    )
+    subject = o.SubjectBinding(
+        o.SubjectBindingKind.UNARY, (o.OwnerId("owner_0001"),)
+    )
+    eligible = (o.OwnerId("owner_0005"), o.OwnerId("owner_0006"))
+    lines = (
+        o.QuantizedSegment(o.QuantizedPoint(2, 2), o.QuantizedPoint(4, 4)),
+        o.QuantizedSegment(o.QuantizedPoint(3, 3), o.QuantizedPoint(5, 4)),
+    )
+    payload = o.StraightSegmentCountWitnessPayload(
+        eligible,
+        eligible,
+        lines,
+        True,
+        _d("5"),
+    )
+    witness = o.PanelFeatureWitness(
+        spec, inventory, _d("d"), subject, payload, _d("e")
+    )
+    assert o.PanelFeatureWitness.from_data(witness.to_data()) == witness
+    assert o.segment_owner_ids_for_subject(subject, inventory) == eligible
+
+    # Generic segment ownership is a different fact and cannot serve as the
+    # straightness classification payload.
+    with pytest.raises(o.PanelSoftOntologyError, match="wrong witness payload"):
+        o.PanelFeatureWitness(
+            spec,
+            inventory,
+            _d("d"),
+            subject,
+            o.CountWitnessPayload(eligible, True, _d("5")),
+            _d("e"),
+        )
+    with pytest.raises(o.PanelSoftOntologyError, match="exact membership"):
+        o.PanelFeatureWitness(
+            spec,
+            inventory,
+            _d("d"),
+            subject,
+            o.StraightSegmentCountWitnessPayload(
+                eligible + (o.OwnerId("owner_0007"),),
+                eligible,
+                lines,
+                True,
+                _d("5"),
+            ),
+            _d("e"),
+        )
+    with pytest.raises(o.PanelSoftOntologyError, match="complete classification"):
+        o.StraightSegmentCountWitnessPayload(
+            eligible,
+            eligible,
+            lines,
+            False,
+            _d("5"),
+        )
+
+    rules = o.feature_catalog_data()["count_membership_rules"]
+    assert rules[o.FeatureFamily.EXACT_SEGMENT_COUNT.value] == o.SEGMENT_MEMBERSHIP_RULE_ID
+    assert (
+        rules[o.FeatureFamily.STRAIGHT_SEGMENT_COUNT.value]
+        == o.STRAIGHT_SEGMENT_CLASSIFICATION_RULE_ID
+    )
 
 
 def test_count_membership_uses_coherent_roots_and_transitive_descendants() -> None:

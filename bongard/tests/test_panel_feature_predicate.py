@@ -24,6 +24,7 @@ from bongard.panel_feature_predicate import (
     ScientificFeatureProjectionRecord,
     enumerate_all_of,
     evaluate_all_of,
+    evaluate_engineering_all_of,
 )
 import bongard.panel_soft_ontology as o
 
@@ -449,6 +450,44 @@ def test_all_of_is_closed_positive_and_genuine_missing_evidence_stays_indetermin
     injected["not"] = True
     with pytest.raises(PanelFeaturePredicateError):
         AllOf.from_data(injected)
+
+
+def test_python_predicate_treats_straight_count_as_a_distinct_positive_atom() -> None:
+    straight = o.PanelFeatureSpec(
+        o.FeatureFamily.STRAIGHT_SEGMENT_COUNT,
+        o.SubjectScope.WHOLE_PANEL,
+        o.ReferenceFrame.NONE,
+        o.StraightSegmentCountParameters(o.ClosedCount.TWO),
+    )
+    generic = o.PanelFeatureSpec(
+        o.FeatureFamily.EXACT_SEGMENT_COUNT,
+        o.SubjectScope.WHOLE_PANEL,
+        o.ReferenceFrame.NONE,
+        o.ExactSegmentCountParameters(o.ClosedCount.TWO),
+    )
+    assert straight.spec_digest != generic.spec_digest
+    vocabulary = FeatureVocabulary.create(
+        side0_specs=(straight,), side1_specs=(generic,)
+    )
+    panel = _d("0")
+    table = EngineeringSupportTable.create(
+        vocabulary,
+        (panel,),
+        {
+            (panel, straight.spec_digest): EngineeringDisposition.MATCH,
+            (panel, generic.spec_digest): EngineeringDisposition.NONMATCH,
+        },
+    )
+    formula = AllOf.create(
+        vocabulary,
+        o.NativeOrientation.SIDE0_POSITIVE,
+        (straight.spec_digest,),
+    )
+    assert (
+        evaluate_engineering_all_of(formula, table, panel)
+        is EngineeringDisposition.MATCH
+    )
+    assert "lean" not in json.dumps(formula.to_data(), sort_keys=True).lower()
 
 
 @pytest.mark.parametrize(

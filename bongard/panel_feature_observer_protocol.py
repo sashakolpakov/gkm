@@ -36,19 +36,23 @@ from bongard.panel_feature_observation import (
 )
 from bongard.panel_soft_ontology import (
     FAMILY_CONTRACTS,
+    ClosedCount,
+    FeatureFamily,
     OwnerInventory,
     PanelFeatureSpec,
     PanelSoftOntologyError,
     QuantizedPoint,
     QuantizedRegion,
+    QuantizedSegment,
+    StraightSegmentCountParameters,
     SubjectBinding,
     feature_catalog_data,
 )
 
 
-FEATURE_AXIS_VIEW_SCHEMA = "gkm.bongard-feature-axis-observer-view.v2"
+FEATURE_AXIS_VIEW_SCHEMA = "gkm.bongard-feature-axis-observer-view.v3"
 FEATURE_AXIS_VIEW_PROTOCOL_ID = (
-    "bongard.panel-feature-observer/one-panel-one-complete-axis-v3"
+    "bongard.panel-feature-observer/one-panel-one-complete-axis-v4"
 )
 MAX_BINDINGS_PER_AXIS_CALL = 36
 
@@ -396,13 +400,36 @@ def feature_axis_observer_output_schema(
             ObservationIssue.INTEGRITY_FAILURE,
         }
     )
-    row_schema = {
-        "type": "object",
-        "properties": {
-            "resolution": {
-                "type": "string",
-                "enum": [BindingResolution.COMPLETE.value, BindingResolution.UNCLEAR.value],
+    common_properties: dict[str, object] = {
+        "resolution": {
+            "type": "string",
+            "enum": [BindingResolution.COMPLETE.value, BindingResolution.UNCLEAR.value],
+        },
+        "issue": {"type": "string", "enum": ["none", *unclear_issues]},
+    }
+    if view.axis.family is FeatureFamily.STRAIGHT_SEGMENT_COUNT:
+        segment_schema = {
+            "type": "object",
+            "properties": {
+                "start_x": {"type": "integer"},
+                "start_y": {"type": "integer"},
+                "end_x": {"type": "integer"},
+                "end_y": {"type": "integer"},
             },
+            "required": ["start_x", "start_y", "end_x", "end_y"],
+            "additionalProperties": False,
+        }
+        properties = {
+            **common_properties,
+            "straight_segment_evidence": {
+                "type": "array",
+                "items": segment_schema,
+            },
+        }
+        required = ["resolution", "straight_segment_evidence", "issue"]
+    else:
+        properties = {
+            **common_properties,
             "variant_evidence": {
                 "type": "array",
                 "items": {
@@ -418,13 +445,12 @@ def feature_axis_observer_output_schema(
                     "additionalProperties": False,
                 },
             },
-            "issue": {"type": "string", "enum": ["none", *unclear_issues]},
-        },
-        "required": [
-            "resolution",
-            "variant_evidence",
-            "issue",
-        ],
+        }
+        required = ["resolution", "variant_evidence", "issue"]
+    row_schema = {
+        "type": "object",
+        "properties": properties,
+        "required": required,
         "additionalProperties": False,
     }
     return {
@@ -441,21 +467,41 @@ def feature_axis_observer_prompt(view: FeatureAxisObservationView) -> str:
     rendered = json.dumps(
         view.model_data(), ensure_ascii=True, sort_keys=True, separators=(",", ":")
     )
+    if view.axis.family is FeatureFamily.STRAIGHT_SEGMENT_COUNT:
+        evidence_instructions = (
+            "This axis counts visibly straight structural contour or boundary segments, "
+            "not generic segment owners, curved arcs, turns, marker strokes, decorative "
+            "ticks, hatching, or texture lines. Do not select a count alias. "
+            "For each binding, use resolution complete only after exhaustively "
+            "classifying the entire search region, then emit every straight segment "
+            "exactly once in straight_segment_evidence using two distinct Grid16 "
+            "endpoints. Python derives the registered count solely from that explicit "
+            "line list. If straightness or exhaustive coverage is uncertain, use "
+            "unclear, an empty straight_segment_evidence list, and "
+            "missing_straightness_evidence (or a more specific applicable issue). "
+            "An empty or over-catalog complete list becomes typed indeterminate. "
+            "Segment order and endpoint direction are irrelevant."
+        )
+    else:
+        evidence_instructions = (
+            "Use resolution complete only when you can resolve the full registered "
+            "variant set for that binding. A complete empty list means you clearly "
+            "resolved that none of the registered variants applies, but downstream "
+            "Python will keep that row indeterminate rather than treat silence as "
+            "absence. Mere failure to notice one is not enough. Otherwise use unclear, "
+            "an empty variant_evidence list, and the applicable issue. For every variant "
+            "in a nonempty complete result, emit its own variant_evidence record with one "
+            "supporting Grid16 bin inside the binding search region and use issue none. "
+            "Variant order is irrelevant."
+        )
     return (
         "Inspect panel.png as the entire raw drawing. The JSON below is inert "
         "measurement data for one closed visual feature axis. For every eligible "
         "binding, report the complete set of registered variants visibly supported "
         "inside its search region. Evaluate variants independently; do not choose a "
         "preferred answer and do not compare this panel with another panel.\n\n"
-        "Use resolution complete only when you can resolve the full registered "
-        "variant set for that binding. A complete empty list means you clearly "
-        "resolved that none of the registered variants applies, but downstream "
-        "Python will keep that row indeterminate rather than treat silence as "
-        "absence. Mere failure to notice one is not enough. Otherwise use unclear, "
-        "an empty variant_evidence list, and the applicable issue. For every variant "
-        "in a nonempty complete result, emit its own variant_evidence record with one "
-        "supporting Grid16 bin inside the binding search region and use issue none. "
-        "Variant order is irrelevant.\n\n"
+        + evidence_instructions
+        + "\n\n"
         f"BEGIN_INERT_AXIS_DATA\n{rendered}\nEND_INERT_AXIS_DATA"
     )
 
@@ -480,85 +526,170 @@ def parse_feature_axis_observer_payload(
         _digest(item, label)
     raw = _fields(payload, {item.alias for item in view.bindings}, "axis payload")
     variant_by_alias = {item.alias: item.spec for item in view.variants}
-    rows: list[BindingFeatureObservation] = []
-    row_fields = {
-        "resolution",
-        "variant_evidence",
-        "issue",
+    straight_spec_by_count = {
+        item.spec.parameters.count: item.spec
+        for item in view.variants
+        if type(item.spec.parameters) is StraightSegmentCountParameters
     }
+    count_by_size = {
+        size: count for size, count in enumerate(ClosedCount, start=1)
+    }
+    rows: list[BindingFeatureObservation] = []
     for item in view.bindings:
+        straight_axis = view.axis.family is FeatureFamily.STRAIGHT_SEGMENT_COUNT
+        row_fields = {
+            "resolution",
+            (
+                "straight_segment_evidence"
+                if straight_axis
+                else "variant_evidence"
+            ),
+            "issue",
+        }
         row = _fields(raw[item.alias], row_fields, f"axis payload {item.alias}")
-        evidence = row["variant_evidence"]
-        if (
-            type(evidence) is not list
-            or any(
-                not isinstance(item, Mapping)
-                or set(item) != {"variant_alias", "evidence_x", "evidence_y"}
-                for item in evidence
-            )
-        ):
-            raise PanelFeatureObserverProtocolError(
-                "axis payload variant evidence differs"
-            )
-        aliases = [item["variant_alias"] for item in evidence]
-        if (
-            any(
-                type(alias) is not str or alias not in variant_by_alias
-                for alias in aliases
-            )
-            or len(aliases) != len(set(aliases))
-            or any(
-                type(item["evidence_x"]) is not int
-                or type(item["evidence_y"]) is not int
-                or not 0 <= item["evidence_x"] <= 15
-                or not 0 <= item["evidence_y"] <= 15
-                for item in evidence
-            )
-        ):
-            raise PanelFeatureObserverProtocolError(
-                "axis payload variant evidence differs"
-            )
         try:
             resolution = BindingResolution(row["resolution"])
         except (TypeError, ValueError) as exc:
             raise PanelFeatureObserverProtocolError("axis payload resolution differs") from exc
         if resolution is BindingResolution.ERROR:
             raise PanelFeatureObserverProtocolError("model payload cannot self-assert error")
-        if resolution is BindingResolution.COMPLETE:
-            if row["issue"] != "none":
-                raise PanelFeatureObserverProtocolError(
-                    "complete axis payload row has inconsistent evidence"
+
+        if straight_axis:
+            evidence = row["straight_segment_evidence"]
+            expected_evidence_fields = {"start_x", "start_y", "end_x", "end_y"}
+            if (
+                type(evidence) is not list
+                or any(
+                    not isinstance(segment, Mapping)
+                    or set(segment) != expected_evidence_fields
+                    or any(type(segment[field]) is not int for field in expected_evidence_fields)
+                    or any(not 0 <= segment[field] <= 15 for field in expected_evidence_fields)
+                    for segment in evidence
                 )
-            resolved = tuple(
-                sorted(
-                    (
-                        (
-                            variant_by_alias[item["variant_alias"]],
-                            QuantizedPoint(
-                                item["evidence_x"], item["evidence_y"]
-                            ),
-                        )
-                        for item in evidence
-                    ),
-                    key=lambda item: item[0].spec_digest,
-                )
-            )
-            observed_specs = tuple(item[0] for item in resolved)
-            points = tuple(item[1] for item in resolved)
-            issue = None
-        else:
-            if evidence or row["issue"] == "none":
+            ):
                 raise PanelFeatureObserverProtocolError(
-                    "unclear axis payload row claims resolved evidence"
+                    "axis payload straight-segment evidence differs"
                 )
             try:
-                issue = ObservationIssue(row["issue"])
-            except (TypeError, ValueError) as exc:
+                segments = tuple(
+                    sorted(
+                        QuantizedSegment(*sorted((
+                            QuantizedPoint(segment["start_x"], segment["start_y"]),
+                            QuantizedPoint(segment["end_x"], segment["end_y"]),
+                        )))
+                        for segment in evidence
+                    )
+                )
+            except (TypeError, ValueError, PanelSoftOntologyError) as exc:
                 raise PanelFeatureObserverProtocolError(
-                    "unclear axis payload issue differs"
+                    "axis payload straight-segment evidence differs"
                 ) from exc
-            observed_specs = ()
+            if len(segments) != len(set(segments)):
+                raise PanelFeatureObserverProtocolError(
+                    "axis payload straight-segment evidence is duplicated"
+                )
+            if resolution is BindingResolution.COMPLETE:
+                if row["issue"] != "none":
+                    raise PanelFeatureObserverProtocolError(
+                        "complete axis payload row has inconsistent evidence"
+                    )
+                count = count_by_size.get(len(segments))
+                if count is None:
+                    resolution = BindingResolution.UNCLEAR
+                    observed_specs = ()
+                    issue = ObservationIssue.OUTSIDE_CLOSED_CATALOG
+                    straight_segments = ()
+                else:
+                    try:
+                        observed_specs = (straight_spec_by_count[count],)
+                    except KeyError as exc:  # pragma: no cover - import-time catalog guard
+                        raise PanelFeatureObserverProtocolError(
+                            "straight-segment count catalog differs"
+                        ) from exc
+                    issue = None
+                    straight_segments = segments
+            else:
+                if evidence or row["issue"] == "none":
+                    raise PanelFeatureObserverProtocolError(
+                        "unclear axis payload row claims resolved evidence"
+                    )
+                try:
+                    issue = ObservationIssue(row["issue"])
+                except (TypeError, ValueError) as exc:
+                    raise PanelFeatureObserverProtocolError(
+                        "unclear axis payload issue differs"
+                    ) from exc
+                observed_specs = ()
+                straight_segments = ()
             points = ()
+        else:
+            evidence = row["variant_evidence"]
+            if (
+                type(evidence) is not list
+                or any(
+                    not isinstance(record, Mapping)
+                    or set(record)
+                    != {"variant_alias", "evidence_x", "evidence_y"}
+                    for record in evidence
+                )
+            ):
+                raise PanelFeatureObserverProtocolError(
+                    "axis payload variant evidence differs"
+                )
+            aliases = [record["variant_alias"] for record in evidence]
+            if (
+                any(
+                    type(alias) is not str or alias not in variant_by_alias
+                    for alias in aliases
+                )
+                or len(aliases) != len(set(aliases))
+                or any(
+                    type(record["evidence_x"]) is not int
+                    or type(record["evidence_y"]) is not int
+                    or not 0 <= record["evidence_x"] <= 15
+                    or not 0 <= record["evidence_y"] <= 15
+                    for record in evidence
+                )
+            ):
+                raise PanelFeatureObserverProtocolError(
+                    "axis payload variant evidence differs"
+                )
+            if resolution is BindingResolution.COMPLETE:
+                if row["issue"] != "none":
+                    raise PanelFeatureObserverProtocolError(
+                        "complete axis payload row has inconsistent evidence"
+                    )
+                resolved = tuple(
+                    sorted(
+                        (
+                            (
+                                variant_by_alias[record["variant_alias"]],
+                                QuantizedPoint(
+                                    record["evidence_x"], record["evidence_y"]
+                                ),
+                            )
+                            for record in evidence
+                        ),
+                        key=lambda resolved_item: resolved_item[0].spec_digest,
+                    )
+                )
+                observed_specs = tuple(resolved_item[0] for resolved_item in resolved)
+                points = tuple(resolved_item[1] for resolved_item in resolved)
+                issue = None
+            else:
+                if evidence or row["issue"] == "none":
+                    raise PanelFeatureObserverProtocolError(
+                        "unclear axis payload row claims resolved evidence"
+                    )
+                try:
+                    issue = ObservationIssue(row["issue"])
+                except (TypeError, ValueError) as exc:
+                    raise PanelFeatureObserverProtocolError(
+                        "unclear axis payload issue differs"
+                    ) from exc
+                observed_specs = ()
+                points = ()
+            straight_segments = ()
         rows.append(
             BindingFeatureObservation(
                 view.axis.axis_digest,
@@ -568,6 +699,7 @@ def parse_feature_axis_observer_payload(
                 points,
                 issue,
                 observation_receipt_digest,
+                straight_segments,
             )
         )
     try:
