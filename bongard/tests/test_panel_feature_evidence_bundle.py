@@ -7,6 +7,11 @@ import json
 
 import pytest
 
+from bongard import panel_batched_typed_codex_observer as _batch_observer
+from bongard.panel_batched_typed_codex_observer import (
+    BatchedFeatureAxisRequest,
+    observe_typed_panel_axes_batched,
+)
 from bongard.panel_feature_evidence_bundle import (
     PanelFeatureEvidenceBundle,
     PanelFeatureEvidenceBundleError,
@@ -38,6 +43,10 @@ from bongard.panel_typed_codex_observer import (
 from bongard.tests.test_panel_feature_proposer import (
     _payload as _proposer_payload,
     _row as _proposer_row,
+)
+from bongard.tests.test_panel_batched_typed_codex_observer import (
+    _payload as _batched_payload,
+    _transport as _batched_transport,
 )
 from bongard.tests.test_panel_typed_codex_observer import (
     TASK_CONTEXT,
@@ -209,6 +218,51 @@ def _owner_local_bundle() -> PanelFeatureEvidenceBundle:
     )
 
 
+def _batched_bundle() -> tuple[PanelFeatureEvidenceBundle, list[dict[str, object]]]:
+    panels = tuple(_png(1100 + index) for index in range(12))
+    proposer, result = _proposer(panels, _proposer_payload())
+    axes = _batch_observer.complete_whole_panel_feature_axes()
+    rows: list[PanelFeatureEvidencePanel] = []
+    calls: list[dict[str, object]] = []
+    for index, panel in enumerate(panels):
+        context = build_panel_only_observation_context(
+            panel,
+            model=MODEL,
+            reasoning_effort=EFFORT,
+            expected_launcher_digest=LAUNCHER_DIGEST,
+            **NO_TOOLS_KWARGS,
+        )
+        request = BatchedFeatureAxisRequest.build(context, axes)
+        artifact = observe_typed_panel_axes_batched(
+            panel,
+            axes=axes,
+            panel_only_context=context,
+            model=MODEL,
+            reasoning_effort=EFFORT,
+            expected_launcher_digest=LAUNCHER_DIGEST,
+            **NO_TOOLS_KWARGS,
+            transport=_batched_transport(_batched_payload(request), panel, calls),
+        )
+        rows.append(
+            PanelFeatureEvidencePanel.derive_from_batched_artifact(
+                phase=PanelFeatureEvidencePhase.SUPPORT,
+                phase_index=index,
+                panel_id=f"batched-panel-{index:03d}",
+                panel_png=panel,
+                batched_axis_artifact=artifact,
+            )
+        )
+    return (
+        PanelFeatureEvidenceBundle.create(
+            proposer_artifact=proposer,
+            proposer_result=result,
+            observer_axes=axes,
+            panels=rows,
+        ),
+        calls,
+    )
+
+
 @pytest.fixture(scope="module")
 def whole_bundle() -> PanelFeatureEvidenceBundle:
     return _whole_panel_bundle()
@@ -217,6 +271,24 @@ def whole_bundle() -> PanelFeatureEvidenceBundle:
 @pytest.fixture(scope="module")
 def owner_bundle() -> PanelFeatureEvidenceBundle:
     return _owner_local_bundle()
+
+
+@pytest.fixture(scope="module")
+def batched_bundle():
+    # The batch adapter's own tests exercise the full live catalog. Keep this
+    # twelve-panel custody test bounded while retaining multiple logical axes
+    # behind each one-call artifact.
+    test_axes = _batch_observer.complete_whole_panel_feature_axes()[:2]
+    patch = pytest.MonkeyPatch()
+    patch.setattr(
+        _batch_observer,
+        "complete_whole_panel_feature_axes",
+        lambda: test_axes,
+    )
+    try:
+        yield _batched_bundle()
+    finally:
+        patch.undo()
 
 
 def test_full_receipts_exact_pixels_phase_tags_and_zero_call_cold_replay(
@@ -228,6 +300,8 @@ def test_full_receipts_exact_pixels_phase_tags_and_zero_call_cold_replay(
     assert whole_bundle.to_data()["query_phase_complete"] is True
     assert whole_bundle.live_model_call_count == 15
     assert whole_bundle.to_data()["owner_model_call_count"] == 0
+    assert whole_bundle.to_data()["individual_axis_model_call_count"] == 14
+    assert whole_bundle.to_data()["batched_axis_model_call_count"] == 0
     assert whole_bundle.to_data()["axis_model_call_count"] == 14
     assert whole_bundle.to_data()["observer_axes"] == [
         item.to_data() for item in whole_bundle.observer_axes
@@ -261,10 +335,91 @@ def test_owner_calls_are_retained_once_and_mechanically_counted(
 ) -> None:
     assert owner_bundle.to_data()["query_panel_count"] == 0
     assert owner_bundle.to_data()["owner_model_call_count"] == 12
+    assert owner_bundle.to_data()["individual_axis_model_call_count"] == 12
+    assert owner_bundle.to_data()["batched_axis_model_call_count"] == 0
     assert owner_bundle.to_data()["axis_model_call_count"] == 12
     assert owner_bundle.live_model_call_count == 25
     assert all(item.owner_artifact is not None for item in owner_bundle.panels)
     assert PanelFeatureEvidenceBundle.from_data(owner_bundle.to_data()) == owner_bundle
+
+
+def test_batched_receipts_retain_all_cells_but_count_one_call_per_panel(
+    batched_bundle: tuple[
+        PanelFeatureEvidenceBundle, list[dict[str, object]]
+    ],
+) -> None:
+    bundle, calls = batched_bundle
+    axis_count = len(bundle.observer_axes)
+    assert axis_count > 1
+    assert len(calls) == 12
+    assert bundle.to_data()["individual_axis_model_call_count"] == 0
+    assert bundle.to_data()["batched_axis_model_call_count"] == 12
+    assert bundle.to_data()["axis_model_call_count"] == 12
+    assert bundle.live_model_call_count == 13
+    assert len(bundle.physical_receipt_digests) == 13
+    assert all(not panel.axis_artifacts for panel in bundle.panels)
+    assert all(panel.batched_axis_artifact is not None for panel in bundle.panels)
+    assert all(
+        len(panel.observation_set.axis_observations) == axis_count
+        for panel in bundle.panels
+    )
+    assert PanelFeatureEvidenceBundle.from_data(bundle.to_data()) == bundle
+    assert (
+        cold_replay_panel_feature_evidence_bundle(
+            bundle,
+            expected_bundle_address=bundle.bundle_address,
+        )
+        == bundle
+    )
+    assert len(calls) == 12  # Cold replay invokes no transport.
+    for panel in bundle.panels:
+        artifact = panel.batched_axis_artifact
+        assert artifact is not None
+        assert panel.observation_set == artifact.observation_set
+        observer_envelope = json.dumps(artifact.to_data(), sort_keys=True)
+        assert panel.panel_id not in observer_envelope
+        assert "selected_predicate" not in observer_envelope
+
+
+def test_batched_and_individual_paths_are_exclusive_and_batch_tampering_fails(
+    whole_bundle: PanelFeatureEvidenceBundle,
+    batched_bundle: tuple[
+        PanelFeatureEvidenceBundle, list[dict[str, object]]
+    ],
+) -> None:
+    batch, _calls = batched_bundle
+    individual = whole_bundle.panels[0]
+    batched = batch.panels[0]
+    artifact = batched.batched_axis_artifact
+    assert artifact is not None
+    with pytest.raises(PanelFeatureEvidenceBundleError, match="exactly one"):
+        PanelFeatureEvidencePanel.create(
+            phase=individual.phase,
+            phase_index=individual.phase_index,
+            panel_id=individual.panel_id,
+            panel_png=individual.panel_png,
+            owner_artifact=None,
+            axis_artifacts=individual.axis_artifacts,
+            batched_axis_artifact=artifact,
+            observation_set=individual.observation_set,
+        )
+    with pytest.raises(PanelFeatureEvidenceBundleError, match="exactly one"):
+        PanelFeatureEvidencePanel.create(
+            phase=individual.phase,
+            phase_index=individual.phase_index,
+            panel_id=individual.panel_id,
+            panel_png=individual.panel_png,
+            owner_artifact=None,
+            axis_artifacts=(),
+            observation_set=individual.observation_set,
+        )
+
+    tampered = deepcopy(batch.to_data())
+    tampered["panels"][0]["batched_axis_artifact"]["codex_receipt"][
+        "prompt_digest"
+    ] = "0" * 64
+    with pytest.raises(ValueError):
+        PanelFeatureEvidenceBundle.from_data(tampered)
 
 
 def test_missing_extra_duplicated_and_mismatched_artifacts_fail_closed(

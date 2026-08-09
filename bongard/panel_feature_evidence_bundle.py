@@ -28,6 +28,10 @@ import re
 from typing import Any, Callable, Mapping, Sequence
 
 from bongard.canonical import canonical_digest
+from bongard.panel_batched_typed_codex_observer import (
+    TypedBatchedAxisCodexArtifact,
+    verify_typed_batched_axis_codex_artifact,
+)
 from bongard.panel_feature_observation import FeatureAxis, PanelFeatureObservationSet
 from bongard.panel_feature_proposer import (
     PanelFeatureProposerResult,
@@ -47,13 +51,13 @@ from bongard.panel_typed_codex_observer import (
 
 
 PANEL_FEATURE_EVIDENCE_BUNDLE_SCHEMA = (
-    "gkm.bongard-panel-feature-full-receipt-evidence-bundle.v1"
+    "gkm.bongard-panel-feature-full-receipt-evidence-bundle.v2"
 )
 PANEL_FEATURE_EVIDENCE_PANEL_SCHEMA = (
-    "gkm.bongard-panel-feature-full-receipt-panel.v1"
+    "gkm.bongard-panel-feature-full-receipt-panel.v2"
 )
 PANEL_FEATURE_EVIDENCE_PROTOCOL_ID = (
-    "bongard.panel-feature-evidence/full-codex-receipts-python-v1"
+    "bongard.panel-feature-evidence/full-codex-receipts-python-v2"
 )
 SUPPORT_PANEL_COUNT = 12
 QUERY_PANEL_COUNT = 2
@@ -146,6 +150,14 @@ def _panel_content(value: "PanelFeatureEvidencePanel") -> dict[str, object]:
             None if value.owner_artifact is None else value.owner_artifact.to_data()
         ),
         "axis_artifacts": [item.to_data() for item in value.axis_artifacts],
+        "batched_axis_artifact": (
+            None
+            if value.batched_axis_artifact is None
+            else value.batched_axis_artifact.to_data()
+        ),
+        "observer_call_mode": (
+            "batched" if value.batched_axis_artifact is not None else "individual"
+        ),
         "axis_artifact_order": "axis-digest-ascending",
         "observation_set": value.observation_set.to_data(),
         "observation_set_digest": value.observation_set.observation_set_digest,
@@ -165,6 +177,7 @@ class PanelFeatureEvidencePanel:
     panel_png: bytes
     owner_artifact: TypedOwnerCodexArtifact | None
     axis_artifacts: tuple[TypedAxisCodexArtifact, ...]
+    batched_axis_artifact: TypedBatchedAxisCodexArtifact | None
     observation_set: PanelFeatureObservationSet
     record_digest: str
 
@@ -178,12 +191,22 @@ class PanelFeatureEvidencePanel:
             self.owner_artifact
         ) is not TypedOwnerCodexArtifact:
             raise TypeError("panel owner evidence must be a full typed artifact")
-        if (
-            type(self.axis_artifacts) is not tuple
-            or not self.axis_artifacts
-            or any(type(item) is not TypedAxisCodexArtifact for item in self.axis_artifacts)
+        if type(self.axis_artifacts) is not tuple or any(
+            type(item) is not TypedAxisCodexArtifact for item in self.axis_artifacts
         ):
-            raise TypeError("panel axis evidence must be a nonempty typed artifact tuple")
+            raise TypeError("panel axis evidence must be a typed artifact tuple")
+        if self.batched_axis_artifact is not None and type(
+            self.batched_axis_artifact
+        ) is not TypedBatchedAxisCodexArtifact:
+            raise TypeError("panel batched evidence must be a full typed artifact")
+        if bool(self.axis_artifacts) == (self.batched_axis_artifact is not None):
+            raise PanelFeatureEvidenceBundleError(
+                "panel needs exactly one individual or batched axis artifact path"
+            )
+        if self.batched_axis_artifact is not None and self.owner_artifact is not None:
+            raise PanelFeatureEvidenceBundleError(
+                "whole-panel batched evidence cannot use an owner artifact"
+            )
         axes = tuple(item.observation.axis.axis_digest for item in self.axis_artifacts)
         if axes != tuple(sorted(axes)) or len(axes) != len(set(axes)):
             raise PanelFeatureEvidenceBundleError(
@@ -210,6 +233,7 @@ class PanelFeatureEvidencePanel:
         owner_artifact: TypedOwnerCodexArtifact | None,
         axis_artifacts: Sequence[TypedAxisCodexArtifact],
         observation_set: PanelFeatureObservationSet,
+        batched_axis_artifact: TypedBatchedAxisCodexArtifact | None = None,
     ) -> "PanelFeatureEvidencePanel":
         if isinstance(axis_artifacts, (bytes, str, Mapping)):
             raise TypeError("axis artifacts must be an ordered sequence")
@@ -221,6 +245,7 @@ class PanelFeatureEvidencePanel:
             "panel_png": panel_png,
             "owner_artifact": owner_artifact,
             "axis_artifacts": axes,
+            "batched_axis_artifact": batched_axis_artifact,
             "observation_set": observation_set,
         }
         provisional = object.__new__(cls)
@@ -240,17 +265,37 @@ class PanelFeatureEvidencePanel:
         panel_id: str,
         panel_png: bytes,
         owner_artifact: TypedOwnerCodexArtifact | None,
-        axis_artifacts: Sequence[TypedAxisCodexArtifact],
+        axis_artifacts: Sequence[TypedAxisCodexArtifact] = (),
+        batched_axis_artifact: TypedBatchedAxisCodexArtifact | None = None,
     ) -> "PanelFeatureEvidencePanel":
         """Derive the compact observation set; accept no caller-supplied cells."""
 
         if isinstance(axis_artifacts, (bytes, str, Mapping)):
             raise TypeError("axis artifacts must be an ordered sequence")
         raw_axes = tuple(axis_artifacts)
-        if not raw_axes or any(
+        if any(
             type(item) is not TypedAxisCodexArtifact for item in raw_axes
         ):
             raise TypeError("observation derivation needs full typed axis artifacts")
+        if bool(raw_axes) == (batched_axis_artifact is not None):
+            raise PanelFeatureEvidenceBundleError(
+                "observation derivation needs exactly one full individual or batched path"
+            )
+        if batched_axis_artifact is not None:
+            if type(batched_axis_artifact) is not TypedBatchedAxisCodexArtifact:
+                raise TypeError(
+                    "observation derivation needs a full typed batched artifact"
+                )
+            return cls.create(
+                phase=phase,
+                phase_index=phase_index,
+                panel_id=panel_id,
+                panel_png=panel_png,
+                owner_artifact=owner_artifact,
+                axis_artifacts=(),
+                batched_axis_artifact=batched_axis_artifact,
+                observation_set=batched_axis_artifact.observation_set,
+            )
         axes = tuple(
             sorted(
                 raw_axes,
@@ -274,6 +319,27 @@ class PanelFeatureEvidencePanel:
             observation_set=observation,
         )
 
+    @classmethod
+    def derive_from_batched_artifact(
+        cls,
+        *,
+        phase: PanelFeatureEvidencePhase,
+        phase_index: int,
+        panel_id: str,
+        panel_png: bytes,
+        batched_axis_artifact: TypedBatchedAxisCodexArtifact,
+    ) -> "PanelFeatureEvidencePanel":
+        """Derive all compact cells from one complete whole-panel batch call."""
+
+        return cls.derive_from_full_artifacts(
+            phase=phase,
+            phase_index=phase_index,
+            panel_id=panel_id,
+            panel_png=panel_png,
+            owner_artifact=None,
+            batched_axis_artifact=batched_axis_artifact,
+        )
+
     def to_data(self) -> dict[str, object]:
         return {**_panel_content(self), "record_digest": self.record_digest}
 
@@ -291,6 +357,8 @@ class PanelFeatureEvidencePanel:
                 "panel_png_byte_count",
                 "owner_artifact",
                 "axis_artifacts",
+                "batched_axis_artifact",
+                "observer_call_mode",
                 "axis_artifact_order",
                 "observation_set",
                 "observation_set_digest",
@@ -303,6 +371,7 @@ class PanelFeatureEvidencePanel:
         )
         if (
             raw["schema"] != PANEL_FEATURE_EVIDENCE_PANEL_SCHEMA
+            or raw["observer_call_mode"] not in ("individual", "batched")
             or raw["axis_artifact_order"] != "axis-digest-ascending"
             or raw["phase_or_class_label_passed_to_observer"] is not False
             or raw["formula_or_selected_predicate_passed_to_observer"] is not False
@@ -336,6 +405,13 @@ class PanelFeatureEvidencePanel:
                 tuple(
                     TypedAxisCodexArtifact.from_data(item)
                     for item in raw["axis_artifacts"]
+                ),
+                (
+                    None
+                    if raw["batched_axis_artifact"] is None
+                    else TypedBatchedAxisCodexArtifact.from_data(
+                        raw["batched_axis_artifact"]
+                    )
                 ),
                 PanelFeatureObservationSet.from_data(raw["observation_set"]),
                 raw["record_digest"],
@@ -407,6 +483,8 @@ def _receipt_digests(
         if panel.owner_artifact is not None:
             values.append(panel.owner_artifact.codex_receipt.receipt_digest)
         values.extend(item.codex_receipt.receipt_digest for item in panel.axis_artifacts)
+        if panel.batched_axis_artifact is not None:
+            values.append(panel.batched_axis_artifact.codex_receipt.receipt_digest)
     return tuple(values)
 
 
@@ -414,8 +492,43 @@ def _owner_call_count(panels: Sequence[PanelFeatureEvidencePanel]) -> int:
     return sum(item.owner_artifact is not None for item in panels)
 
 
-def _axis_call_count(panels: Sequence[PanelFeatureEvidencePanel]) -> int:
+def _individual_axis_call_count(
+    panels: Sequence[PanelFeatureEvidencePanel],
+) -> int:
     return sum(len(item.axis_artifacts) for item in panels)
+
+
+def _batched_axis_call_count(panels: Sequence[PanelFeatureEvidencePanel]) -> int:
+    return sum(item.batched_axis_artifact is not None for item in panels)
+
+
+def _axis_call_count(panels: Sequence[PanelFeatureEvidencePanel]) -> int:
+    """Count physical axis-observer calls, not logical axis observations."""
+
+    return _individual_axis_call_count(panels) + _batched_axis_call_count(panels)
+
+
+def _panel_observer_runtime(
+    panel: PanelFeatureEvidencePanel,
+) -> TypedCodexRuntimeBinding:
+    if panel.batched_axis_artifact is not None:
+        return panel.batched_axis_artifact.runtime
+    if panel.axis_artifacts:
+        return panel.axis_artifacts[0].runtime
+    raise PanelFeatureEvidenceBundleError(
+        "evidence panel has no full axis observer artifact"
+    )
+
+
+def _panel_axis_digests(panel: PanelFeatureEvidencePanel) -> tuple[str, ...]:
+    if panel.batched_axis_artifact is not None:
+        return tuple(
+            item.axis.axis_digest
+            for item in panel.batched_axis_artifact.observation_set.axis_observations
+        )
+    return tuple(
+        item.observation.axis.axis_digest for item in panel.axis_artifacts
+    )
 
 
 def _bundle_content(value: "PanelFeatureEvidenceBundle") -> dict[str, object]:
@@ -426,6 +539,8 @@ def _bundle_content(value: "PanelFeatureEvidenceBundle") -> dict[str, object]:
     )
     query_count = len(value.panels) - support_count
     owner_count = _owner_call_count(value.panels)
+    individual_axis_count = _individual_axis_call_count(value.panels)
+    batched_axis_count = _batched_axis_call_count(value.panels)
     axis_count = _axis_call_count(value.panels)
     return {
         "schema": PANEL_FEATURE_EVIDENCE_BUNDLE_SCHEMA,
@@ -459,6 +574,8 @@ def _bundle_content(value: "PanelFeatureEvidenceBundle") -> dict[str, object]:
         "query_phase_complete": query_count == QUERY_PANEL_COUNT,
         "proposer_model_call_count": 1,
         "owner_model_call_count": owner_count,
+        "individual_axis_model_call_count": individual_axis_count,
+        "batched_axis_model_call_count": batched_axis_count,
         "axis_model_call_count": axis_count,
         "live_model_call_count": 1 + owner_count + axis_count,
         "physical_receipt_digests": list(receipts),
@@ -596,9 +713,7 @@ class PanelFeatureEvidenceBundle:
             self.observer_runtime
         )
         for panel in self.panels:
-            actual_axes = tuple(
-                item.observation.axis.axis_digest for item in panel.axis_artifacts
-            )
+            actual_axes = _panel_axis_digests(panel)
             if actual_axes != required_axes:
                 raise PanelFeatureEvidenceBundleError(
                     "panel has missing, extra, or duplicated axis call artifacts"
@@ -612,6 +727,13 @@ class PanelFeatureEvidenceBundle:
                 raise PanelFeatureEvidenceBundleError(
                     "owner artifact is missing when used or extra when unused"
                 )
+            if (
+                panel.batched_axis_artifact is not None
+                and panel.owner_artifact is not None
+            ):
+                raise PanelFeatureEvidenceBundleError(
+                    "whole-panel batch has an extraneous owner artifact"
+                )
             if panel.owner_artifact is not None:
                 if (
                     panel.owner_artifact.runtime != self.observer_runtime
@@ -621,25 +743,41 @@ class PanelFeatureEvidenceBundle:
                     raise PanelFeatureEvidenceBundleError(
                         "owner artifact runtime or exact panel binding differs"
                     )
-            replayed_axes: list[TypedAxisCodexArtifact] = []
-            for artifact in panel.axis_artifacts:
+            if panel.batched_axis_artifact is not None:
+                batch = panel.batched_axis_artifact
                 if (
-                    artifact.runtime != self.observer_runtime
-                    or artifact.observer_contract_digest != observer_contract
-                    or artifact.measurement_protocol_digest != measurement_protocol
-                    or artifact.panel_png_digest != panel.panel_png_digest
-                    or artifact.panel_png_byte_count != len(panel.panel_png)
+                    batch.runtime != self.observer_runtime
+                    or batch.observer_contract_digest != observer_contract
+                    or batch.measurement_protocol_digest != measurement_protocol
+                    or batch.panel_png_digest != panel.panel_png_digest
+                    or batch.panel_png_byte_count != len(panel.panel_png)
+                    or tuple(item.axis_digest for item in batch.request.axes)
+                    != required_axes
                 ):
                     raise PanelFeatureEvidenceBundleError(
-                        "axis runtime, protocol, or exact panel binding differs"
+                        "batched axis runtime, catalog, protocol, or exact panel binding differs"
                     )
-                replayed_axes.append(artifact)
-            expected_observation = PanelFeatureObservationSet(
-                panel.panel_png_digest,
-                observer_contract,
-                measurement_protocol,
-                tuple(item.observation for item in replayed_axes),
-            )
+                expected_observation = batch.observation_set
+            else:
+                replayed_axes: list[TypedAxisCodexArtifact] = []
+                for artifact in panel.axis_artifacts:
+                    if (
+                        artifact.runtime != self.observer_runtime
+                        or artifact.observer_contract_digest != observer_contract
+                        or artifact.measurement_protocol_digest != measurement_protocol
+                        or artifact.panel_png_digest != panel.panel_png_digest
+                        or artifact.panel_png_byte_count != len(panel.panel_png)
+                    ):
+                        raise PanelFeatureEvidenceBundleError(
+                            "axis runtime, protocol, or exact panel binding differs"
+                        )
+                    replayed_axes.append(artifact)
+                expected_observation = PanelFeatureObservationSet(
+                    panel.panel_png_digest,
+                    observer_contract,
+                    measurement_protocol,
+                    tuple(item.observation for item in replayed_axes),
+                )
             if panel.observation_set != expected_observation:
                 raise PanelFeatureEvidenceBundleError(
                     "observation set is not exactly derived from full axis artifacts"
@@ -702,6 +840,19 @@ class PanelFeatureEvidenceBundle:
                         },
                     )
                 )
+            if panel.batched_axis_artifact is not None:
+                jobs.append(
+                    (
+                        f"batched-axis:{panel.panel_id}",
+                        verify_typed_batched_axis_codex_artifact,
+                        (panel.batched_axis_artifact, panel.panel_png),
+                        {
+                            "expected_artifact_digest": (
+                                panel.batched_axis_artifact.artifact_digest
+                            )
+                        },
+                    )
+                )
         with ThreadPoolExecutor(max_workers=min(8, len(jobs))) as executor:
             futures = {
                 executor.submit(call, *args, **kwargs): label
@@ -730,14 +881,14 @@ class PanelFeatureEvidenceBundle:
         if isinstance(panels, (bytes, str, Mapping)):
             raise TypeError("evidence panels must be an ordered sequence")
         rows = tuple(panels)
-        if not rows or not rows[0].axis_artifacts:
+        if not rows:
             raise PanelFeatureEvidenceBundleError(
                 "evidence bundle cannot derive an observer runtime"
             )
         values = {
             "proposer_artifact": proposer_artifact,
             "proposer_result": proposer_result,
-            "observer_runtime": rows[0].axis_artifacts[0].runtime,
+            "observer_runtime": _panel_observer_runtime(rows[0]),
             "observer_axes": tuple(observer_axes),
             "panels": rows,
         }
@@ -786,6 +937,8 @@ class PanelFeatureEvidenceBundle:
                 "query_phase_complete",
                 "proposer_model_call_count",
                 "owner_model_call_count",
+                "individual_axis_model_call_count",
+                "batched_axis_model_call_count",
                 "axis_model_call_count",
                 "live_model_call_count",
                 "physical_receipt_digests",
