@@ -588,6 +588,57 @@ def test_engineering_survivors_freeze_deterministically_and_roundtrip() -> None:
         FrozenEngineeringFeaturePredicatePair.create(side1, side0)
 
 
+def test_engineering_soft_support_allows_one_unclear_panel_but_no_wrong_answer() -> None:
+    vocabulary = _vocabulary()
+    target = vocabulary.side0_native_spec_digests[0]
+
+    one_unclear = _engineering_values(vocabulary)
+    one_unclear[(SIDE0[0], target)] = EngineeringDisposition.INDETERMINATE
+    one_unclear[(SIDE1[0], target)] = EngineeringDisposition.INDETERMINATE
+    table = EngineeringSupportTable.create(
+        vocabulary, SIDE0 + SIDE1, one_unclear
+    )
+    space = EngineeringFeatureVersionSpace.create(
+        table, o.NativeOrientation.SIDE0_POSITIVE, SIDE0, SIDE1
+    )
+    assert any(
+        formula.spec_digests == (target,) for formula in space.survivor_formulas
+    )
+    assert space.to_data()["support_rule"].startswith("at-least-five-of-six")
+
+    for panel, wrong in (
+        (SIDE0[0], EngineeringDisposition.NONMATCH),
+        (SIDE0[0], EngineeringDisposition.ERROR),
+        (SIDE1[0], EngineeringDisposition.MATCH),
+        (SIDE1[0], EngineeringDisposition.ERROR),
+    ):
+        values = _engineering_values(vocabulary)
+        values[(panel, target)] = wrong
+        rejected = EngineeringFeatureVersionSpace.create(
+            EngineeringSupportTable.create(vocabulary, SIDE0 + SIDE1, values),
+            o.NativeOrientation.SIDE0_POSITIVE,
+            SIDE0,
+            SIDE1,
+        )
+        assert all(
+            formula.spec_digests != (target,)
+            for formula in rejected.survivor_formulas
+        )
+
+    two_unclear = _engineering_values(vocabulary)
+    two_unclear[(SIDE0[0], target)] = EngineeringDisposition.INDETERMINATE
+    two_unclear[(SIDE0[1], target)] = EngineeringDisposition.INDETERMINATE
+    rejected = EngineeringFeatureVersionSpace.create(
+        EngineeringSupportTable.create(vocabulary, SIDE0 + SIDE1, two_unclear),
+        o.NativeOrientation.SIDE0_POSITIVE,
+        SIDE0,
+        SIDE1,
+    )
+    assert all(
+        formula.spec_digests != (target,) for formula in rejected.survivor_formulas
+    )
+
+
 @pytest.mark.parametrize(
     ("side0", "side1", "outcome"),
     [

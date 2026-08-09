@@ -49,7 +49,7 @@ ALL_OF_SCHEMA = "gkm.bongard-feature-all-of.v1"
 FORMULA_GAP_DIAGNOSTIC_SCHEMA = "gkm.bongard-feature-formula-gap-diagnostic.v1"
 FEATURE_SUPPORT_GAP_SCHEMA = "gkm.bongard-feature-support-gap.v1"
 FEATURE_VERSION_SPACE_SCHEMA = "gkm.bongard-feature-version-space.v1"
-ENGINEERING_VERSION_SPACE_SCHEMA = "gkm.bongard-engineering-feature-version-space.v1"
+ENGINEERING_VERSION_SPACE_SCHEMA = "gkm.bongard-engineering-feature-version-space.v2"
 FROZEN_FEATURE_PREDICATE_SCHEMA = "gkm.bongard-frozen-feature-predicate.v1"
 FROZEN_FEATURE_PAIR_SCHEMA = "gkm.bongard-frozen-feature-predicate-pair.v1"
 FROZEN_ENGINEERING_PREDICATE_SCHEMA = (
@@ -67,6 +67,11 @@ PANEL_FEATURE_ALGORITHM_ID = (
 )
 PANEL_FEATURE_MAX_CONJUNCTION = 2
 PANEL_FEATURE_SUPPORTS_PER_SIDE = 6
+ENGINEERING_MIN_DECISIVE_SUPPORTS_PER_SIDE = 5
+ENGINEERING_SUPPORT_RULE = (
+    "at-least-five-of-six-native-match-and-at-least-five-of-six-contrast-"
+    "nonmatch-with-no-wrong-polarity-or-error"
+)
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _ORIENTATION_ORDER = (
@@ -1309,7 +1314,11 @@ def _version_content(value: object, *, engineering: bool) -> dict[str, object]:
         "formulas": [item.to_data() for item in value.formulas],
         "rows": [[item.value for item in row] for row in value.rows],
         "survivor_formula_digests": list(value.survivor_formula_digests),
-        "support_rule": "positive-on-all-six-native-and-negative-on-all-six-contrast",
+        "support_rule": (
+            ENGINEERING_SUPPORT_RULE
+            if engineering
+            else "positive-on-all-six-native-and-negative-on-all-six-contrast"
+        ),
         **_language_data(),
         **_authority_data(),
     }
@@ -1330,7 +1339,30 @@ def _scientific_survives(formula: AllOf, row: tuple[Disposition, ...], side0: tu
 def _engineering_survives(formula: AllOf, row: tuple[EngineeringDisposition, ...], side0: tuple[str, ...], side1: tuple[str, ...]) -> bool:
     native, contrast = _panels_for_orientation(formula.native_orientation, side0, side1)
     by_panel = dict(zip(side0 + side1, row, strict=True))
-    return all(by_panel[item] is EngineeringDisposition.MATCH for item in native) and all(by_panel[item] is EngineeringDisposition.NONMATCH for item in contrast)
+    native_values = tuple(by_panel[item] for item in native)
+    contrast_values = tuple(by_panel[item] for item in contrast)
+    return (
+        native_values.count(EngineeringDisposition.MATCH)
+        >= ENGINEERING_MIN_DECISIVE_SUPPORTS_PER_SIDE
+        and native_values.count(EngineeringDisposition.INDETERMINATE)
+        <= PANEL_FEATURE_SUPPORTS_PER_SIDE
+        - ENGINEERING_MIN_DECISIVE_SUPPORTS_PER_SIDE
+        and all(
+            item
+            not in {EngineeringDisposition.NONMATCH, EngineeringDisposition.ERROR}
+            for item in native_values
+        )
+        and contrast_values.count(EngineeringDisposition.NONMATCH)
+        >= ENGINEERING_MIN_DECISIVE_SUPPORTS_PER_SIDE
+        and contrast_values.count(EngineeringDisposition.INDETERMINATE)
+        <= PANEL_FEATURE_SUPPORTS_PER_SIDE
+        - ENGINEERING_MIN_DECISIVE_SUPPORTS_PER_SIDE
+        and all(
+            item
+            not in {EngineeringDisposition.MATCH, EngineeringDisposition.ERROR}
+            for item in contrast_values
+        )
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1478,7 +1510,7 @@ class EngineeringFeatureVersionSpace(_NoBool):
         expected = {"schema", "algorithm_id", "algorithm_digest", "support_table", "native_orientation", "side0_panel_digests", "side1_panel_digests", "formulas", "rows", "survivor_formula_digests", "support_rule", *_language_data(), *_engineering_data(), *_authority_data(), "version_space_digest"}
         raw = _fields(value, expected, "engineering version space")
         policy = {**_language_data(), **_engineering_data(), **_authority_data()}
-        if raw["schema"] != ENGINEERING_VERSION_SPACE_SCHEMA or raw["algorithm_id"] != PANEL_FEATURE_ALGORITHM_ID or raw["algorithm_digest"] != panel_feature_predicate_algorithm_digest() or raw["support_rule"] != "positive-on-all-six-native-and-negative-on-all-six-contrast" or any(raw[key] != item for key, item in policy.items()) or any(type(raw[name]) is not list for name in ("side0_panel_digests", "side1_panel_digests", "formulas", "rows", "survivor_formula_digests")):
+        if raw["schema"] != ENGINEERING_VERSION_SPACE_SCHEMA or raw["algorithm_id"] != PANEL_FEATURE_ALGORITHM_ID or raw["algorithm_digest"] != panel_feature_predicate_algorithm_digest() or raw["support_rule"] != ENGINEERING_SUPPORT_RULE or any(raw[key] != item for key, item in policy.items()) or any(type(raw[name]) is not list for name in ("side0_panel_digests", "side1_panel_digests", "formulas", "rows", "survivor_formula_digests")):
             raise PanelFeaturePredicateError("engineering version-space policy differs")
         try:
             orientation = NativeOrientation(raw["native_orientation"])

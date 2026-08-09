@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 from copy import deepcopy
 import hashlib
+import inspect
 import json
 from pathlib import Path
 
@@ -49,12 +50,15 @@ from bongard.panel_feature_proposer import (
     parse_panel_feature_proposer_payload,
 )
 from bongard.panel_feature_task_runner import (
+    PanelFeatureSupportDerivation,
+    PanelFeatureSupportDerivationStatus,
     PanelFeatureTaskArchive,
     PanelFeatureTaskFreeze,
     PanelFeatureTaskFreezeCommit,
     PanelFeatureTaskRunStatus,
     PanelFeatureTaskRunnerError,
     cold_replay_panel_feature_task,
+    derive_panel_feature_support,
     engineering_disposition_from_observation,
     run_panel_feature_task,
     run_panel_feature_task_with_support_callbacks,
@@ -523,6 +527,37 @@ def test_complete_run_freezes_before_separate_query_release_and_observation(
     ) == archive
 
 
+def test_support_only_derivation_is_content_addressed_and_has_no_query_capability(
+    tmp_path: Path,
+) -> None:
+    task, support_pngs, proposer, observations, _, _ = _fixture(tmp_path)
+    result = derive_panel_feature_support(
+        task, support_pngs, proposer, observations
+    )
+    assert result.status is PanelFeatureSupportDerivationStatus.UNIQUE_PAIR
+    assert result.support_gap is None
+    assert result.selection_gap is None
+    assert len(result.side0_version_space.survivor_formulas) == 1
+    assert len(result.side1_version_space.survivor_formulas) == 1
+    assert PanelFeatureSupportDerivation.from_data(result.to_data()) == result
+    assert result.artifact_address == "sha256:" + result.record_digest
+    parameters = set(inspect.signature(derive_panel_feature_support).parameters)
+    assert not parameters.intersection(
+        {"query", "query_release", "freeze", "callback", "release"}
+    )
+    rendered = result.to_data()
+    assert rendered["support_only"] is True
+    assert rendered["query_pixels_included"] is False
+    assert rendered["query_release_capability"] is False
+    assert rendered["freeze_created"] is False
+    assert rendered["callbacks_accepted"] is False
+
+    tampered = deepcopy(rendered)
+    tampered["query_release_capability"] = True
+    with pytest.raises(PanelFeatureTaskRunnerError):
+        PanelFeatureSupportDerivation.from_data(tampered)
+
+
 def test_empty_version_space_returns_gap_without_callbacks(tmp_path: Path) -> None:
     task, _, proposer, observations, _, releases = _fixture(
         tmp_path, incomplete=True
@@ -576,6 +611,14 @@ def test_multiple_survivors_are_selection_gap_not_digest_order_choice(
     assert archive.selection_gap is not None
     assert archive.selection_gap.survivor_counts_by_orientation[0] > 1
     assert archive.predicate_pair is None
+    derived = derive_panel_feature_support(
+        task,
+        tuple(_png(index) for index in range(12)),
+        proposer,
+        observations,
+    )
+    assert derived.status is PanelFeatureSupportDerivationStatus.SELECTION_GAP
+    assert derived.selection_gap == archive.selection_gap
 
 
 def test_support_observer_gets_no_candidate_specs_labels_or_positions(
@@ -800,6 +843,11 @@ def test_local_nominations_are_retained_and_evaluate_indeterminate(
 ) -> None:
     task, support_pngs, _, observations, _, releases = _fixture(tmp_path)
     proposer = _proposer(task, support_pngs, local=True)
+    derived = derive_panel_feature_support(
+        task, support_pngs, proposer, observations
+    )
+    assert derived.status is PanelFeatureSupportDerivationStatus.SUPPORT_GAP
+    assert derived.support_gap is not None
 
     def forbidden(*_args):
         raise AssertionError("local-only support gap invoked a callback")

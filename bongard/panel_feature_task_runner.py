@@ -112,6 +112,9 @@ PANEL_FEATURE_TASK_FREEZE_SCHEMA = "gkm.bongard-panel-feature-task-freeze.v2"
 PANEL_FEATURE_TASK_FREEZE_COMMIT_SCHEMA = (
     "gkm.bongard-panel-feature-task-freeze-commit.v2"
 )
+PANEL_FEATURE_SUPPORT_DERIVATION_SCHEMA = (
+    "gkm.bongard-panel-feature-support-derivation.v1"
+)
 PANEL_FEATURE_SUPPORT_PANEL_COUNT = 12
 PANEL_FEATURE_QUERY_PANEL_COUNT = 2
 
@@ -130,6 +133,12 @@ class PanelFeatureTaskRunnerError(RuntimeError):
 
 class PanelFeatureTaskRunStatus(str, Enum):
     COMPLETE = "complete"
+    SUPPORT_GAP = "support_gap"
+    SELECTION_GAP = "selection_gap"
+
+
+class PanelFeatureSupportDerivationStatus(str, Enum):
+    UNIQUE_PAIR = "unique_pair"
     SUPPORT_GAP = "support_gap"
     SELECTION_GAP = "selection_gap"
 
@@ -1094,6 +1103,348 @@ def _decode_png_rows(
             ) from exc
         result.append(_png(decoded, f"{label} panel {index}"))
     return tuple(result)
+
+
+def _support_derivation_phase(
+    side0_space: EngineeringFeatureVersionSpace,
+    side1_space: EngineeringFeatureVersionSpace,
+) -> tuple[
+    PanelFeatureSupportDerivationStatus,
+    PanelFeatureTaskSupportGap | None,
+    PanelFeatureTaskSelectionGap | None,
+]:
+    counts = (
+        len(side0_space.survivor_formula_digests),
+        len(side1_space.survivor_formula_digests),
+    )
+    if 0 in counts:
+        return (
+            PanelFeatureSupportDerivationStatus.SUPPORT_GAP,
+            PanelFeatureTaskSupportGap.create(side0_space, side1_space),
+            None,
+        )
+    if counts != (1, 1):
+        return (
+            PanelFeatureSupportDerivationStatus.SELECTION_GAP,
+            None,
+            PanelFeatureTaskSelectionGap.create(side0_space, side1_space),
+        )
+    return PanelFeatureSupportDerivationStatus.UNIQUE_PAIR, None, None
+
+
+def _support_derivation_content(
+    value: "PanelFeatureSupportDerivation",
+) -> dict[str, object]:
+    return {
+        "schema": PANEL_FEATURE_SUPPORT_DERIVATION_SCHEMA,
+        "runner_id": PANEL_FEATURE_TASK_RUNNER_ID,
+        "task_plan": value.task_plan.to_data(),
+        "support_png_base64_by_panel_id": {
+            panel_id: encoded
+            for panel_id, encoded in value.support_png_base64_by_panel_id
+        },
+        "proposer_result": value.proposer_result.to_data(),
+        "proposer_result_digest": value.proposer_result.result_digest,
+        "support_observations": [
+            item.to_data() for item in value.support_observations
+        ],
+        "deployment_observer_axes": _deployment_axis_catalog_data(),
+        "deployment_observer_axis_catalog_digest": (
+            _deployment_axis_catalog_digest()
+        ),
+        "vocabulary": value.vocabulary.to_data(),
+        "support_table": value.support_table.to_data(),
+        "side0_version_space": value.side0_version_space.to_data(),
+        "side1_version_space": value.side1_version_space.to_data(),
+        "observer_contract_digest": value.observer_contract_digest,
+        "measurement_protocol_digest": value.measurement_protocol_digest,
+        "status": value.status.value,
+        "support_gap": (
+            None if value.support_gap is None else value.support_gap.to_data()
+        ),
+        "selection_gap": (
+            None if value.selection_gap is None else value.selection_gap.to_data()
+        ),
+        "support_only": True,
+        "query_pixels_included": False,
+        "query_release_capability": False,
+        "freeze_created": False,
+        "predicate_pair_created": False,
+        "callbacks_accepted": False,
+        "cold_replay_model_calls": 0,
+        **_authority_data(),
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class PanelFeatureSupportDerivation:
+    """Mechanical support-only result with no query or freeze capability."""
+
+    task_plan: ObjectBongardTaskPlan
+    support_png_base64_by_panel_id: tuple[tuple[str, str], ...]
+    proposer_result: PanelFeatureProposerResult
+    support_observations: tuple[PanelFeatureObservationSet, ...]
+    vocabulary: FeatureVocabulary
+    support_table: EngineeringSupportTable
+    side0_version_space: EngineeringFeatureVersionSpace
+    side1_version_space: EngineeringFeatureVersionSpace
+    observer_contract_digest: str
+    measurement_protocol_digest: str
+    status: PanelFeatureSupportDerivationStatus
+    support_gap: PanelFeatureTaskSupportGap | None
+    selection_gap: PanelFeatureTaskSelectionGap | None
+    record_digest: str
+
+    def __post_init__(self) -> None:
+        if type(self.task_plan) is not ObjectBongardTaskPlan:
+            raise TypeError("support derivation needs ObjectBongardTaskPlan")
+        if (
+            type(self.support_png_base64_by_panel_id) is not tuple
+            or type(self.support_observations) is not tuple
+        ):
+            raise TypeError("support derivation needs exact tuple inputs")
+        if type(self.proposer_result) is not PanelFeatureProposerResult:
+            raise TypeError("support derivation needs PanelFeatureProposerResult")
+        if type(self.status) is not PanelFeatureSupportDerivationStatus:
+            raise TypeError("support derivation status differs")
+        _raw_digest(self.record_digest, "support derivation record digest")
+        pngs = _decode_png_rows(
+            self.support_png_base64_by_panel_id,
+            _support_ids(self.task_plan),
+            label="support derivation",
+        )
+        (
+            task,
+            canonical_pngs,
+            proposer,
+            observations,
+            vocabulary,
+            table,
+            side0_space,
+            side1_space,
+            contract,
+            protocol,
+        ) = _derive_support(
+            self.task_plan,
+            pngs,
+            self.proposer_result,
+            self.support_observations,
+        )
+        status, support_gap, selection_gap = _support_derivation_phase(
+            side0_space, side1_space
+        )
+        if (
+            task != self.task_plan
+            or canonical_pngs != pngs
+            or proposer != self.proposer_result
+            or observations != self.support_observations
+            or vocabulary != self.vocabulary
+            or table != self.support_table
+            or side0_space != self.side0_version_space
+            or side1_space != self.side1_version_space
+            or contract != self.observer_contract_digest
+            or protocol != self.measurement_protocol_digest
+            or status is not self.status
+            or support_gap != self.support_gap
+            or selection_gap != self.selection_gap
+            or self.record_digest != canonical_digest(_support_derivation_content(self))
+        ):
+            raise PanelFeatureTaskRunnerError(
+                "support derivation content differs from canonical replay"
+            )
+
+    @property
+    def artifact_address(self) -> str:
+        return "sha256:" + self.record_digest
+
+    @classmethod
+    def create(
+        cls,
+        task_plan: ObjectBongardTaskPlan,
+        support_pngs: Sequence[bytes],
+        proposer_result: PanelFeatureProposerResult,
+        support_observations: Sequence[PanelFeatureObservationSet],
+    ) -> "PanelFeatureSupportDerivation":
+        (
+            task,
+            pngs,
+            proposer,
+            observations,
+            vocabulary,
+            table,
+            side0_space,
+            side1_space,
+            contract,
+            protocol,
+        ) = _derive_support(
+            task_plan, support_pngs, proposer_result, support_observations
+        )
+        status, support_gap, selection_gap = _support_derivation_phase(
+            side0_space, side1_space
+        )
+        values = {
+            "task_plan": task,
+            "support_png_base64_by_panel_id": _encode_png_rows(
+                _support_ids(task), pngs
+            ),
+            "proposer_result": proposer,
+            "support_observations": observations,
+            "vocabulary": vocabulary,
+            "support_table": table,
+            "side0_version_space": side0_space,
+            "side1_version_space": side1_space,
+            "observer_contract_digest": contract,
+            "measurement_protocol_digest": protocol,
+            "status": status,
+            "support_gap": support_gap,
+            "selection_gap": selection_gap,
+        }
+        provisional = object.__new__(cls)
+        for name, item in values.items():
+            object.__setattr__(provisional, name, item)
+        return cls(
+            **values,
+            record_digest=canonical_digest(_support_derivation_content(provisional)),
+        )
+
+    def to_data(self) -> dict[str, object]:
+        return {
+            **_support_derivation_content(self),
+            "record_digest": self.record_digest,
+            "artifact_address": self.artifact_address,
+        }
+
+    @classmethod
+    def from_data(cls, value: object) -> "PanelFeatureSupportDerivation":
+        raw = _fields(
+            value,
+            {
+                "schema",
+                "runner_id",
+                "task_plan",
+                "support_png_base64_by_panel_id",
+                "proposer_result",
+                "proposer_result_digest",
+                "support_observations",
+                "deployment_observer_axes",
+                "deployment_observer_axis_catalog_digest",
+                "vocabulary",
+                "support_table",
+                "side0_version_space",
+                "side1_version_space",
+                "observer_contract_digest",
+                "measurement_protocol_digest",
+                "status",
+                "support_gap",
+                "selection_gap",
+                "support_only",
+                "query_pixels_included",
+                "query_release_capability",
+                "freeze_created",
+                "predicate_pair_created",
+                "callbacks_accepted",
+                "cold_replay_model_calls",
+                *_authority_data(),
+                "record_digest",
+                "artifact_address",
+            },
+            "panel-feature support derivation",
+        )
+        if (
+            raw["schema"] != PANEL_FEATURE_SUPPORT_DERIVATION_SCHEMA
+            or raw["runner_id"] != PANEL_FEATURE_TASK_RUNNER_ID
+            or raw["deployment_observer_axes"]
+            != _deployment_axis_catalog_data()
+            or raw["deployment_observer_axis_catalog_digest"]
+            != _deployment_axis_catalog_digest()
+            or raw["support_only"] is not True
+            or raw["query_pixels_included"] is not False
+            or raw["query_release_capability"] is not False
+            or raw["freeze_created"] is not False
+            or raw["predicate_pair_created"] is not False
+            or raw["callbacks_accepted"] is not False
+            or raw["cold_replay_model_calls"] != 0
+            or any(raw[key] != item for key, item in _authority_data().items())
+            or not isinstance(raw["support_png_base64_by_panel_id"], Mapping)
+            or type(raw["support_observations"]) is not list
+        ):
+            raise PanelFeatureTaskRunnerError("support derivation policy differs")
+        task = ObjectBongardTaskPlan.from_data(raw["task_plan"])
+        encoded = raw["support_png_base64_by_panel_id"]
+        if set(encoded) != set(_support_ids(task)):
+            raise PanelFeatureTaskRunnerError(
+                "support derivation panel identities differ"
+            )
+        proposer = _proposer_result_from_data(raw["proposer_result"])
+        if raw["proposer_result_digest"] != proposer.result_digest:
+            raise PanelFeatureTaskRunnerError(
+                "support derivation proposer digest differs"
+            )
+        try:
+            result = cls(
+                task_plan=task,
+                support_png_base64_by_panel_id=tuple(
+                    (panel_id, encoded[panel_id]) for panel_id in _support_ids(task)
+                ),
+                proposer_result=proposer,
+                support_observations=tuple(
+                    PanelFeatureObservationSet.from_data(item)
+                    for item in raw["support_observations"]
+                ),
+                vocabulary=FeatureVocabulary.from_data(raw["vocabulary"]),
+                support_table=EngineeringSupportTable.from_data(
+                    raw["support_table"]
+                ),
+                side0_version_space=EngineeringFeatureVersionSpace.from_data(
+                    raw["side0_version_space"]
+                ),
+                side1_version_space=EngineeringFeatureVersionSpace.from_data(
+                    raw["side1_version_space"]
+                ),
+                observer_contract_digest=raw["observer_contract_digest"],
+                measurement_protocol_digest=raw["measurement_protocol_digest"],
+                status=PanelFeatureSupportDerivationStatus(raw["status"]),
+                support_gap=(
+                    None
+                    if raw["support_gap"] is None
+                    else PanelFeatureTaskSupportGap.from_data(raw["support_gap"])
+                ),
+                selection_gap=(
+                    None
+                    if raw["selection_gap"] is None
+                    else PanelFeatureTaskSelectionGap.from_data(
+                        raw["selection_gap"]
+                    )
+                ),
+                record_digest=raw["record_digest"],
+            )
+        except (TypeError, ValueError) as exc:
+            if isinstance(exc, PanelFeatureTaskRunnerError):
+                raise
+            raise PanelFeatureTaskRunnerError(
+                "support derivation value differs"
+            ) from exc
+        if (
+            raw["artifact_address"] != result.artifact_address
+            or result.to_data() != dict(raw)
+        ):
+            raise PanelFeatureTaskRunnerError(
+                "support derivation is not canonical"
+            )
+        return result
+
+
+def derive_panel_feature_support(
+    task_plan: ObjectBongardTaskPlan,
+    support_pngs: Sequence[bytes],
+    proposer_result: PanelFeatureProposerResult,
+    support_observations: Sequence[PanelFeatureObservationSet],
+) -> PanelFeatureSupportDerivation:
+    """Derive support state without accepting any query or persistence hook."""
+
+    return PanelFeatureSupportDerivation.create(
+        task_plan, support_pngs, proposer_result, support_observations
+    )
 
 
 def _combined_version_space_digest(
@@ -2623,6 +2974,9 @@ __all__ = (
     "PANEL_FEATURE_QUERY_PANEL_COUNT",
     "PANEL_FEATURE_SUPPORT_PANEL_COUNT",
     "PANEL_FEATURE_TASK_RUNNER_ID",
+    "PANEL_FEATURE_SUPPORT_DERIVATION_SCHEMA",
+    "PanelFeatureSupportDerivation",
+    "PanelFeatureSupportDerivationStatus",
     "PanelFeatureTaskArchive",
     "PanelFeatureTaskFreeze",
     "PanelFeatureTaskFreezeCommit",
@@ -2638,6 +2992,7 @@ __all__ = (
     "SupportObserverCallback",
     "SupportProposerCallback",
     "cold_replay_panel_feature_task",
+    "derive_panel_feature_support",
     "engineering_disposition_from_observation",
     "run_panel_feature_task",
     "run_panel_feature_task_with_official_release",
