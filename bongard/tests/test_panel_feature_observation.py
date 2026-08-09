@@ -180,6 +180,64 @@ def test_incomplete_owner_inventory_prevents_operational_nonmatch() -> None:
     assert observation.evaluate(tool) is f.EngineeringFeatureDisposition.INDETERMINATE
 
 
+def test_whole_panel_soft_axis_does_not_require_owner_enumeration() -> None:
+    inventory = f.panel_only_observation_inventory(
+        panel_digest=_d("a"),
+        observer_contract_digest=_d("b"),
+        panel_context_receipt_digest=_d("c"),
+    )
+    assert inventory.enumeration_complete is False
+    assert inventory.owners == ()
+    bird = o.PanelFeatureSpec(
+        o.FeatureFamily.GESTALT_RESEMBLANCE,
+        o.SubjectScope.WHOLE_PANEL,
+        o.ReferenceFrame.NONE,
+        o.GestaltResemblanceParameters(o.GestaltKind.BIRD_LIKE),
+    )
+    tool = o.PanelFeatureSpec(
+        o.FeatureFamily.GESTALT_RESEMBLANCE,
+        o.SubjectScope.WHOLE_PANEL,
+        o.ReferenceFrame.NONE,
+        o.GestaltResemblanceParameters(o.GestaltKind.TOOL_LIKE),
+    )
+    axis = f.FeatureAxis.for_spec(bird)
+    bindings = f.eligible_axis_bindings(axis, inventory)
+    assert bindings == (o.SubjectBinding(o.SubjectBindingKind.PANEL, ()),)
+    observation = f.PanelAxisObservation(
+        inventory,
+        axis,
+        _d("b"),
+        _d("d"),
+        (
+            _row(
+                axis,
+                bindings[0],
+                observed=(tool,),
+                point=o.QuantizedPoint(8, 8),
+                receipt=_d("e"),
+            ),
+        ),
+    )
+    assert observation.evaluate(tool) is f.EngineeringFeatureDisposition.MATCH
+    assert observation.evaluate(bird) is f.EngineeringFeatureDisposition.NONMATCH
+
+    # The same owner-free context cannot manufacture a local-object negative.
+    local_bird = _gestalt(o.GestaltKind.BIRD_LIKE)
+    local_axis = f.FeatureAxis.for_spec(local_bird)
+    local = f.PanelAxisObservation(
+        inventory,
+        local_axis,
+        _d("b"),
+        _d("d"),
+        (),
+        f.EligibleDomainGap.unverified_empty(inventory, local_axis),
+    )
+    assert (
+        local.evaluate(local_bird)
+        is f.EngineeringFeatureDisposition.INDETERMINATE
+    )
+
+
 def test_empty_eligible_domain_is_a_typed_gap_not_vacuous_nonmatch() -> None:
     inventory = o.OwnerInventory(
         _d("a"),

@@ -26,6 +26,7 @@ from bongard.panel_soft_ontology import (
     ClosedCount,
     ComponentCountParameters,
     ExactSegmentCountParameters,
+    EnumerationResolution,
     OwnerInventory,
     PanelFeatureSpec,
     PanelSoftOntologyError,
@@ -37,6 +38,7 @@ from bongard.panel_soft_ontology import (
     FeatureFamily,
     coherent_top_level_component_owner_ids,
     descendant_segment_owner_ids,
+    feature_catalog_digest,
     subject_search_region,
 )
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
@@ -45,11 +47,14 @@ from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 FEATURE_AXIS_SCHEMA = "gkm.bongard-panel-feature-axis.v1"
 BINDING_OBSERVATION_SCHEMA = "gkm.bongard-panel-binding-feature-observation.v1"
 ELIGIBLE_DOMAIN_GAP_SCHEMA = "gkm.bongard-panel-eligible-domain-gap.v1"
-PANEL_AXIS_OBSERVATION_SCHEMA = "gkm.bongard-panel-axis-observation.v2"
-PANEL_FEATURE_OBSERVATION_SET_SCHEMA = "gkm.bongard-panel-feature-observation-set.v2"
+PANEL_AXIS_OBSERVATION_SCHEMA = "gkm.bongard-panel-axis-observation.v3"
+PANEL_FEATURE_OBSERVATION_SET_SCHEMA = "gkm.bongard-panel-feature-observation-set.v3"
 ENGINEERING_FEATURE_CELL_SCHEMA = "gkm.bongard-engineering-feature-cell.v1"
 FEATURE_OBSERVATION_PROTOCOL_ID = (
-    "bongard.panel-feature-observation/complete-closed-variants-per-binding-v2"
+    "bongard.panel-feature-observation/complete-closed-variants-per-binding-v3"
+)
+PANEL_ONLY_CONTEXT_PROTOCOL_ID = (
+    "bongard.panel-feature-observation/exact-panel-binding-context-v1"
 )
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -336,6 +341,44 @@ def eligible_axis_bindings(
     return bindings
 
 
+def panel_only_observation_inventory(
+    *,
+    panel_digest: str,
+    observer_contract_digest: str,
+    panel_context_receipt_digest: str,
+) -> OwnerInventory:
+    """Build an owner-free context for an exact whole-panel measurement.
+
+    This does not claim that the panel has no objects and deliberately leaves
+    ``enumeration_complete`` false.  It exists only so panel-scoped feature
+    axes can be observed directly from raw pixels without making object
+    segmentation a prerequisite.  Owner-local axes cannot obtain a negative
+    disposition from this context because their eligible domains are empty.
+    """
+
+    _digest(panel_digest, "panel-only context panel digest")
+    _digest(observer_contract_digest, "panel-only observer contract digest")
+    _digest(panel_context_receipt_digest, "panel-only context receipt digest")
+    protocol_digest = canonical_digest(
+        {
+            "schema": "gkm.bongard-panel-only-observation-context.v1",
+            "protocol_id": PANEL_ONLY_CONTEXT_PROTOCOL_ID,
+            "feature_catalog_digest": feature_catalog_digest(),
+            "observer_contract_digest": observer_contract_digest,
+            "owner_enumeration_performed": False,
+            "valid_subject_scope": SubjectScope.WHOLE_PANEL.value,
+        }
+    )
+    return OwnerInventory(
+        panel_digest,
+        protocol_digest,
+        EnumerationResolution.GRID16_FULL_PANEL,
+        panel_context_receipt_digest,
+        False,
+        (),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class BindingFeatureObservation:
     """One raw, closed-axis report for one panel-local subject binding."""
@@ -574,7 +617,10 @@ class PanelAxisObservation:
             return EngineeringFeatureDisposition.ERROR
         if (
             self.binding_observations
-            and self.inventory.enumeration_complete
+            and (
+                self.axis.subject_scope is SubjectScope.WHOLE_PANEL
+                or self.inventory.enumeration_complete
+            )
             and all(
                 row.resolution is BindingResolution.COMPLETE
                 and bool(row.observed_specs)

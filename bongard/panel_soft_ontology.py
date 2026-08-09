@@ -56,8 +56,8 @@ ABSENCE_GRANT_SCHEMA = "gkm.bongard-feature-absence-calibration-grant.v1"
 CALIBRATION_AUTHORITY_SCHEMA = "gkm.bongard-feature-calibration-authority.v1"
 CALIBRATION_ASSESSMENT_SCHEMA = "gkm.bongard-feature-calibration-assessment.v1"
 
-FEATURE_CATALOG_SCHEMA = "gkm.bongard-panel-feature-catalog.v2"
-FEATURE_CATALOG_ID = "bongard.panel-feature-catalog/typed-visual-v2"
+FEATURE_CATALOG_SCHEMA = "gkm.bongard-panel-feature-catalog.v3"
+FEATURE_CATALOG_ID = "bongard.panel-feature-catalog/typed-visual-v3"
 OWNER_ENUMERATION_PROTOCOL_ID = (
     "bongard.panel-owner-enumeration/candidate-independent-grid16-v1"
 )
@@ -637,11 +637,20 @@ FAMILY_CONTRACTS: Mapping[FeatureFamily, FamilyContract] = MappingProxyType(
         FeatureFamily.EXACT_SEGMENT_COUNT: _contract(
             ExactSegmentCountParameters,
             [
+                (SubjectScope.WHOLE_PANEL, ReferenceFrame.NONE),
                 (SubjectScope.ONE_COHERENT_FIGURE, ReferenceFrame.NONE),
                 (SubjectScope.ONE_TRACE, ReferenceFrame.NONE),
             ],
-            {SubjectScope.ONE_COHERENT_FIGURE: _UNARY, SubjectScope.ONE_TRACE: _UNARY},
-            {SubjectScope.ONE_COHERENT_FIGURE: _FIGURE, SubjectScope.ONE_TRACE: _TRACE},
+            {
+                SubjectScope.WHOLE_PANEL: _PANEL,
+                SubjectScope.ONE_COHERENT_FIGURE: _UNARY,
+                SubjectScope.ONE_TRACE: _UNARY,
+            },
+            {
+                SubjectScope.WHOLE_PANEL: (),
+                SubjectScope.ONE_COHERENT_FIGURE: _FIGURE,
+                SubjectScope.ONE_TRACE: _TRACE,
+            },
         ),
         FeatureFamily.MARKER_PATTERN: _contract(
             MarkerPatternParameters,
@@ -651,13 +660,23 @@ FAMILY_CONTRACTS: Mapping[FeatureFamily, FamilyContract] = MappingProxyType(
         ),
         FeatureFamily.GESTALT_RESEMBLANCE: _contract(
             GestaltResemblanceParameters,
-            [(SubjectScope.ONE_COHERENT_FIGURE, ReferenceFrame.NONE)],
-            {SubjectScope.ONE_COHERENT_FIGURE: _UNARY},
-            {SubjectScope.ONE_COHERENT_FIGURE: _FIGURE},
+            [
+                (SubjectScope.WHOLE_PANEL, ReferenceFrame.NONE),
+                (SubjectScope.ONE_COHERENT_FIGURE, ReferenceFrame.NONE),
+            ],
+            {
+                SubjectScope.WHOLE_PANEL: _PANEL,
+                SubjectScope.ONE_COHERENT_FIGURE: _UNARY,
+            },
+            {
+                SubjectScope.WHOLE_PANEL: (),
+                SubjectScope.ONE_COHERENT_FIGURE: _FIGURE,
+            },
         ),
         FeatureFamily.SEGMENT_ORIENTATION: _contract(
             SegmentOrientationParameters,
             [
+                (SubjectScope.WHOLE_PANEL, ReferenceFrame.CANVAS_AXES),
                 (SubjectScope.ONE_TRACE, ReferenceFrame.CANVAS_AXES),
                 (SubjectScope.ONE_TRACE, ReferenceFrame.SUBJECT_MAJOR_AXIS),
                 (SubjectScope.ONE_COHERENT_FIGURE, ReferenceFrame.CANVAS_AXES),
@@ -666,17 +685,34 @@ FAMILY_CONTRACTS: Mapping[FeatureFamily, FamilyContract] = MappingProxyType(
                     ReferenceFrame.SUBJECT_MAJOR_AXIS,
                 ),
             ],
-            {SubjectScope.ONE_TRACE: _UNARY, SubjectScope.ONE_COHERENT_FIGURE: _UNARY},
-            {SubjectScope.ONE_TRACE: _TRACE, SubjectScope.ONE_COHERENT_FIGURE: _FIGURE},
+            {
+                SubjectScope.WHOLE_PANEL: _PANEL,
+                SubjectScope.ONE_TRACE: _UNARY,
+                SubjectScope.ONE_COHERENT_FIGURE: _UNARY,
+            },
+            {
+                SubjectScope.WHOLE_PANEL: (),
+                SubjectScope.ONE_TRACE: _TRACE,
+                SubjectScope.ONE_COHERENT_FIGURE: _FIGURE,
+            },
         ),
         FeatureFamily.CORNER_ANGLE: _contract(
             CornerAngleParameters,
             [
+                (SubjectScope.WHOLE_PANEL, ReferenceFrame.LOCAL_TANGENT),
                 (SubjectScope.ONE_TRACE, ReferenceFrame.LOCAL_TANGENT),
                 (SubjectScope.ONE_COHERENT_FIGURE, ReferenceFrame.LOCAL_TANGENT),
             ],
-            {SubjectScope.ONE_TRACE: _UNARY, SubjectScope.ONE_COHERENT_FIGURE: _UNARY},
-            {SubjectScope.ONE_TRACE: _TRACE, SubjectScope.ONE_COHERENT_FIGURE: _FIGURE},
+            {
+                SubjectScope.WHOLE_PANEL: _PANEL,
+                SubjectScope.ONE_TRACE: _UNARY,
+                SubjectScope.ONE_COHERENT_FIGURE: _UNARY,
+            },
+            {
+                SubjectScope.WHOLE_PANEL: (),
+                SubjectScope.ONE_TRACE: _TRACE,
+                SubjectScope.ONE_COHERENT_FIGURE: _FIGURE,
+            },
         ),
         FeatureFamily.TURN_PROFILE: _contract(
             TurnProfileParameters,
@@ -745,9 +781,18 @@ FAMILY_CONTRACTS: Mapping[FeatureFamily, FamilyContract] = MappingProxyType(
         ),
         FeatureFamily.TEXTURE_COMPOSITION: _contract(
             TextureCompositionParameters,
-            [(SubjectScope.ONE_COHERENT_FIGURE, ReferenceFrame.NONE)],
-            {SubjectScope.ONE_COHERENT_FIGURE: _UNARY},
-            {SubjectScope.ONE_COHERENT_FIGURE: _FIGURE},
+            [
+                (SubjectScope.WHOLE_PANEL, ReferenceFrame.NONE),
+                (SubjectScope.ONE_COHERENT_FIGURE, ReferenceFrame.NONE),
+            ],
+            {
+                SubjectScope.WHOLE_PANEL: _PANEL,
+                SubjectScope.ONE_COHERENT_FIGURE: _UNARY,
+            },
+            {
+                SubjectScope.WHOLE_PANEL: (),
+                SubjectScope.ONE_COHERENT_FIGURE: _FIGURE,
+            },
         ),
     }
 )
