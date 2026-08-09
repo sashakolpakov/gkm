@@ -4,18 +4,28 @@ This module is deliberately below every model, transport, query, and ranking
 layer.  It accepts twelve already-frozen support rows over eight fixed axes,
 one support-only nomination (or a typed gap) per axis, and enumerates equality
 singletons and pairs in Python.  A calibrated confidence set may induce a
-runtime disposition, but its witnesses explicitly deny deterministic pixel
-truth.  No prose predicate or Lean term is executable here.
+runtime disposition, but no cell is treated as self-authenticating semantic
+pixel truth.  Panel/task custody and verification of the opaque observer and
+calibration addresses belong to the external campaign adapter.  Freezing the
+matrix before binding nominations does ensure that nomination cannot change
+the measured cells inside this core.  No prose predicate or Lean term is
+executable here.
 """
 
 from __future__ import annotations
 
+from bongard.runtime_source_snapshot import capture_loaded_source, verify_loaded_source
+
+
+_LOADED_SOURCE_SHA256 = capture_loaded_source(__name__, __file__)
+
 from dataclasses import dataclass
 from enum import Enum
 import re
+from types import MappingProxyType
 from typing import Any, Mapping, Sequence, TypeAlias
 
-from bongard.canonical import canonical_digest
+from bongard.canonical import canonical_digest, canonical_json
 from bongard.evidence import Disposition
 
 
@@ -37,6 +47,7 @@ FORMULA_SCHEMA = "gkm.bongard-typed-axis-formula-evaluation.v2"
 EMPTY_GAP_SCHEMA = "gkm.bongard-typed-axis-empty-gap.v2"
 INVENTORY_SCHEMA = "gkm.bongard-typed-axis-inventory.v2"
 ALGORITHM_ID = "bongard.typed-axis/equality-singletons-pairs-support-only-v2"
+ALGORITHM_SCHEMA = "gkm.bongard-typed-axis-algorithm.v2"
 
 _ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _KEY = re.compile(r"[A-Za-z0-9][A-Za-z0-9_./:-]{0,255}\Z")
@@ -79,7 +90,7 @@ AxisValue: TypeAlias = int | str
 # Each axis is a finite, versioned state space.  Counts use literal integers;
 # categoricals use literal strings.  ``primitive_mix_or_arc_count`` combines
 # primitive mix and bounded arc count into one mutually exclusive value.
-AXIS_DOMAINS: Mapping[Axis, tuple[AxisValue, ...]] = {
+AXIS_DOMAINS: Mapping[Axis, tuple[AxisValue, ...]] = MappingProxyType({
     Axis.TOPOLOGY: ("open", "closed", "mixed_open_closed"),
     Axis.COMPONENT_COUNT: tuple(range(10)),
     Axis.STRAIGHT_ACTION_COUNT: tuple(range(10)),
@@ -104,7 +115,53 @@ AXIS_DOMAINS: Mapping[Axis, tuple[AxisValue, ...]] = {
         "elongated_oblique_negative",
     ),
     Axis.TEXTURE: ("plain", "dotted", "dashed", "mixed_texture"),
-}
+})
+
+
+def typed_axis_slate_source_digest() -> str:
+    """Return the import-time source seal only while disk bytes still agree."""
+
+    return verify_loaded_source(
+        __name__, expected_source_sha256=_LOADED_SOURCE_SHA256
+    )
+
+
+def typed_axis_slate_algorithm_digest() -> str:
+    """Bind the closed language and policy to the exact loaded Python source."""
+
+    return "sha256:" + canonical_digest(
+        {
+            "schema": ALGORITHM_SCHEMA,
+            "algorithm_id": ALGORITHM_ID,
+            "implementation_source_sha256": typed_axis_slate_source_digest(),
+            "axis_order": [axis.value for axis in AXES],
+            "closed_domains": {
+                axis.value: list(AXIS_DOMAINS[axis]) for axis in AXES
+            },
+            "support_roles": {
+                "primary": PRIMARY_ROW_COUNT,
+                "contrast": CONTRAST_ROW_COUNT,
+            },
+            "formula_language": "positive_equality_singleton_or_pair",
+            "maximum_formula_count": MAX_FORMULA_COUNT,
+            "admission_policy": {
+                "primary_present_at_least": 5,
+                "primary_certified_absent": 0,
+                "primary_indeterminate_at_most": 1,
+                "primary_error": 0,
+                "contrast_certified_absent_at_least": 5,
+                "contrast_present": 0,
+                "contrast_indeterminate_at_most": 1,
+                "contrast_error": 0,
+            },
+            "conjunction_precedence": [
+                "error",
+                "certified_absent",
+                "all_present",
+                "indeterminate",
+            ],
+        }
+    )
 
 
 def _fields(value: object, expected: set[str], label: str) -> Mapping[str, Any]:
@@ -115,6 +172,19 @@ def _fields(value: object, expected: set[str], label: str) -> Mapping[str, Any]:
     ):
         raise TypedAxisSlateError(f"{label} fields differ")
     return value
+
+
+def _require_canonical_match(
+    rebuilt: object, supplied: Mapping[str, Any], label: str
+) -> None:
+    """Compare canonical bytes so JSON booleans cannot impersonate integers."""
+
+    try:
+        differs = canonical_json(rebuilt) != canonical_json(dict(supplied))
+    except (TypeError, ValueError) as exc:
+        raise TypedAxisSlateError(f"{label} is not canonical JSON") from exc
+    if differs:
+        raise TypedAxisSlateError(f"{label} is not canonical")
 
 
 def _address(value: object, label: str) -> str:
@@ -335,8 +405,7 @@ class TypedAxisCell:
             raw["gap_reason_code"],
             raw["error_code"],
         )
-        if result.to_data() != dict(raw):
-            raise TypedAxisSlateError("typed axis cell is not canonical")
+        _require_canonical_match(result.to_data(), raw, "typed axis cell")
         return result
 
 
@@ -384,8 +453,7 @@ class TypedSupportRow:
             side,
             tuple(TypedAxisCell.from_data(item) for item in raw["cells"]),
         )
-        if result.to_data() != dict(raw):
-            raise TypedAxisSlateError("support row is not canonical")
+        _require_canonical_match(result.to_data(), raw, "support row")
         return result
 
 
@@ -470,8 +538,7 @@ class TypedSupportMatrix:
             tuple(TypedSupportRow.from_data(item) for item in raw["rows"]),
             raw["observer_protocol_digest"],
         )
-        if result.to_data() != dict(raw):
-            raise TypedAxisSlateError("typed support matrix is not canonical")
+        _require_canonical_match(result.to_data(), raw, "typed support matrix")
         return result
 
 
@@ -523,8 +590,7 @@ class AxisNomination:
         }:
             raise TypedAxisSlateError("axis nomination schema differs")
         result = cls(_axis(raw["axis"]), raw["value"], raw["gap_reason_code"])
-        if result.to_data() != dict(raw):
-            raise TypedAxisSlateError("axis nomination is not canonical")
+        _require_canonical_match(result.to_data(), raw, "axis nomination")
         return result
 
 
@@ -596,8 +662,7 @@ class TypedNominationSlate:
             raw["support_matrix_address"],
             tuple(AxisNomination.from_data(item) for item in raw["nominations"]),
         )
-        if result.to_data() != dict(raw):
-            raise TypedAxisSlateError("typed nomination slate is not canonical")
+        _require_canonical_match(result.to_data(), raw, "typed nomination slate")
         return result
 
 
@@ -620,8 +685,7 @@ class EqualityAtom:
         if raw["schema"] != ATOM_SCHEMA:
             raise TypedAxisSlateError("equality atom schema differs")
         result = cls(_axis(raw["axis"]), raw["value"])
-        if result.to_data() != dict(raw):
-            raise TypedAxisSlateError("equality atom is not canonical")
+        _require_canonical_match(result.to_data(), raw, "equality atom")
         return result
 
 
@@ -634,7 +698,8 @@ class EvidenceWitness:
     possible_values: tuple[AxisValue, ...]
     observer_protocol_digest: str
     calibration_grant_address: str | None
-    deterministic_pixel_truth_claimed: bool
+    deterministic_projection_claimed: bool
+    semantic_pixel_truth_claimed: bool
     basis_code: str
 
     @classmethod
@@ -646,20 +711,20 @@ class EvidenceWitness:
                 if disposition is Disposition.PRESENT
                 else "python_exact_exclusion"
             )
-            deterministic = True
+            deterministic_projection = True
         elif cell.evidence_kind is EvidenceKind.CALIBRATED_SET:
             basis = {
                 Disposition.PRESENT: "calibrated_singleton_match",
                 Disposition.CERTIFIED_ABSENT: "calibrated_set_exclusion",
                 Disposition.INDETERMINATE: "calibrated_set_contains_alternatives",
             }[disposition]
-            deterministic = False
+            deterministic_projection = False
         elif cell.evidence_kind is EvidenceKind.GAP:
             basis = f"gap:{cell.gap_reason_code}"
-            deterministic = False
+            deterministic_projection = False
         else:
             basis = f"error:{cell.error_code}"
-            deterministic = False
+            deterministic_projection = False
         return cls(
             cell.axis,
             _value(cell.axis, value),
@@ -668,7 +733,8 @@ class EvidenceWitness:
             cell.possible_values,
             cell.observer_protocol_digest,
             cell.calibration_grant_address,
-            deterministic,
+            deterministic_projection,
+            False,
             basis,
         )
 
@@ -678,23 +744,68 @@ class EvidenceWitness:
             or type(self.disposition) is not Disposition
             or type(self.evidence_kind) is not EvidenceKind
             or type(self.possible_values) is not tuple
-            or type(self.deterministic_pixel_truth_claimed) is not bool
+            or type(self.deterministic_projection_claimed) is not bool
+            or type(self.semantic_pixel_truth_claimed) is not bool
         ):
             raise TypeError("evidence witness fields need exact types")
-        _value(self.axis, self.nominated_value)
-        _ordered_values(self.axis, self.possible_values)
+        nominated = _value(self.axis, self.nominated_value)
+        possible = _ordered_values(self.axis, self.possible_values)
         _address(self.observer_protocol_digest, "witness observer protocol digest")
         _code(self.basis_code.replace(":", "_"), "witness basis")
-        if self.evidence_kind is EvidenceKind.CALIBRATED_SET:
-            if self.calibration_grant_address is None:
-                raise TypedAxisSlateError("calibrated witness lacks grant")
+
+        included = any(_same_value(item, nominated) for item in possible)
+        if self.evidence_kind is EvidenceKind.PYTHON_EXACT:
+            if len(possible) != 1 or self.calibration_grant_address is not None:
+                raise TypedAxisSlateError("Python-exact witness fields differ")
+            expected_disposition = (
+                Disposition.PRESENT if included else Disposition.CERTIFIED_ABSENT
+            )
+            expected_basis = (
+                "python_exact_match"
+                if expected_disposition is Disposition.PRESENT
+                else "python_exact_exclusion"
+            )
+            expected_projection = True
+        elif self.evidence_kind is EvidenceKind.CALIBRATED_SET:
+            if not possible or self.calibration_grant_address is None:
+                raise TypedAxisSlateError("calibrated witness fields differ")
             _address(self.calibration_grant_address, "witness calibration grant")
-            if self.deterministic_pixel_truth_claimed:
-                raise TypedAxisSlateError("calibrated set cannot claim deterministic truth")
-        elif self.calibration_grant_address is not None:
-            raise TypedAxisSlateError("non-calibrated witness names a grant")
-        if self.evidence_kind is not EvidenceKind.PYTHON_EXACT and self.deterministic_pixel_truth_claimed:
-            raise TypedAxisSlateError("non-exact witness claims deterministic truth")
+            if not included:
+                expected_disposition = Disposition.CERTIFIED_ABSENT
+                expected_basis = "calibrated_set_exclusion"
+            elif len(possible) == 1:
+                expected_disposition = Disposition.PRESENT
+                expected_basis = "calibrated_singleton_match"
+            else:
+                expected_disposition = Disposition.INDETERMINATE
+                expected_basis = "calibrated_set_contains_alternatives"
+            expected_projection = False
+        elif self.evidence_kind is EvidenceKind.GAP:
+            if possible or self.calibration_grant_address is not None:
+                raise TypedAxisSlateError("gap witness fields differ")
+            if not self.basis_code.startswith("gap:"):
+                raise TypedAxisSlateError("gap witness basis differs")
+            _code(self.basis_code.removeprefix("gap:"), "witness gap reason")
+            expected_disposition = Disposition.INDETERMINATE
+            expected_basis = self.basis_code
+            expected_projection = False
+        else:
+            if possible or self.calibration_grant_address is not None:
+                raise TypedAxisSlateError("error witness fields differ")
+            if not self.basis_code.startswith("error:"):
+                raise TypedAxisSlateError("error witness basis differs")
+            _code(self.basis_code.removeprefix("error:"), "witness error code")
+            expected_disposition = Disposition.ERROR
+            expected_basis = self.basis_code
+            expected_projection = False
+
+        if (
+            self.disposition is not expected_disposition
+            or self.basis_code != expected_basis
+            or self.deterministic_projection_claimed is not expected_projection
+            or self.semantic_pixel_truth_claimed is not False
+        ):
+            raise TypedAxisSlateError("evidence witness derived claims differ")
 
     def to_data(self) -> dict[str, object]:
         return {
@@ -706,7 +817,8 @@ class EvidenceWitness:
             "possible_values": list(self.possible_values),
             "observer_protocol_digest": self.observer_protocol_digest,
             "calibration_grant_address": self.calibration_grant_address,
-            "deterministic_pixel_truth_claimed": self.deterministic_pixel_truth_claimed,
+            "deterministic_projection_claimed": self.deterministic_projection_claimed,
+            "semantic_pixel_truth_claimed": self.semantic_pixel_truth_claimed,
             "basis_code": self.basis_code,
         }
 
@@ -752,6 +864,15 @@ class FormulaRowEvaluation:
             or type(self.atom_witnesses) is not tuple
             or not 1 <= len(self.atom_witnesses) <= 2
             or any(type(item) is not EvidenceWitness for item in self.atom_witnesses)
+            or len({item.axis for item in self.atom_witnesses})
+            != len(self.atom_witnesses)
+            or tuple(
+                sorted(
+                    self.atom_witnesses,
+                    key=lambda item: AXES.index(item.axis),
+                )
+            )
+            != self.atom_witnesses
             or type(self.disposition) is not Disposition
             or type(self.failure_witnesses) is not tuple
         ):
@@ -773,6 +894,30 @@ class FormulaRowEvaluation:
             "disposition": self.disposition.value,
             "failure_witnesses": [item.to_data() for item in self.failure_witnesses],
         }
+
+
+def _admission_failure_codes(
+    primary: tuple[int, int, int, int],
+    contrast: tuple[int, int, int, int],
+) -> tuple[str, ...]:
+    failures: list[str] = []
+    if primary[0] < 5:
+        failures.append("primary_present_below_5")
+    if primary[1] != 0:
+        failures.append("primary_absent_nonzero")
+    if primary[2] > 1:
+        failures.append("primary_indeterminate_above_1")
+    if primary[3] != 0:
+        failures.append("primary_error_nonzero")
+    if contrast[1] < 5:
+        failures.append("contrast_absent_below_5")
+    if contrast[0] != 0:
+        failures.append("contrast_present_nonzero")
+    if contrast[2] > 1:
+        failures.append("contrast_indeterminate_above_1")
+    if contrast[3] != 0:
+        failures.append("contrast_error_nonzero")
+    return tuple(failures)
 
 
 @dataclass(frozen=True, slots=True)
@@ -809,23 +954,7 @@ class FormulaEvaluation:
         )
         primary = cls._counts(rows[:PRIMARY_ROW_COUNT])
         contrast = cls._counts(rows[PRIMARY_ROW_COUNT:])
-        failures: list[str] = []
-        if primary[0] < 5:
-            failures.append("primary_present_below_5")
-        if primary[1] != 0:
-            failures.append("primary_absent_nonzero")
-        if primary[2] > 1:
-            failures.append("primary_indeterminate_above_1")
-        if primary[3] != 0:
-            failures.append("primary_error_nonzero")
-        if contrast[1] < 5:
-            failures.append("contrast_absent_below_5")
-        if contrast[0] != 0:
-            failures.append("contrast_present_nonzero")
-        if contrast[2] > 1:
-            failures.append("contrast_indeterminate_above_1")
-        if contrast[3] != 0:
-            failures.append("contrast_error_nonzero")
+        failures = _admission_failure_codes(primary, contrast)
         return cls(
             formula_id,
             atoms,
@@ -833,7 +962,7 @@ class FormulaEvaluation:
             primary,
             contrast,
             not failures,
-            tuple(failures),
+            failures,
         )
 
     def __post_init__(self) -> None:
@@ -848,8 +977,40 @@ class FormulaEvaluation:
             or len(self.rows) != SUPPORT_ROW_COUNT
             or any(type(item) is not FormulaRowEvaluation for item in self.rows)
             or any(item.formula_id != self.formula_id for item in self.rows)
+            or tuple(item.side for item in self.rows)
+            != (
+                (SupportSide.PRIMARY,) * PRIMARY_ROW_COUNT
+                + (SupportSide.CONTRAST,) * CONTRAST_ROW_COUNT
+            )
+            or len({item.row_key for item in self.rows}) != SUPPORT_ROW_COUNT
+            or any(
+                tuple(
+                    (witness.axis, witness.nominated_value)
+                    for witness in row.atom_witnesses
+                )
+                != tuple((atom.axis, atom.value) for atom in self.atoms)
+                for row in self.rows
+            )
+            or len(
+                {
+                    witness.observer_protocol_digest
+                    for row in self.rows
+                    for witness in row.atom_witnesses
+                }
+            )
+            != 1
             or type(self.primary_counts) is not tuple
+            or len(self.primary_counts) != 4
+            or any(
+                type(item) is not int or not 0 <= item <= PRIMARY_ROW_COUNT
+                for item in self.primary_counts
+            )
             or type(self.contrast_counts) is not tuple
+            or len(self.contrast_counts) != 4
+            or any(
+                type(item) is not int or not 0 <= item <= CONTRAST_ROW_COUNT
+                for item in self.contrast_counts
+            )
             or type(self.admitted) is not bool
             or type(self.admission_failure_codes) is not tuple
         ):
@@ -858,7 +1019,13 @@ class FormulaEvaluation:
         expected_contrast = self._counts(self.rows[PRIMARY_ROW_COUNT:])
         if self.primary_counts != expected_primary or self.contrast_counts != expected_contrast:
             raise TypedAxisSlateError("formula disposition counts differ")
-        if self.admitted is not (not self.admission_failure_codes):
+        expected_failures = _admission_failure_codes(
+            expected_primary, expected_contrast
+        )
+        if (
+            self.admission_failure_codes != expected_failures
+            or self.admitted is not (not expected_failures)
+        ):
             raise TypedAxisSlateError("formula admission fields differ")
         for code in self.admission_failure_codes:
             _code(code, "admission failure code")
@@ -892,9 +1059,15 @@ class TypedEmptyGap:
             or len(set(self.nomination_gap_axes)) != len(self.nomination_gap_axes)
             or any(type(item) is not Axis for item in self.nomination_gap_axes)
             or type(self.evaluated_formula_count) is not int
-            or self.evaluated_formula_count < 0
+            or not 0 <= self.evaluated_formula_count <= MAX_FORMULA_COUNT
             or type(self.rejected_formula_ids) is not tuple
             or len(self.rejected_formula_ids) != self.evaluated_formula_count
+            or self.rejected_formula_ids
+            != tuple(
+                f"formula_{index:02d}"
+                for index in range(self.evaluated_formula_count)
+            )
+            or self.reason_code != "no_formula_admitted"
         ):
             raise TypedAxisSlateError("typed empty gap fields differ")
         _code(self.reason_code, "empty gap reason")
@@ -964,11 +1137,34 @@ class TypedAxisInventory:
             != tuple(item.formula_id for item in self.formulas if item.admitted)
         ):
             raise TypedAxisSlateError("typed axis inventory fields differ")
-        if self.admitted_formula_ids:
-            if self.empty_gap is not None:
-                raise TypedAxisSlateError("admitted inventory cannot carry empty gap")
-        elif type(self.empty_gap) is not TypedEmptyGap:
-            raise TypedAxisSlateError("empty inventory must carry typed gap")
+
+        expected_formula_atoms = _enumerate_atoms(self.nominations)
+        expected_formulas = tuple(
+            FormulaEvaluation.evaluate(f"formula_{index:02d}", atoms, self.matrix)
+            for index, atoms in enumerate(expected_formula_atoms)
+        )
+        if self.formulas != expected_formulas:
+            raise TypedAxisSlateError(
+                "typed axis inventory differs from deterministic derivation"
+            )
+        expected_admitted = tuple(
+            item.formula_id for item in expected_formulas if item.admitted
+        )
+        if self.admitted_formula_ids != expected_admitted:
+            raise TypedAxisSlateError("typed axis admitted inventory differs")
+        expected_gap = None
+        if not expected_admitted:
+            expected_gap = TypedEmptyGap(
+                tuple(
+                    item.axis
+                    for item in self.nominations.nominations
+                    if item.value is None
+                ),
+                len(expected_formulas),
+                tuple(item.formula_id for item in expected_formulas),
+            )
+        if self.empty_gap != expected_gap:
+            raise TypedAxisSlateError("typed axis empty-gap witness differs")
 
     @property
     def inventory_address(self) -> str:
@@ -978,6 +1174,8 @@ class TypedAxisInventory:
         return {
             "schema": INVENTORY_SCHEMA,
             "algorithm_id": ALGORITHM_ID,
+            "algorithm_digest": typed_axis_slate_algorithm_digest(),
+            "algorithm_source_sha256": typed_axis_slate_source_digest(),
             "matrix": self.matrix.to_data(),
             "nominations": self.nominations.to_data(),
             "formulas": [item.to_data() for item in self.formulas],
@@ -997,7 +1195,9 @@ class TypedAxisInventory:
             "ranking_present": False,
             "negation_present": False,
             "lean_present": False,
-            "calibrated_sets_claim_deterministic_pixel_truth": False,
+            "semantic_pixel_truth_claimed_by_cells": False,
+            "panel_task_custody_verified_inside_core": False,
+            "external_campaign_adapter_required": True,
         }
 
     @classmethod
@@ -1007,6 +1207,8 @@ class TypedAxisInventory:
             {
                 "schema",
                 "algorithm_id",
+                "algorithm_digest",
+                "algorithm_source_sha256",
                 "matrix",
                 "nominations",
                 "formulas",
@@ -1021,13 +1223,18 @@ class TypedAxisInventory:
                 "ranking_present",
                 "negation_present",
                 "lean_present",
-                "calibrated_sets_claim_deterministic_pixel_truth",
+                "semantic_pixel_truth_claimed_by_cells",
+                "panel_task_custody_verified_inside_core",
+                "external_campaign_adapter_required",
             },
             "typed axis inventory",
         )
         if (
             raw["schema"] != INVENTORY_SCHEMA
             or raw["algorithm_id"] != ALGORITHM_ID
+            or raw["algorithm_digest"] != typed_axis_slate_algorithm_digest()
+            or raw["algorithm_source_sha256"]
+            != typed_axis_slate_source_digest()
             or raw["maximum_formula_count"] != MAX_FORMULA_COUNT
             or raw["formula_language"] != "positive_equality_singleton_or_pair"
             or raw["conjunction_precedence"]
@@ -1037,14 +1244,17 @@ class TypedAxisInventory:
             or raw["ranking_present"] is not False
             or raw["negation_present"] is not False
             or raw["lean_present"] is not False
-            or raw["calibrated_sets_claim_deterministic_pixel_truth"] is not False
+            or raw["semantic_pixel_truth_claimed_by_cells"] is not False
+            or raw["panel_task_custody_verified_inside_core"] is not False
+            or raw["external_campaign_adapter_required"] is not True
         ):
             raise TypedAxisSlateError("typed axis inventory policy differs")
         matrix = TypedSupportMatrix.from_data(raw["matrix"])
         nominations = TypedNominationSlate.from_data(raw["nominations"])
         rebuilt = cls.derive(matrix, nominations)
-        if rebuilt.to_data() != dict(raw):
-            raise TypedAxisSlateError("typed axis inventory deterministic replay differs")
+        _require_canonical_match(
+            rebuilt.to_data(), raw, "typed axis inventory deterministic replay"
+        )
         return rebuilt
 
 
@@ -1081,4 +1291,6 @@ __all__ = (
     "TypedSupportMatrix",
     "TypedSupportRow",
     "cold_replay_typed_axis_inventory",
+    "typed_axis_slate_algorithm_digest",
+    "typed_axis_slate_source_digest",
 )
