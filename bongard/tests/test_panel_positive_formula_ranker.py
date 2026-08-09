@@ -406,6 +406,30 @@ def test_one_positive_rank_is_private_selects_first_and_cold_replays_zero_call(
     ]
 
 
+def test_hidden_source_custody_cannot_change_model_visible_rank_prompt():
+    space = _space(NativeOrientation.SIDE0_POSITIVE)
+    first = PositiveFormulaRankInput.freeze(
+        space, source_survivor_inventory_address="sha256:" + "7" * 64
+    )
+    second = PositiveFormulaRankInput.freeze(
+        space, source_survivor_inventory_address="sha256:" + "8" * 64
+    )
+
+    assert first.rank_input_digest != second.rank_input_digest
+    assert first.rank_input_address != second.rank_input_address
+    assert first.candidate_view_digest == second.candidate_view_digest
+    assert first.candidate_view_address == second.candidate_view_address
+    assert positive_formula_ranker_prompt(first) == positive_formula_ranker_prompt(
+        second
+    )
+    assert first.source_survivor_inventory_address not in positive_formula_ranker_prompt(
+        first
+    )
+    assert second.source_survivor_inventory_address not in positive_formula_ranker_prompt(
+        second
+    )
+
+
 def test_full_permutation_is_mandatory_and_bad_payload_gets_no_retry():
     space = _space()
     rank_input = PositiveFormulaRankInput.freeze(
