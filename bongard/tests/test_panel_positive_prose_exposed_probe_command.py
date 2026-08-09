@@ -10,8 +10,10 @@ from bongard.object_bongard_batch import ObjectBongardTaskPlan
 from bongard.panel_positive_prose_exposed_probe_command import (
     PositiveProseExposedProbeError,
     _authorization,
+    _component_conjunction_disposition,
     _cue,
     _interval,
+    _load_componentwise_semantic_cue,
     _load_frozen_semantic_cue,
     run_positive_prose_exposed_probe,
 )
@@ -111,3 +113,57 @@ def test_preregistered_known_cue_skips_proposer_and_cannot_authorize_target() ->
         "query": 0,
     }
     assert precommit["known_semantic_cue_cannot_authorize_target"] is True
+
+
+def test_componentwise_cue_scores_atoms_before_python_conjunction() -> None:
+    cue_path = (
+        Path(__file__).parents[1]
+        / "data"
+        / "panel_positive_prose_componentwise_known_cue_20260809_v1.json"
+    )
+    cue, cue_file_sha256 = _load_componentwise_semantic_cue(cue_path)
+    task = ObjectBongardTaskPlan.create(
+        "hd_convex-has_four_straight_lines_0001",
+        seed_digest="sha256:" + "34" * 32,
+    )
+    ids = task.side_0_support_panel_ids + task.side_1_support_panel_ids
+    panels = tuple(b"support" + bytes([index]) for index in range(12))
+    authorization, precommit = _authorization(
+        task,
+        ids,
+        panels,
+        "ab" * 32,
+        componentwise_cue_record=cue,
+        componentwise_cue_file_sha256=cue_file_sha256,
+    )
+
+    assert authorization["componentwise_python_conjunction"] is True
+    assert precommit["physical_call_plan"] == {
+        "positive_proposer": 0,
+        "support_component_observers": 12,
+        "query": 0,
+    }
+    assert (
+        _component_conjunction_disposition(
+            Disposition.PRESENT, Disposition.PRESENT
+        )
+        is Disposition.PRESENT
+    )
+    assert (
+        _component_conjunction_disposition(
+            Disposition.PRESENT, Disposition.CERTIFIED_ABSENT
+        )
+        is Disposition.CERTIFIED_ABSENT
+    )
+    assert (
+        _component_conjunction_disposition(
+            Disposition.PRESENT, Disposition.INDETERMINATE
+        )
+        is Disposition.INDETERMINATE
+    )
+    assert (
+        _component_conjunction_disposition(
+            Disposition.ERROR, Disposition.CERTIFIED_ABSENT
+        )
+        is Disposition.ERROR
+    )
