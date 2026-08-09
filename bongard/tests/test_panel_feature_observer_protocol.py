@@ -116,14 +116,14 @@ def test_strict_payload_resolves_variants_then_python_compares_specs() -> None:
     view = p.FeatureAxisObservationView.build(inventory, f.FeatureAxis.for_spec(bird))
     payload = _empty_payload(view)
     bird_alias = next(item.alias for item in view.variants if item.spec == bird)
-    first = view.bindings[0]
-    payload[first.alias] = {
-        "resolution": "complete",
-        "variant_aliases": [bird_alias],
-        "evidence_x": first.search_region.minimum.x,
-        "evidence_y": first.search_region.minimum.y,
-        "issue": "none",
-    }
+    for binding in view.bindings:
+        payload[binding.alias] = {
+            "resolution": "complete",
+            "variant_aliases": [bird_alias],
+            "evidence_x": binding.search_region.minimum.x,
+            "evidence_y": binding.search_region.minimum.y,
+            "issue": "none",
+        }
     observation = p.parse_feature_axis_observer_payload(
         view,
         payload,
@@ -138,6 +138,21 @@ def test_strict_payload_resolves_variants_then_python_compares_specs() -> None:
     prompt = p.feature_axis_observer_prompt(view)
     assert "preferred answer" in prompt
     assert "group 0" not in prompt.lower() and "group 1" not in prompt.lower()
+
+
+def test_complete_empty_payload_stays_indeterminate() -> None:
+    bird = _gestalt(o.GestaltKind.BIRD_LIKE)
+    view = p.FeatureAxisObservationView.build(
+        _inventory(), f.FeatureAxis.for_spec(bird)
+    )
+    observation = p.parse_feature_axis_observer_payload(
+        view,
+        _empty_payload(view),
+        observer_contract_digest=_d("d"),
+        measurement_protocol_digest=_d("e"),
+        observation_receipt_digest=_d("f"),
+    )
+    assert observation.evaluate(bird) is f.EngineeringFeatureDisposition.INDETERMINATE
 
 
 def test_missing_binding_and_false_empty_shortcuts_are_rejected() -> None:
@@ -246,6 +261,37 @@ def test_capacity_gap_yields_unclear_rows_not_absence() -> None:
     assert observation.evaluate(spec) is f.EngineeringFeatureDisposition.INDETERMINATE
 
 
+def test_zero_binding_payload_creates_unverified_domain_gap() -> None:
+    inventory = o.OwnerInventory(
+        _d("a"),
+        _d("b"),
+        o.EnumerationResolution.GRID16_FULL_PANEL,
+        _d("c"),
+        True,
+        (
+            o.PanelLocalOwner(
+                o.OwnerId("owner_0001"),
+                o.OwnerKind.TRACE,
+                _region(0),
+            ),
+        ),
+    )
+    bird = _gestalt(o.GestaltKind.BIRD_LIKE)
+    view = p.FeatureAxisObservationView.build(inventory, f.FeatureAxis.for_spec(bird))
+    assert view.bindings == ()
+    observation = p.parse_feature_axis_observer_payload(
+        view,
+        {},
+        observer_contract_digest=_d("d"),
+        measurement_protocol_digest=_d("e"),
+        observation_receipt_digest=_d("f"),
+    )
+    assert observation.domain_gap == f.EligibleDomainGap.unverified_empty(
+        inventory, view.axis
+    )
+    assert observation.evaluate(bird) is f.EngineeringFeatureDisposition.INDETERMINATE
+
+
 def test_view_roundtrip_rejects_catalog_and_policy_tampering() -> None:
     view = p.FeatureAxisObservationView.build(
         _inventory(), f.FeatureAxis.for_spec(_gestalt(o.GestaltKind.BIRD_LIKE))
@@ -259,4 +305,3 @@ def test_view_roundtrip_rejects_catalog_and_policy_tampering() -> None:
     tampered["candidate_parameter_in_view"] = True
     with pytest.raises(p.PanelFeatureObserverProtocolError, match="policy"):
         p.FeatureAxisObservationView.from_data(tampered)
-

@@ -56,13 +56,19 @@ ABSENCE_GRANT_SCHEMA = "gkm.bongard-feature-absence-calibration-grant.v1"
 CALIBRATION_AUTHORITY_SCHEMA = "gkm.bongard-feature-calibration-authority.v1"
 CALIBRATION_ASSESSMENT_SCHEMA = "gkm.bongard-feature-calibration-assessment.v1"
 
-FEATURE_CATALOG_SCHEMA = "gkm.bongard-panel-feature-catalog.v1"
-FEATURE_CATALOG_ID = "bongard.panel-feature-catalog/typed-visual-v1"
+FEATURE_CATALOG_SCHEMA = "gkm.bongard-panel-feature-catalog.v2"
+FEATURE_CATALOG_ID = "bongard.panel-feature-catalog/typed-visual-v2"
 OWNER_ENUMERATION_PROTOCOL_ID = (
     "bongard.panel-owner-enumeration/candidate-independent-grid16-v1"
 )
 SUBJECT_PROJECTION_RULE_ID = (
     "bongard.panel-subject-projection/static-family-scope-v1"
+)
+COMPONENT_MEMBERSHIP_RULE_ID = (
+    "bongard.panel-component-membership/root-coherent-figure-trace-loop-v1"
+)
+SEGMENT_MEMBERSHIP_RULE_ID = (
+    "bongard.panel-segment-membership/transitive-descendant-closure-v1"
 )
 GRID16_BIN_COUNT = 16
 
@@ -844,6 +850,10 @@ def feature_catalog_data() -> dict[str, object]:
         "catalog_id": FEATURE_CATALOG_ID,
         "grid16_bin_count": GRID16_BIN_COUNT,
         "subject_projection_rule_id": SUBJECT_PROJECTION_RULE_ID,
+        "count_membership_rules": {
+            FeatureFamily.COMPONENT_COUNT.value: COMPONENT_MEMBERSHIP_RULE_ID,
+            FeatureFamily.EXACT_SEGMENT_COUNT.value: SEGMENT_MEMBERSHIP_RULE_ID,
+        },
         "families": rows,
         "sibling_registry": sorted(
             [
@@ -1655,6 +1665,68 @@ def eligible_subject_bindings(
     )
 
 
+_COHERENT_COMPONENT_KINDS = frozenset(
+    {OwnerKind.FIGURE, OwnerKind.TRACE, OwnerKind.LOOP}
+)
+
+
+def coherent_top_level_component_owner_ids(
+    inventory: OwnerInventory,
+) -> tuple[OwnerId, ...]:
+    """Return the explicit whole-panel component membership.
+
+    A coherent component may be represented by a filled/compound figure, an
+    open trace, or a closed loop.  Only roots count: a trace or loop already
+    governed by a figure is structure inside that component, not another
+    component.  Segments and markers are never promoted to panel components.
+    """
+
+    if type(inventory) is not OwnerInventory:
+        raise TypeError("component membership requires OwnerInventory")
+    return tuple(
+        item.owner_id
+        for item in inventory.owners
+        if item.kind in _COHERENT_COMPONENT_KINDS and not item.parent_owner_ids
+    )
+
+
+def descendant_segment_owner_ids(
+    subject_owner_id: OwnerId,
+    inventory: OwnerInventory,
+) -> tuple[OwnerId, ...]:
+    """Return every segment transitively governed by one coherent subject."""
+
+    if type(subject_owner_id) is not OwnerId:
+        raise TypeError("segment membership subject must be OwnerId")
+    if type(inventory) is not OwnerInventory:
+        raise TypeError("segment membership requires OwnerInventory")
+    parents = {
+        item.owner_id: item.parent_owner_ids for item in inventory.owners
+    }
+    if subject_owner_id not in parents:
+        raise PanelSoftOntologyError("segment membership subject is outside inventory")
+
+    descendant_cache: dict[OwnerId, bool] = {}
+
+    def descends_from_subject(owner_id: OwnerId) -> bool:
+        retained = descendant_cache.get(owner_id)
+        if retained is not None:
+            return retained
+        result = any(
+            parent == subject_owner_id or descends_from_subject(parent)
+            for parent in parents[owner_id]
+        )
+        descendant_cache[owner_id] = result
+        return result
+
+    return tuple(
+        item.owner_id
+        for item in inventory.owners
+        if item.kind is OwnerKind.SEGMENT
+        and descends_from_subject(item.owner_id)
+    )
+
+
 def _closed_count_value(value: ClosedCount) -> int:
     return _CLOSED_COUNT_TO_INT[value]
 
@@ -2128,17 +2200,14 @@ class PanelFeatureWitness:
             if self.inventory.enumeration_complete is not True:
                 raise PanelSoftOntologyError("exact count needs a complete inventory")
             if self.spec.family is FeatureFamily.COMPONENT_COUNT:
-                expected_owners = tuple(
-                    item.owner_id
-                    for item in self.inventory.owners
-                    if item.kind is OwnerKind.FIGURE and not item.parent_owner_ids
+                expected_owners = coherent_top_level_component_owner_ids(
+                    self.inventory
                 )
             else:
                 parent = self.subject.owner_ids[0]
-                expected_owners = tuple(
-                    item.owner_id
-                    for item in self.inventory.owners
-                    if item.kind is OwnerKind.SEGMENT and parent in item.parent_owner_ids
+                expected_owners = descendant_segment_owner_ids(
+                    parent,
+                    self.inventory,
                 )
             if self.payload.counted_owner_ids != expected_owners:
                 raise PanelSoftOntologyError("exact count does not cover registered membership")

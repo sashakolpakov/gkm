@@ -386,6 +386,86 @@ def test_closed_counts_require_exact_registered_membership() -> None:
     assert o.project_raw_measurement(raw, token, custody) is Disposition.INDETERMINATE
 
 
+def test_count_membership_uses_coherent_roots_and_transitive_descendants() -> None:
+    root_trace = o.PanelLocalOwner(
+        o.OwnerId("owner_0001"), o.OwnerKind.TRACE, _region(1, 1)
+    )
+    root_loop = o.PanelLocalOwner(
+        o.OwnerId("owner_0002"), o.OwnerKind.LOOP, _region(5, 1)
+    )
+    component_inventory = o.OwnerInventory(
+        _d("a"),
+        _d("b"),
+        o.EnumerationResolution.GRID16_FULL_PANEL,
+        _d("c"),
+        True,
+        (root_trace, root_loop),
+    )
+    assert o.coherent_top_level_component_owner_ids(component_inventory) == (
+        root_trace.owner_id,
+        root_loop.owner_id,
+    )
+    component_spec = o.PanelFeatureSpec(
+        o.FeatureFamily.COMPONENT_COUNT,
+        o.SubjectScope.WHOLE_PANEL,
+        o.ReferenceFrame.NONE,
+        o.ComponentCountParameters(o.ClosedCount.TWO),
+    )
+    o.PanelFeatureWitness(
+        component_spec,
+        component_inventory,
+        _d("d"),
+        o.SubjectBinding(o.SubjectBindingKind.PANEL, ()),
+        o.CountWitnessPayload(
+            (root_trace.owner_id, root_loop.owner_id), True, _d("e")
+        ),
+        _d("f"),
+    )
+
+    figure = o.PanelLocalOwner(
+        o.OwnerId("owner_0001"),
+        o.OwnerKind.FIGURE,
+        o.QuantizedRegion(o.QuantizedPoint(0, 0), o.QuantizedPoint(8, 8)),
+    )
+    trace = o.PanelLocalOwner(
+        o.OwnerId("owner_0002"),
+        o.OwnerKind.TRACE,
+        _region(1, 1),
+        (figure.owner_id,),
+    )
+    segment = o.PanelLocalOwner(
+        o.OwnerId("owner_0003"),
+        o.OwnerKind.SEGMENT,
+        _region(2, 2),
+        (trace.owner_id,),
+    )
+    nested_inventory = o.OwnerInventory(
+        _d("a"),
+        _d("b"),
+        o.EnumerationResolution.GRID16_FULL_PANEL,
+        _d("c"),
+        True,
+        (figure, trace, segment),
+    )
+    assert o.descendant_segment_owner_ids(
+        figure.owner_id, nested_inventory
+    ) == (segment.owner_id,)
+    segment_spec = o.PanelFeatureSpec(
+        o.FeatureFamily.EXACT_SEGMENT_COUNT,
+        o.SubjectScope.ONE_COHERENT_FIGURE,
+        o.ReferenceFrame.NONE,
+        o.ExactSegmentCountParameters(o.ClosedCount.ONE),
+    )
+    o.PanelFeatureWitness(
+        segment_spec,
+        nested_inventory,
+        _d("d"),
+        o.SubjectBinding(o.SubjectBindingKind.UNARY, (figure.owner_id,)),
+        o.CountWitnessPayload((segment.owner_id,), True, _d("e")),
+        _d("f"),
+    )
+
+
 def test_point_contact_signature_is_owner_labelled_and_canonical() -> None:
     inventory = _inventory()
     witness = _point_witness(inventory)

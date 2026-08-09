@@ -27,7 +27,6 @@ from bongard.panel_soft_ontology import (
     ComponentCountParameters,
     ExactSegmentCountParameters,
     OwnerInventory,
-    OwnerKind,
     PanelFeatureSpec,
     PanelSoftOntologyError,
     QuantizedPoint,
@@ -36,6 +35,8 @@ from bongard.panel_soft_ontology import (
     SubjectBindingKind,
     SubjectScope,
     FeatureFamily,
+    coherent_top_level_component_owner_ids,
+    descendant_segment_owner_ids,
     subject_search_region,
 )
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
@@ -43,11 +44,12 @@ from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 FEATURE_AXIS_SCHEMA = "gkm.bongard-panel-feature-axis.v1"
 BINDING_OBSERVATION_SCHEMA = "gkm.bongard-panel-binding-feature-observation.v1"
-PANEL_AXIS_OBSERVATION_SCHEMA = "gkm.bongard-panel-axis-observation.v1"
-PANEL_FEATURE_OBSERVATION_SET_SCHEMA = "gkm.bongard-panel-feature-observation-set.v1"
+ELIGIBLE_DOMAIN_GAP_SCHEMA = "gkm.bongard-panel-eligible-domain-gap.v1"
+PANEL_AXIS_OBSERVATION_SCHEMA = "gkm.bongard-panel-axis-observation.v2"
+PANEL_FEATURE_OBSERVATION_SET_SCHEMA = "gkm.bongard-panel-feature-observation-set.v2"
 ENGINEERING_FEATURE_CELL_SCHEMA = "gkm.bongard-engineering-feature-cell.v1"
 FEATURE_OBSERVATION_PROTOCOL_ID = (
-    "bongard.panel-feature-observation/complete-closed-variants-per-binding-v1"
+    "bongard.panel-feature-observation/complete-closed-variants-per-binding-v2"
 )
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -64,6 +66,7 @@ class BindingResolution(str, Enum):
 
 
 class ObservationIssue(str, Enum):
+    UNVERIFIED_EMPTY_DOMAIN = "unverified_empty_domain"
     AMBIGUOUS_GEOMETRY = "ambiguous_geometry"
     AMBIGUOUS_OWNERSHIP = "ambiguous_ownership"
     OUTSIDE_CLOSED_CATALOG = "outside_closed_catalog"
@@ -206,6 +209,98 @@ class FeatureAxis:
                 raise
             raise PanelFeatureObservationError("feature-axis value differs") from exc
         _canonical_roundtrip(result, raw, "feature axis")
+        return result
+
+
+@dataclass(frozen=True, order=True, slots=True)
+class EligibleDomainGap:
+    """Typed proof obligation for an empty projected binding domain.
+
+    The engineering observer has no independent owner-kind completeness
+    certificate.  Consequently an empty projection is recorded, but it can
+    never be interpreted as evidence that a feature is absent.
+    """
+
+    issue: ObservationIssue
+    inventory_digest: str
+    axis_digest: str
+    eligible_binding_count: int
+
+    def __post_init__(self) -> None:
+        if self.issue is not ObservationIssue.UNVERIFIED_EMPTY_DOMAIN:
+            raise PanelFeatureObservationError(
+                "eligible-domain gap has the wrong issue"
+            )
+        _digest(self.inventory_digest, "eligible-domain inventory digest")
+        _digest(self.axis_digest, "eligible-domain axis digest")
+        if (
+            type(self.eligible_binding_count) is not int
+            or self.eligible_binding_count != 0
+        ):
+            raise PanelFeatureObservationError(
+                "eligible-domain gap must certify exactly zero projected bindings"
+            )
+
+    @classmethod
+    def unverified_empty(
+        cls, inventory: OwnerInventory, axis: FeatureAxis
+    ) -> "EligibleDomainGap":
+        if type(inventory) is not OwnerInventory or type(axis) is not FeatureAxis:
+            raise TypeError("eligible-domain gap needs typed inventory and axis")
+        if eligible_axis_bindings(axis, inventory):
+            raise PanelFeatureObservationError(
+                "eligible-domain gap cannot cover a nonempty projection"
+            )
+        return cls(
+            ObservationIssue.UNVERIFIED_EMPTY_DOMAIN,
+            inventory.inventory_digest,
+            axis.axis_digest,
+            0,
+        )
+
+    def to_data(self) -> dict[str, object]:
+        return {
+            "schema": ELIGIBLE_DOMAIN_GAP_SCHEMA,
+            "issue": self.issue.value,
+            "inventory_digest": self.inventory_digest,
+            "axis_digest": self.axis_digest,
+            "eligible_binding_count": self.eligible_binding_count,
+            "independent_empty_domain_certificate_supplied": False,
+        }
+
+    @classmethod
+    def from_data(cls, value: object) -> "EligibleDomainGap":
+        raw = _fields(
+            value,
+            {
+                "schema",
+                "issue",
+                "inventory_digest",
+                "axis_digest",
+                "eligible_binding_count",
+                "independent_empty_domain_certificate_supplied",
+            },
+            "eligible-domain gap",
+        )
+        if (
+            raw["schema"] != ELIGIBLE_DOMAIN_GAP_SCHEMA
+            or raw["independent_empty_domain_certificate_supplied"] is not False
+        ):
+            raise PanelFeatureObservationError("eligible-domain gap policy differs")
+        try:
+            result = cls(
+                ObservationIssue(raw["issue"]),
+                raw["inventory_digest"],
+                raw["axis_digest"],
+                raw["eligible_binding_count"],
+            )
+        except (TypeError, ValueError) as exc:
+            if isinstance(exc, PanelFeatureObservationError):
+                raise
+            raise PanelFeatureObservationError(
+                "eligible-domain gap value differs"
+            ) from exc
+        _canonical_roundtrip(result, raw, "eligible-domain gap")
         return result
 
 
@@ -405,6 +500,7 @@ class PanelAxisObservation:
     observer_contract_digest: str
     measurement_protocol_digest: str
     binding_observations: tuple[BindingFeatureObservation, ...]
+    domain_gap: EligibleDomainGap | None = None
 
     def __post_init__(self) -> None:
         if type(self.inventory) is not OwnerInventory or type(self.axis) is not FeatureAxis:
@@ -421,6 +517,17 @@ class PanelAxisObservation:
         if actual != expected:
             raise PanelFeatureObservationError(
                 "panel-axis observation does not cover each eligible binding exactly once"
+            )
+        if expected:
+            if self.domain_gap is not None:
+                raise PanelFeatureObservationError(
+                    "nonempty panel-axis domain cannot carry an empty-domain gap"
+                )
+        elif self.domain_gap != EligibleDomainGap.unverified_empty(
+            self.inventory, self.axis
+        ):
+            raise PanelFeatureObservationError(
+                "empty panel-axis domain needs the exact typed unresolved gap"
             )
         if any(
             item.axis_digest != self.axis.axis_digest
@@ -452,6 +559,8 @@ class PanelAxisObservation:
             raise TypeError("feature evaluation requires PanelFeatureSpec")
         if not self.axis.contains(spec):
             raise PanelFeatureObservationError("feature spec lies outside observed axis")
+        if self.domain_gap is not None:
+            return EngineeringFeatureDisposition.INDETERMINATE
         if any(
             row.resolution is BindingResolution.COMPLETE
             and spec in row.observed_specs
@@ -463,9 +572,14 @@ class PanelAxisObservation:
             for row in self.binding_observations
         ):
             return EngineeringFeatureDisposition.ERROR
-        if self.inventory.enumeration_complete and all(
-            row.resolution is BindingResolution.COMPLETE
-            for row in self.binding_observations
+        if (
+            self.binding_observations
+            and self.inventory.enumeration_complete
+            and all(
+                row.resolution is BindingResolution.COMPLETE
+                and bool(row.observed_specs)
+                for row in self.binding_observations
+            )
         ):
             return EngineeringFeatureDisposition.NONMATCH
         return EngineeringFeatureDisposition.INDETERMINATE
@@ -482,6 +596,9 @@ class PanelAxisObservation:
             "binding_observations": [
                 item.to_data() for item in self.binding_observations
             ],
+            "domain_gap": (
+                None if self.domain_gap is None else self.domain_gap.to_data()
+            ),
             "candidate_parameter_visible_during_measurement": False,
             "engineering_only": True,
             "scientific_calibration_supplied": False,
@@ -500,6 +617,7 @@ class PanelAxisObservation:
                 "observer_contract_digest",
                 "measurement_protocol_digest",
                 "binding_observations",
+                "domain_gap",
                 "candidate_parameter_visible_during_measurement",
                 "engineering_only",
                 "scientific_calibration_supplied",
@@ -524,6 +642,11 @@ class PanelAxisObservation:
             tuple(
                 BindingFeatureObservation.from_data(item)
                 for item in raw["binding_observations"]
+            ),
+            (
+                None
+                if raw["domain_gap"] is None
+                else EligibleDomainGap.from_data(raw["domain_gap"])
             ),
         )
         _canonical_roundtrip(result, raw, "panel-axis observation")
@@ -758,27 +881,23 @@ def derive_inventory_count_observation(
             issue: ObservationIssue | None = ObservationIssue.RESOLUTION_LIMIT
         else:
             if axis.family is FeatureFamily.COMPONENT_COUNT:
-                counted = tuple(
-                    item
-                    for item in inventory.owners
-                    if item.kind is OwnerKind.FIGURE and not item.parent_owner_ids
-                )
+                counted_ids = coherent_top_level_component_owner_ids(inventory)
             else:
                 parent = binding.owner_ids[0]
-                counted = tuple(
-                    item
-                    for item in inventory.owners
-                    if item.kind is OwnerKind.SEGMENT
-                    and parent in item.parent_owner_ids
+                counted_ids = descendant_segment_owner_ids(
+                    parent,
+                    inventory,
                 )
+            owner_by_id = {item.owner_id: item for item in inventory.owners}
+            counted = tuple(owner_by_id[item] for item in counted_ids)
             count = len(counted)
             closed_count = _COUNT_BY_INT.get(count)
             if closed_count is None:
                 observed_specs = ()
                 points = ()
-                # The measurement is complete even though its exact value is
-                # outside the candidate catalog.  Therefore every registered
-                # one-through-twelve count is an operational nonmatch.
+                # The measurement is complete, but no positive registered
+                # alternative grounds a closed-catalog exclusion.  Evaluation
+                # therefore keeps every registered count indeterminate.
                 resolution = BindingResolution.COMPLETE
                 issue = None
             else:
@@ -834,4 +953,9 @@ def derive_inventory_count_observation(
         observer_contract_digest,
         measurement_protocol_digest,
         tuple(rows),
+        (
+            None
+            if rows
+            else EligibleDomainGap.unverified_empty(inventory, axis)
+        ),
     )

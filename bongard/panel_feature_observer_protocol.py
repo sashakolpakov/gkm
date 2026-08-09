@@ -23,6 +23,7 @@ from bongard.canonical import canonical_digest
 from bongard.panel_feature_observation import (
     BindingFeatureObservation,
     BindingResolution,
+    EligibleDomainGap,
     FeatureAxis,
     ObservationIssue,
     PanelAxisObservation,
@@ -44,7 +45,7 @@ from bongard.panel_soft_ontology import (
 
 FEATURE_AXIS_VIEW_SCHEMA = "gkm.bongard-feature-axis-observer-view.v1"
 FEATURE_AXIS_VIEW_PROTOCOL_ID = (
-    "bongard.panel-feature-observer/one-panel-one-complete-axis-v1"
+    "bongard.panel-feature-observer/one-panel-one-complete-axis-v2"
 )
 MAX_BINDINGS_PER_AXIS_CALL = 36
 
@@ -370,11 +371,17 @@ def feature_axis_observer_output_schema(
 ) -> dict[str, object]:
     if type(view) is not FeatureAxisObservationView:
         raise TypeError("observer schema requires FeatureAxisObservationView")
-    unclear_issues = sorted(item.value for item in ObservationIssue if item.value not in {
-        ObservationIssue.PARSER_FAILURE.value,
-        ObservationIssue.TRANSPORT_FAILURE.value,
-        ObservationIssue.INTEGRITY_FAILURE.value,
-    })
+    unclear_issues = sorted(
+        item.value
+        for item in ObservationIssue
+        if item
+        not in {
+            ObservationIssue.UNVERIFIED_EMPTY_DOMAIN,
+            ObservationIssue.PARSER_FAILURE,
+            ObservationIssue.TRANSPORT_FAILURE,
+            ObservationIssue.INTEGRITY_FAILURE,
+        }
+    )
     row_schema = {
         "type": "object",
         "properties": {
@@ -424,11 +431,12 @@ def feature_axis_observer_prompt(view: FeatureAxisObservationView) -> str:
         "preferred answer and do not compare this panel with another panel.\n\n"
         "Use resolution complete only when you can resolve the full registered "
         "variant set for that binding. A complete empty list means you clearly "
-        "resolved that none of the registered variants applies; mere failure to "
-        "notice one is not enough. Otherwise use unclear, an empty variant list, "
-        "coordinates minus one, and the applicable issue. For a nonempty complete "
-        "list, give one supporting Grid16 bin inside the binding search region and "
-        "use issue none. Variant order is irrelevant.\n\n"
+        "resolved that none of the registered variants applies, but downstream "
+        "Python will keep that row indeterminate rather than treat silence as "
+        "absence. Mere failure to notice one is not enough. Otherwise use unclear, "
+        "an empty variant list, coordinates minus one, and the applicable issue. "
+        "For a nonempty complete list, give one supporting Grid16 bin inside the "
+        "binding search region and use issue none. Variant order is irrelevant.\n\n"
         f"BEGIN_INERT_AXIS_DATA\n{rendered}\nEND_INERT_AXIS_DATA"
     )
 
@@ -526,6 +534,11 @@ def parse_feature_axis_observer_payload(
             observer_contract_digest,
             measurement_protocol_digest,
             tuple(rows),
+            (
+                None
+                if rows
+                else EligibleDomainGap.unverified_empty(view.inventory, view.axis)
+            ),
         )
     except PanelFeatureObservationError as exc:
         raise PanelFeatureObserverProtocolError(
@@ -582,4 +595,9 @@ def unresolved_axis_observation(
         observer_contract_digest,
         measurement_protocol_digest,
         rows,
+        (
+            None
+            if rows
+            else EligibleDomainGap.unverified_empty(inventory, axis)
+        ),
     )
