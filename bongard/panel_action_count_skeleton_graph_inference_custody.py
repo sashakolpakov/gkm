@@ -494,6 +494,12 @@ class SkeletonGraphRawInferenceBatch:
         _exact_int(self.unique_png_size_bytes, "unique PNG byte count", lower=1)
         if (
             self.unique_png_count != len(self.rows)
+            or self.input_occurrence_count > MAX_INPUT_OCCURRENCES
+            or self.unique_png_count > MAX_INPUT_OCCURRENCES
+            or self.input_png_size_bytes > MAX_TOTAL_INPUT_BYTES
+            or self.unique_png_size_bytes > MAX_TOTAL_INPUT_BYTES
+            or self.unique_png_count > self.input_occurrence_count
+            or self.unique_png_size_bytes > self.input_png_size_bytes
             or self.input_occurrence_count
             != sum(row.occurrence_count for row in self.rows)
             or self.unique_png_size_bytes

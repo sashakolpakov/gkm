@@ -265,3 +265,28 @@ def test_exact_passed_fit_protocol_is_required_before_any_pixel_decode(
             **_creator_kwargs(), png_payloads=(_png("line"),)
         )
     assert decoded is False
+
+
+def test_canonical_replay_rejects_creator_cap_bypass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_fake_authority(monkeypatch)
+    payload = _png("line")
+    batch = subject.create_raw_inference_batch(
+        **_creator_kwargs(), png_payloads=(payload,)
+    )
+    raw = batch.to_data()
+    row = dict(raw["rows"][0])
+    row.pop("record_digest")
+    row["occurrence_count"] = subject.MAX_INPUT_OCCURRENCES + 1
+    raw["rows"][0] = subject._seal(row)
+    raw.pop("record_digest")
+    raw["input_occurrence_count"] = subject.MAX_INPUT_OCCURRENCES + 1
+    raw["input_png_size_bytes"] = len(payload) * (
+        subject.MAX_INPUT_OCCURRENCES + 1
+    )
+    with pytest.raises(
+        subject.SkeletonGraphInferenceCustodyError,
+        match="counts differ",
+    ):
+        subject.SkeletonGraphRawInferenceBatch.from_data(subject._seal(raw))
