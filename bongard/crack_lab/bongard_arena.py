@@ -12,11 +12,11 @@ three things: (1) this thin raw harness, (2) a neutral static-vision
 preconception prompt, (3) the verify-by-panels admission loop.
 
 Rendering: our own deterministic pure-numpy rasterizer of Bongard-LOGO action
-strings (turn/arc denormalization conventions match
-`bongard/run_bongard_logo_adapter.py`). Stroke styles (normal/zigzag/...) are
-collapsed to plain ink -- panels are a faithful visual realization of the
-action programs, not pixel-identical to the published dataset. Determinism =>
-bit-exact replays.
+strings. Its turn/arc denormalization conventions descend from the retired,
+Git-pinned legacy LOGO adapter recorded by `bongard.historical_exposure`.
+Stroke styles (normal/zigzag/...) are collapsed to plain ink -- panels are a
+faithful visual realization of the action programs, not pixel-identical to the
+published dataset. Determinism => bit-exact replays.
 
 Verification protocol (pinned in bongard_crack_plan.md Section 8): the
 proposer sees all 12 panels (as a human does) and writes only predicates. For
@@ -108,7 +108,7 @@ def verifier_resource_limit_policy() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Action-string geometry (conventions copied from run_bongard_logo_adapter.py)
+# Action-string geometry (from the Git-pinned retired legacy LOGO adapter)
 # ---------------------------------------------------------------------------
 
 def trace_shape(actions: Sequence[str]) -> List[Tuple[float, float]]:

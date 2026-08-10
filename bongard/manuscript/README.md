@@ -5,9 +5,15 @@ paper: *Python-First Visual Predicates for Bongard-LOGO*. The compatibility
 entry point [`semantic_cones.tex`](semantic_cones.tex) inputs the same source;
 it is not a second manuscript.
 
-The paper is a protocol and representation report with one completed
-five-task engineering result, not an official benchmark paper. Its current
-claims are:
+The paper is a frozen protocol and representation report through the earlier
+five-task engineering line, not an official benchmark paper. It predates the
+2026-08-10 skeleton-graph calibration implementation, custody incident,
+terminal GAP, and retirement cut. Those later facts are documented in
+[`../ADVANCES.md`](../ADVANCES.md) and supersede this README as the current
+launch boundary; they do not silently rewrite the manuscript's historical
+experiments.
+
+The manuscript's preserved claims are:
 
 - ShapeBongard V2 has 12,000 tasks and 168,000 panels, split 9,300 train, 900
   validation, and 1,800 official test.
@@ -87,7 +93,8 @@ claims are:
   and
   `sha256:0d16900ac51f89885d1fb24c486b9b813f82c7863e1aa220da770460902d6d70`.
   This is not strict DEV, official test, or unbiased generalization. Strict
-  DEV remains stopped at 0/15 expressibility and official test remains sealed.
+  DEV remained stopped at 0/15 expressibility and official TEST panel pixels
+  remained sealed in that campaign.
   Python is canonical; Lean is optional and removable.
 - A post-hoc support-only sweep over all 65,678 frozen predicates used no new
   pixels, model, or query access. Its separator-count vector was
@@ -109,7 +116,26 @@ claims are:
 The historical 10,047 exact-unused count is retained only as the
 post-Stage-A-A3 snapshot. Three later atomic records produced the pre-pilot
 count of 10,044; the 24-task pilot produced 10,020, and the five-task campaign
-produced the current count of 10,015.
+produced the then-current count of 10,015. The later panel-soft checkpoint was
+314 exposed task IDs with 9,886 exact-image-unused train/validation tasks.
+These image-ledger checkpoints are distinct from the later conservative
+preexposure of all 4,400 HD programs. The incident opened no TEST panel pixels
+or labels, but the HD program authority is no longer described as sealed.
+
+## Post-manuscript custody addendum
+
+The skeleton observer passed its frozen development engineering gates and was
+bound by exact passed-fit, role-free inference, and staged calibration
+authorities. Before the calibration runner was launched, an overbroad search
+streamed official HD program material across the causal prediction barrier.
+The campaign was tombstoned and ended as typed custody GAP
+`sha256:9e53320d9aebd0d07dc61e60f8709c445db66936462fa9997613b645ecfba2ef`.
+
+That GAP records zero post-tombstone model, pixel, label, rank, query, and
+formula-evaluation calls; no support matrix, version space, or predicate was
+constructed. It is not semantic empty-version-space evidence and authorizes
+no benchmark claim. Any future manuscript revision must preserve this
+distinction explicitly.
 
 Build from the repository root:
 

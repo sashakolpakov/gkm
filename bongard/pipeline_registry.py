@@ -1,12 +1,15 @@
-"""Canonical lifecycle registry for Bongard execution paths.
+"""Canonical descriptive lifecycle registry for Bongard execution paths.
 
 Some historical executors remain importable for cold verification; physically
 retired probes survive only as authenticated, non-executable source snapshots.
 Neither case is permission to spend more pixels or model calls.  This module
-makes that distinction explicit and gives retained retired entry points one
-shared fail-closed guard.
+makes that distinction explicit and provides a guard to callers that opt into
+it.  It is not an enforcement boundary for direct ``python -m`` execution;
+retained source must enforce its own custody rules, be physically retired, or
+be treated as audit-only source.
 
-Python is the executable authority for the active successor.  Lean is neither
+The checked-in skeleton campaign ended in a typed custody GAP.  There is no
+active successor and no registered new-execution authority.  Lean is neither
 an execution dependency nor part of any registered predicate identity.
 """
 
@@ -25,6 +28,7 @@ class PipelineLifecycle(str, Enum):
     SHARED_REQUIRED = "shared_required"
     AUDIT_ONLY = "audit_only"
     RETIRED = "retired"
+    TERMINATED_GAP = "terminated_gap"
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,8 +60,11 @@ class PipelineRegistration:
         if self.lifecycle in {
             PipelineLifecycle.AUDIT_ONLY,
             PipelineLifecycle.RETIRED,
+            PipelineLifecycle.TERMINATED_GAP,
         } and self.new_execution_authorized:
-            raise ValueError("audit-only and retired pipelines cannot execute")
+            raise ValueError(
+                "audit-only, retired, and terminal-GAP pipelines cannot execute"
+            )
         if (
             self.lifecycle is PipelineLifecycle.RETIRED
             and self.successor_pipeline_id is None
@@ -69,9 +76,10 @@ class RetiredPipelineExecutionError(RuntimeError):
     """A retained historical implementation was invoked for a new run."""
 
 
-ACTIVE_SUCCESSOR_PIPELINE_ID = (
+LAST_DEVELOPMENT_PIPELINE_ID = (
     "typed-geometry-calibrated-soft-positive-version-space-python-v1"
 )
+TERMINAL_CUSTODY_GAP_PIPELINE_ID = "skeleton-graph-custody-terminal-gap-v1"
 SHARED_CUSTODY_PIPELINE_ID = "shared-custody-freeze-replay-python-v1"
 
 
@@ -104,13 +112,13 @@ def _registration(
 
 _REGISTRATIONS = (
     _registration(
-        ACTIVE_SUCCESSOR_PIPELINE_ID,
-        PipelineLifecycle.ACTIVE_DEVELOPMENT,
-        new_execution_authorized=True,
+        LAST_DEVELOPMENT_PIPELINE_ID,
+        PipelineLifecycle.AUDIT_ONLY,
+        new_execution_authorized=False,
         authorized_scope=(
-            "typed-axis observer development and support-only deterministic "
-            "version-space construction; target/query release remains closed "
-            "until exact calibrated observer and v2 custody gates pass"
+            "historical inspection of the typed-axis design only; its proposed "
+            "execution path was superseded and the successor campaign terminated "
+            "before support, target, query, or version-space construction"
         ),
         entrypoints=(),
         source_modules=(
@@ -124,8 +132,65 @@ _REGISTRATIONS = (
         retained_for=(
             "candidate-independent typed observations",
             "exhaustive positive singleton/pair version space",
-            "frozen Python predicate and model-free replay",
+            "historical comparison with the terminal skeleton campaign",
         ),
+        successor_pipeline_id=TERMINAL_CUSTODY_GAP_PIPELINE_ID,
+    ),
+    _registration(
+        TERMINAL_CUSTODY_GAP_PIPELINE_ID,
+        PipelineLifecycle.TERMINATED_GAP,
+        new_execution_authorized=False,
+        authorized_scope=(
+            "metadata-only verification and cold replay of the skeleton observer, "
+            "custody incident, persisted tombstone, and terminal typed GAP; all "
+            "pixel, model, label, support, target, query, rank, and benchmark "
+            "execution remains unauthorized"
+        ),
+        entrypoints=(),
+        source_modules=(
+            "bongard.panel_action_count_skeleton_graph_dev_command",
+            "bongard.panel_action_count_skeleton_graph_calibration_prereg",
+            "bongard.panel_action_count_skeleton_graph_passed_fit_protocol",
+            "bongard.panel_action_count_skeleton_graph_inference_custody",
+            "bongard.panel_action_count_skeleton_graph_calibration_runner",
+            "bongard.panel_action_count_skeleton_graph_custody_incident",
+            "bongard.panel_action_count_skeleton_graph_custody_incident_persistence",
+            "bongard.panel_action_count_skeleton_graph_custody_gap",
+        ),
+        retained_for=(
+            "source-bound fixed-32 observer development evidence",
+            "passed-fit and role-free inference custody replay",
+            "durable calibration design verification",
+            "incident, tombstone, and terminal custody-GAP verification",
+        ),
+    ),
+    _registration(
+        "panel-action-count-tiny-query-set-development-v1",
+        PipelineLifecycle.RETIRED,
+        new_execution_authorized=False,
+        authorized_scope=(
+            "cold replay and failure-forensics inspection of the failed tiny local "
+            "observer only"
+        ),
+        entrypoints=(
+            "python -m bongard.panel_action_count_tiny_local_train_command",
+            "python -m bongard.panel_action_count_tiny_local_failure_forensics",
+        ),
+        source_modules=(
+            "bongard.panel_action_count_tiny_local_dev_command",
+            "bongard.panel_action_count_tiny_local_train_command",
+            "bongard.panel_action_count_tiny_local_failure_forensics",
+            "bongard.panel_action_count_tiny_passed_fit_protocol",
+        ),
+        retained_for=(
+            "exact failed-checkpoint cold replay",
+            "source-bound tiny-observer failure forensics",
+        ),
+        removal_blockers=(
+            "verification-only decoders have not been separated from live trainer source",
+            "the passed-fit protocol source is not yet in the inert source archive",
+        ),
+        successor_pipeline_id=TERMINAL_CUSTODY_GAP_PIPELINE_ID,
     ),
     _registration(
         SHARED_CUSTODY_PIPELINE_ID,
@@ -169,7 +234,7 @@ _REGISTRATIONS = (
             "prototype and semantic cold verifiers still import episode types",
             "verification-only decoders have not been split from live executors",
         ),
-        successor_pipeline_id=ACTIVE_SUCCESSOR_PIPELINE_ID,
+        successor_pipeline_id=TERMINAL_CUSTODY_GAP_PIPELINE_ID,
     ),
     _registration(
         "legacy-visual-semantic-calibration-cli-v1",
@@ -192,7 +257,7 @@ _REGISTRATIONS = (
         removal_blockers=(
             "legacy run verification still consumes Stage-A campaign types",
         ),
-        successor_pipeline_id=ACTIVE_SUCCESSOR_PIPELINE_ID,
+        successor_pipeline_id=TERMINAL_CUSTODY_GAP_PIPELINE_ID,
     ),
     _registration(
         "panel-soft-exact-unused-campaign-v1",
@@ -218,7 +283,7 @@ _REGISTRATIONS = (
             "authenticated inert source preimages",
             "immutable 75-call zero-coverage audit and exposure evidence",
         ),
-        successor_pipeline_id=ACTIVE_SUCCESSOR_PIPELINE_ID,
+        successor_pipeline_id=TERMINAL_CUSTODY_GAP_PIPELINE_ID,
     ),
     _registration(
         "panel-action-count-prompt-development-v1",
@@ -245,7 +310,7 @@ _REGISTRATIONS = (
             "authenticated inert source preimages",
             "immutable prompt, multiview, and decomposition failure outcomes",
         ),
-        successor_pipeline_id=ACTIVE_SUCCESSOR_PIPELINE_ID,
+        successor_pipeline_id=TERMINAL_CUSTODY_GAP_PIPELINE_ID,
     ),
     _registration(
         "panel-action-count-global-spatial-cnn-development-v1",
@@ -265,6 +330,10 @@ _REGISTRATIONS = (
             "bongard.panel_action_count_cnn_train_command",
             "bongard.panel_action_count_cnn_postprediction_labels_v3",
             "bongard.panel_action_count_cnn_calibration_eval_v3",
+        ),
+        removed_source_modules=(
+            "bongard.panel_action_count_cnn_preregister",
+            "bongard.panel_action_count_cnn_preregister_v2",
             "bongard.panel_action_count_spatial_dev_command",
         ),
         retained_for=(
@@ -273,10 +342,39 @@ _REGISTRATIONS = (
             "authenticated one-hour spatial runtime-gap evidence",
         ),
         removal_blockers=(
-            "the next local observer still consumes the frozen development cohort authority",
-            "verification-only decoders have not yet been split from trainer source",
+            "verification-only decoders have not yet been split from the v3 trainer source",
         ),
-        successor_pipeline_id=ACTIVE_SUCCESSOR_PIPELINE_ID,
+        successor_pipeline_id=TERMINAL_CUSTODY_GAP_PIPELINE_ID,
+    ),
+    _registration(
+        "legacy-july-symbolic-scaffolds-v1",
+        PipelineLifecycle.RETIRED,
+        new_execution_authorized=False,
+        authorized_scope=(
+            "historical Git and inert-archive inspection only; the July symbolic "
+            "baseline, sparse classifier, overcapacity ablation, and logo adapter "
+            "are not executable authority"
+        ),
+        entrypoints=(
+            "python -m bongard.run_abstraction_emergence",
+            "python -m bongard.run_bongard_symbolic_baseline",
+            "python -m bongard.run_bongard_sparse_classifier",
+            "python -m bongard.run_bongard_overcapacity_ablation",
+            "python -m bongard.run_bongard_logo_adapter",
+        ),
+        source_modules=(),
+        removed_source_modules=(
+            "bongard.run_abstraction_emergence",
+            "bongard.run_bongard_symbolic_baseline",
+            "bongard.run_bongard_sparse_classifier",
+            "bongard.run_bongard_overcapacity_ablation",
+            "bongard.run_bongard_logo_adapter",
+        ),
+        retained_for=(
+            "pinned Git source evidence",
+            "historical symbolic-baseline and abstraction-emergence comparison",
+        ),
+        successor_pipeline_id=TERMINAL_CUSTODY_GAP_PIPELINE_ID,
     ),
     _registration(
         "panel-feature-exposed-support-smoke-v1",
@@ -294,7 +392,7 @@ _REGISTRATIONS = (
             "authenticated inert source preimage",
             "historical support diagnostic evidence",
         ),
-        successor_pipeline_id=ACTIVE_SUCCESSOR_PIPELINE_ID,
+        successor_pipeline_id=TERMINAL_CUSTODY_GAP_PIPELINE_ID,
     ),
     _registration(
         "panel-positive-prose-exposed-probe-v1",
@@ -312,7 +410,7 @@ _REGISTRATIONS = (
             "authenticated source-bound prose and typed-count diagnostic receipts",
             "eight inert historical source preimages",
         ),
-        successor_pipeline_id=ACTIVE_SUCCESSOR_PIPELINE_ID,
+        successor_pipeline_id=TERMINAL_CUSTODY_GAP_PIPELINE_ID,
     ),
     _registration(
         "panel-positive-contextual-typed-count-probe-v1",
@@ -330,7 +428,7 @@ _REGISTRATIONS = (
             "authenticated contextual support-gap evidence",
             "inert historical source preimage",
         ),
-        successor_pipeline_id=ACTIVE_SUCCESSOR_PIPELINE_ID,
+        successor_pipeline_id=TERMINAL_CUSTODY_GAP_PIPELINE_ID,
     ),
     _registration(
         "panel-positive-atom-slate-exposed-probe-v1",
@@ -348,7 +446,7 @@ _REGISTRATIONS = (
             "authenticated atom-slate zero-survivor evidence",
             "inert historical source preimage",
         ),
-        successor_pipeline_id=ACTIVE_SUCCESSOR_PIPELINE_ID,
+        successor_pipeline_id=TERMINAL_CUSTODY_GAP_PIPELINE_ID,
     ),
     _registration(
         "panel-hierarchical-exposed-support-smoke-v1",
@@ -366,7 +464,7 @@ _REGISTRATIONS = (
             "immutable schema/parser failure JSON",
             "retained hierarchical visual adapter and geometry witnesses",
         ),
-        successor_pipeline_id=ACTIVE_SUCCESSOR_PIPELINE_ID,
+        successor_pipeline_id=TERMINAL_CUSTODY_GAP_PIPELINE_ID,
     ),
     _registration(
         "completed-support-diagnostic-artifacts-v1",
@@ -427,8 +525,13 @@ def pipeline_registry_data() -> dict[str, object]:
     """Return a deterministic, plain-data status report."""
 
     return {
-        "schema": "gkm.bongard-pipeline-lifecycle-registry.v1",
-        "active_successor_pipeline_id": ACTIVE_SUCCESSOR_PIPELINE_ID,
+        "schema": "gkm.bongard-pipeline-lifecycle-registry.v2",
+        "active_successor_pipeline_id": None,
+        "last_development_pipeline_id": LAST_DEVELOPMENT_PIPELINE_ID,
+        "terminal_pipeline_id": TERMINAL_CUSTODY_GAP_PIPELINE_ID,
+        "new_execution_authorized": False,
+        "registry_is_execution_enforcement_boundary": False,
+        "direct_module_execution_requires_independent_custody": True,
         "python_is_canonical_authority": True,
         "lean_present": False,
         "lean_required": False,
@@ -493,6 +596,28 @@ def pipeline_registry_data() -> dict[str, object]:
             "phase_3_test_preimage_commit": (
                 "a35cf269e418241da8db4fef6fb72ede20e5780f"
             ),
+            "phase_4_removed_source": [
+                "bongard/panel_action_count_cnn_preregister.py",
+                "bongard/panel_action_count_cnn_preregister_v2.py",
+                "bongard/panel_action_count_spatial_dev_command.py",
+                "bongard/run_abstraction_emergence.py",
+                "bongard/run_bongard_logo_adapter.py",
+                "bongard/run_bongard_overcapacity_ablation.py",
+                "bongard/run_bongard_sparse_classifier.py",
+                "bongard/run_bongard_symbolic_baseline.py",
+                "bongard/test_abstraction_emergence.py",
+                "bongard/test_bongard_sparse_classifier.py",
+                "bongard/tests/test_panel_action_count_cnn_preregistration.py",
+                "bongard/tests/test_panel_action_count_cnn_preregistration_v2.py",
+                "bongard/tests/test_panel_action_count_spatial_dev_command.py",
+            ],
+            "phase_4_panel_source_preimage_archive": (
+                "bongard/data/"
+                "panel_retired_pipeline_source_snapshot_20260810_v1.json"
+            ),
+            "phase_4_git_source_and_test_preimage_commit": (
+                "a35cf269e418241da8db4fef6fb72ede20e5780f"
+            ),
             "audit_artifact_policy": {
                 "immutable_compact_records_to_retain": [
                     "bongard/data/historical_exposure_v1.json",
@@ -544,12 +669,13 @@ def pipeline_registry_data() -> dict[str, object]:
 
 
 __all__ = (
-    "ACTIVE_SUCCESSOR_PIPELINE_ID",
     "CANONICAL_PIPELINE_REGISTRY",
+    "LAST_DEVELOPMENT_PIPELINE_ID",
     "PipelineLifecycle",
     "PipelineRegistration",
     "RetiredPipelineExecutionError",
     "SHARED_CUSTODY_PIPELINE_ID",
+    "TERMINAL_CUSTODY_GAP_PIPELINE_ID",
     "pipeline_registration",
     "pipeline_registry_data",
     "require_new_pipeline_execution",

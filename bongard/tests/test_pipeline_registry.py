@@ -9,10 +9,11 @@ import pytest
 
 import bongard.cli as cli
 from bongard.pipeline_registry import (
-    ACTIVE_SUCCESSOR_PIPELINE_ID,
     CANONICAL_PIPELINE_REGISTRY,
+    LAST_DEVELOPMENT_PIPELINE_ID,
     PipelineLifecycle,
     RetiredPipelineExecutionError,
+    TERMINAL_CUSTODY_GAP_PIPELINE_ID,
     pipeline_registration,
     pipeline_registry_data,
     require_new_pipeline_execution,
@@ -65,14 +66,35 @@ def _imported_modules(source_module: str) -> set[str]:
         if isinstance(node, ast.Import)
         for alias in node.names
     )
+    imported.update(
+        f"{node.module}.{alias.name}"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module == "bongard"
+        for alias in node.names
+    )
     return imported
 
 
-def test_registry_has_one_python_successor_and_fail_closed_retirements() -> None:
-    successor = pipeline_registration(ACTIVE_SUCCESSOR_PIPELINE_ID)
-    assert successor.lifecycle is PipelineLifecycle.ACTIVE_DEVELOPMENT
-    assert successor.new_execution_authorized is True
-    assert "python" in successor.pipeline_id
+def test_registry_has_terminal_gap_and_no_active_execution() -> None:
+    former_successor = pipeline_registration(LAST_DEVELOPMENT_PIPELINE_ID)
+    terminal = pipeline_registration(TERMINAL_CUSTODY_GAP_PIPELINE_ID)
+    assert former_successor.lifecycle is PipelineLifecycle.AUDIT_ONLY
+    assert former_successor.new_execution_authorized is False
+    assert former_successor.successor_pipeline_id == terminal.pipeline_id
+    assert terminal.lifecycle is PipelineLifecycle.TERMINATED_GAP
+    assert terminal.new_execution_authorized is False
+    assert terminal.entrypoints == ()
+    assert all(
+        registration.lifecycle is not PipelineLifecycle.ACTIVE_DEVELOPMENT
+        and registration.new_execution_authorized is False
+        for registration in CANONICAL_PIPELINE_REGISTRY.values()
+    )
+    assert {
+        "bongard.panel_action_count_skeleton_graph_calibration_prereg",
+        "bongard.panel_action_count_skeleton_graph_custody_incident",
+        "bongard.panel_action_count_skeleton_graph_custody_incident_persistence",
+        "bongard.panel_action_count_skeleton_graph_custody_gap",
+    }.issubset(terminal.source_modules)
 
     retired = tuple(
         item
@@ -81,7 +103,9 @@ def test_registry_has_one_python_successor_and_fail_closed_retirements() -> None
     )
     assert retired
     assert all(item.new_execution_authorized is False for item in retired)
-    assert all(item.successor_pipeline_id == successor.pipeline_id for item in retired)
+    assert all(
+        item.successor_pipeline_id == terminal.pipeline_id for item in retired
+    )
     assert all(item.retained_for for item in retired)
 
     removed_by_id = {
@@ -112,7 +136,13 @@ def test_registry_has_one_python_successor_and_fail_closed_retirements() -> None
 
 def test_registry_report_names_removal_blockers_and_unlean_authority() -> None:
     report = pipeline_registry_data()
-    assert report["active_successor_pipeline_id"] == ACTIVE_SUCCESSOR_PIPELINE_ID
+    assert report["schema"] == "gkm.bongard-pipeline-lifecycle-registry.v2"
+    assert report["active_successor_pipeline_id"] is None
+    assert report["last_development_pipeline_id"] == LAST_DEVELOPMENT_PIPELINE_ID
+    assert report["terminal_pipeline_id"] == TERMINAL_CUSTODY_GAP_PIPELINE_ID
+    assert report["new_execution_authorized"] is False
+    assert report["registry_is_execution_enforcement_boundary"] is False
+    assert report["direct_module_execution_requires_independent_custody"] is True
     assert report["python_is_canonical_authority"] is True
     assert report["lean_present"] is False
     assert report["lean_required"] is False
@@ -137,6 +167,13 @@ def test_registry_report_names_removal_blockers_and_unlean_authority() -> None:
     assert retirement["phase_3_test_preimage_commit"] == (
         "a35cf269e418241da8db4fef6fb72ede20e5780f"
     )
+    assert len(retirement["phase_4_removed_source"]) == 13
+    assert retirement["phase_4_panel_source_preimage_archive"] == (
+        "bongard/data/panel_retired_pipeline_source_snapshot_20260810_v1.json"
+    )
+    assert retirement["phase_4_git_source_and_test_preimage_commit"] == (
+        "a35cf269e418241da8db4fef6fb72ede20e5780f"
+    )
     assert (
         "bongard/data/panel_retired_pipeline_source_snapshot_20260810_v1.json"
         in retirement["audit_artifact_policy"]["immutable_compact_records_to_retain"]
@@ -152,7 +189,7 @@ def test_registry_report_names_removal_blockers_and_unlean_authority() -> None:
     assert "bongard.panel_retired_pipeline_archive" in audit["source_modules"]
 
 
-def test_active_typed_axis_sources_exclude_retired_action_count_executors() -> None:
+def test_audit_only_typed_axis_sources_exclude_retired_action_count_executors() -> None:
     retired_modules = {
         "bongard.panel_feature_exposed_support_smoke_command",
         "bongard.panel_positive_prose_exposed_probe_command",
@@ -164,7 +201,9 @@ def test_active_typed_axis_sources_exclude_retired_action_count_executors() -> N
         "bongard.panel_action_count_cnn_train_command",
         "bongard.panel_action_count_spatial_dev_command",
     }
-    successor = pipeline_registration(ACTIVE_SUCCESSOR_PIPELINE_ID)
+    successor = pipeline_registration(LAST_DEVELOPMENT_PIPELINE_ID)
+    assert successor.lifecycle is PipelineLifecycle.AUDIT_ONLY
+    assert successor.new_execution_authorized is False
     assert successor.entrypoints == ()
     assert set(successor.source_modules).isdisjoint(retired_modules)
     assert {
@@ -181,20 +220,42 @@ def test_failed_action_observers_are_registered_by_physical_status() -> None:
     cnn = pipeline_registration(
         "panel-action-count-global-spatial-cnn-development-v1"
     )
+    tiny = pipeline_registration("panel-action-count-tiny-query-set-development-v1")
     assert soft.lifecycle is PipelineLifecycle.RETIRED
     assert prompt.lifecycle is PipelineLifecycle.RETIRED
     assert cnn.lifecycle is PipelineLifecycle.RETIRED
+    assert tiny.lifecycle is PipelineLifecycle.RETIRED
     assert soft.new_execution_authorized is False
     assert prompt.new_execution_authorized is False
     assert cnn.new_execution_authorized is False
+    assert tiny.new_execution_authorized is False
     assert soft.source_modules == ()
     assert soft.removed_source_modules == PHASE_3_REMOVED_MODULES[5:]
     assert prompt.source_modules == ()
     assert prompt.removed_source_modules == PHASE_3_REMOVED_MODULES[:5]
-    assert "bongard.panel_action_count_spatial_dev_command" in cnn.source_modules
+    assert "bongard.panel_action_count_spatial_dev_command" in (
+        cnn.removed_source_modules
+    )
+    assert {
+        "bongard.panel_action_count_cnn_preregister",
+        "bongard.panel_action_count_cnn_preregister_v2",
+    }.issubset(cnn.removed_source_modules)
     assert soft.removal_blockers == ()
     assert prompt.removal_blockers == ()
     assert cnn.removal_blockers
+    assert "bongard.panel_action_count_tiny_local_failure_forensics" in (
+        tiny.source_modules
+    )
+    assert tiny.removal_blockers
+
+
+@pytest.mark.parametrize(
+    "pipeline_id",
+    (LAST_DEVELOPMENT_PIPELINE_ID, TERMINAL_CUSTODY_GAP_PIPELINE_ID),
+)
+def test_superseded_and_terminal_pipelines_fail_closed(pipeline_id: str) -> None:
+    with pytest.raises(RetiredPipelineExecutionError, match="cannot start"):
+        require_new_pipeline_execution(pipeline_id)
 
 
 @pytest.mark.parametrize("relative_path", PHASE_3_REMOVED_SOURCE)
@@ -268,6 +329,8 @@ def test_phase_3_removed_python_m_surfaces_fail_closed(module: str) -> None:
         "panel-soft-exact-unused-campaign-v1",
         "panel-action-count-prompt-development-v1",
         "panel-action-count-global-spatial-cnn-development-v1",
+        "panel-action-count-tiny-query-set-development-v1",
+        "legacy-july-symbolic-scaffolds-v1",
         "panel-feature-exposed-support-smoke-v1",
         "panel-positive-prose-exposed-probe-v1",
         "panel-positive-contextual-typed-count-probe-v1",

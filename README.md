@@ -147,11 +147,15 @@ same lens to a different substrate:
   tiered primitives ask which capabilities a task family needs, with validation-frontier
   Pareto selection.
 - **[bongard/](bongard/README.md)** — Python-first visual concept induction over
-  the complete official Bongard-LOGO corpus, with candidate-independent typed
-  observations, positive same-binding predicates, sealed support/query
-  boundaries, and model-free replay. A completed five-task exact-unused TRAIN
-  engineering campaign scored 2/5 jointly correct (4/10 fixed-denominator
-  queries); the official test benchmark remains sealed and pending.
+  ShapeBongard with candidate-independent typed observations, positive Python
+  predicates, custody gates, and model-free replay. The latest engineering
+  advance adds a skeleton-graph observer and staged calibration core, but its
+  attempted campaign is terminally no-launch after official HD program
+  material crossed the prediction barrier. No skeleton-campaign pixels,
+  labels, support matrix, version space, predicate, or query followed; see the
+  [advances and boundary report](bongard/ADVANCES.md). Earlier five-task and
+  panel-soft results remain historical diagnostics, not current launch
+  authority or official benchmark results.
 - **[cone/](cone/README.md)** — the substrate-agnostic core of the **colimit-cone
   program**: learn a compiled, verifiable *cone* over goal atoms rather than a
   monolithic policy; cone-leg discovery, goal induction from scalar reward, and the
@@ -177,7 +181,7 @@ self-contained LaTeX manuscript (`make -C <domain>/manuscript`):
 |---|---|---|
 | [`foraging/README.md`](foraging/README.md) | [`foraging.tex`](foraging/manuscript/foraging.tex) | [open-ended-evolution thesis](foraging/OPEN_ENDED_EVOLUTION_THESIS.md) |
 | [`transduction/README.md`](transduction/README.md) | [`transduction.tex`](transduction/manuscript/transduction.tex) | [benchmark report](transduction/register_transducer_benchmark.md) |
-| [`bongard/README.md`](bongard/README.md) | [`free_energy_abstraction.tex`](bongard/manuscript/free_energy_abstraction.tex) | protocol and reproduction guide |
+| [`bongard/README.md`](bongard/README.md) | [`free_energy_abstraction.tex`](bongard/manuscript/free_energy_abstraction.tex) | [advances](bongard/ADVANCES.md), custody boundary, and no-launch re-entry guide |
 | [`cone/README.md`](cone/README.md) | — (program doc: [`COLIMIT_CONE_APPROACH.md`](COLIMIT_CONE_APPROACH.md)) | 3 reports linked in the hub |
 | [`arc/README.md`](arc/README.md) | [`arc_agi3.tex`](arc/manuscript/arc_agi3.tex) | [manuscript/reproduction bundle](arc/manuscript/README.md), [outreach one-pager](arc/manuscript/gkm_one_page_summary.md), promoted artifacts |
 | [`roboarm/README.md`](roboarm/README.md) | — | [operational report](roboarm/OPERATIONAL_SLICE_REPORT.md), [safety-FSA report](roboarm/SAFETY_FSA_REPORT.md), [hardware I/O reference](roboarm/HARDWARE_IO_REFERENCE.md) |

@@ -1,19 +1,13 @@
-import subprocess
-import sys
-from pathlib import Path
+"""Sphinx configuration.
 
-
-ROOT = Path(__file__).resolve().parents[1]
-subprocess.run(
-    [sys.executable, str(ROOT / "arc" / "build_artifact_docs.py")],
-    check=True,
-)
+Generated ARC pages are refreshed explicitly with ``arc/build_artifact_docs.py``.
+Importing the documentation configuration is intentionally read-only.
+"""
 
 project = "GKM"
 author = "Alexander Kolpakov"
 
 extensions = []
-templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 html_theme = "alabaster"

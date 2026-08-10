@@ -1,5 +1,16 @@
 # Panel-soft exact-unused TRAIN drill, 2026-08-09
 
+> **Historical non-executable record.** This file preserves the exact result
+> of the 2026-08-09 campaign. Its production modules were physically retired
+> in commit `4203e7c1`; authenticated source preimages remain in the inert
+> retired-pipeline archive. Nothing below authorizes a rerun. The later
+> skeleton-graph campaign was implemented but terminated before execution as
+> custody GAP
+> `sha256:9e53320d9aebd0d07dc61e60f8709c445db66936462fa9997613b645ecfba2ef`
+> after official HD program material was preexposed. That incident opened no
+> PNG or label bytes, but the HD program authority is no longer described as
+> sealed. See [`ADVANCES.md`](ADVANCES.md).
+
 > **Superseding theory correction.**  The discussion below correctly records
 > the frozen campaign, but its claim that exhaustive contrast-side absence was
 > the principal HD blocker is incomplete.  The official HD generator defines
@@ -34,10 +45,12 @@ predicate pair.
 The campaign is explicitly engineering-only and uncalibrated.  It is not an
 official benchmark result and does not touch the official TEST split.
 
-The pinned release contains 12,000 tasks.  After this campaign, the exact
+The pinned release contains 12,000 tasks. At this campaign's frozen
+checkpoint, the exact
 exposure successor contains 314 unique task IDs: 290 TRAIN, 24 validation, and
 zero TEST.  This leaves 9,010 exact-image-unused TRAIN tasks and 876
-exact-image-unused validation tasks; all 1,800 TEST tasks remain sealed.  That
+exact-image-unused validation tasks; all 1,800 TEST panel pixels remained
+sealed from this campaign. That
 is a large representation-engineering pool, but not 9,886 independent visual
 concepts: many task IDs reuse generator semantics already disclosed elsewhere.
 
@@ -47,10 +60,11 @@ tuples, and 2,418 Basic morphology-pair keys over 304 morphology clusters.
 After excluding the current exposure closure (and the conservative Basic
 morphology block policy), only one Freeform family, one Abstract tuple, and 37
 Basic morphology pairs are fully semantics-disjoint; 328 exact TRAIN task IDs
-instantiate those keys.  Those 328 are not automatically spendable: reserve
-and cross-split disclosure protection still applies.  The EOD engineering
-drill should therefore sample exact-unused TRAIN images from already disclosed
-semantic strata, not consume a supposedly fresh concept reserve.
+instantiate those keys. Those 328 were not automatically spendable: reserve
+and cross-split disclosure protection still applied. The EOD engineering
+drill was therefore required to sample exact-unused TRAIN images from already
+disclosed semantic strata rather than consume a supposedly fresh concept
+reserve. This is historical rationale, not current selection authority.
 
 ## Durable evidence
 
@@ -172,7 +186,13 @@ declared observations; it cannot prove that the vision model found every
 eligible owner in a panel.  Python is sufficient for the executable semantics
 and is already the canonical implementation.
 
-## Required next pipeline
+## Historical successor requirements
+
+The section below records what this campaign showed was missing. Much of its
+custody and skeleton-observer machinery was later implemented, as documented
+in [`ADVANCES.md`](ADVANCES.md). It is not a current launch recipe: the later
+campaign is terminally custody-gapped and re-entry requires an independently
+clean authority under [`CONTINUATION_PLAN.md`](CONTINUATION_PLAN.md).
 
 The next implementation should be:
 
@@ -217,10 +237,12 @@ diagnosis, but must not silently weaken the authoritative gate.  Same-model
 repeats are one noisy measurement instrument, not independent scientific
 replication.
 
-## Launch-path correction
+## Historical launch-path correction
 
 The first executable launch attempt failed before output creation or pixel
 access because `python -m` sets `__name__` to `__main__`, while source-manifest
 construction expected the canonical Bongard module name.  Commit `174baea7`
 binds the manifest root to the canonical module identity and adds the missing
-`-m` regression.  The corrected launch then completed as recorded above.
+`-m` regression. The corrected historical launch then completed as recorded
+above. That launcher has since been retired and this note is not permission to
+recreate or execute it.

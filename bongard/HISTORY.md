@@ -1,9 +1,47 @@
 # Bongard experiment history
 
-This file keeps the experimental record separate from the current design. One
-five-task TRAIN representation-engineering campaign is now complete, but it is
-not an official Bongard benchmark or an unbiased generalization estimate. No
-run authorizes official-test model access.
+This file keeps preserved experimental results separate from current launch
+authority. Historical campaigns remain valid at their frozen boundaries, but
+the current skeleton-graph campaign is terminally stopped at a custody GAP.
+No recorded run authorizes official-test model access.
+
+## Current terminal boundary, 2026-08-10
+
+A development-only 32-tree skeleton-graph observer, its exact passed-fit
+authority, role-free inference custody, metadata-only calibration
+preregistration, and a crash-safe staged calibration runner were completed.
+The runner was not launched for the intended campaign.
+
+Before the prediction barrier, an overbroad repository search streamed the
+official HD action-program authority. The incident conservatively treats all
+4,400 HD programs as preexposed, including TEST programs if resident. It did
+not open PNG, ZIP, or archive bytes, write files, or execute a model or
+prediction. TEST panel pixels and labels remained unopened by that command;
+the HD program semantics did not remain sealed.
+
+The incident record
+`sha256:c647b0929a524a3fec64f74afbda1d1f469e6cf4ba1b8d6da1de788f0af2801f`
+was persisted through a fixed tombstone and exposure successor
+`sha256:63f3a24b32191985f0733af2934493165d2838fe110a1d412d6d779a017dcb03`.
+The terminal record is typed custody GAP
+`sha256:9e53320d9aebd0d07dc61e60f8709c445db66936462fa9997613b645ecfba2ef`.
+
+Post-tombstone model, pixel, label, rank, query, and formula-evaluation calls
+are all zero. No support matrix, typed inventory, version space, or predicate
+was constructed. The null version-space fields therefore do not mean zero
+survivors, and the custody GAP is not semantic empty-version-space evidence.
+Every live/benchmark authorization is false.
+
+The obsolete panel-soft and prompt/multiview/decomposition implementations
+were subsequently retired. Commit `4203e7c1` removed 11 production modules
+and 9 obsolete tests, while the inert 48-entry archive preserves exact source
+preimages at record
+`sha256:1e454e0d175ad7971608404005dfa59340c6dbeae1d8a52490b7d97fa84825dd`.
+The next stale-code audit removed 8 more production modules and 5 tests: the
+archived CNN-v1/v2/spatial surfaces and isolated July symbolic scaffolds.
+Together the two cuts removed 19 production modules, 14 tests, and 26,697
+lines. The lifecycle registry now names the custody GAP as terminal, reports
+no active successor, and authorizes no new execution.
 
 ## Corpus and ledger snapshots
 
@@ -11,27 +49,37 @@ The pinned ShapeBongard V2 release has 12,000 tasks and 168,000 panels:
 3,600 `ff`, 4,000 `bd`, and 4,400 `hd`. Its primary split is 9,300 train, 900
 validation, and 1,800 test.
 
-Four exact-unused counts appear in artifacts and are correct for their time:
+Historical exact-unused counts appear in artifacts and are correct for their
+named image-exposure checkpoints:
 
 - **10,047** was the train/validation count after Stage-A A3;
 - **10,044** was the pre-coverage-pilot baseline after three later atomic
   records;
-- **10,020** is the post-pilot count after 24 further exposures; and
-- **10,015** is the current count after the five-task engineering campaign.
+- **10,020** was the post-pilot count after 24 further exposures;
+- **10,015** was the post-five-task-campaign count; and
+- the later panel-soft successor reported 9,886 exact-image-unused
+  train/validation tasks, split 9,010 TRAIN and 876 validation.
 
 At the second snapshot, 156 task IDs had been exposed. At the third, 180 had
-been exposed; the current ledger has 185 (161 TRAIN, 24 validation, zero
-official test). The pre-pilot 10,044 remaining
+been exposed; the five-task checkpoint had 185 (161 TRAIN, 24 validation,
+zero official test), and the later panel-soft checkpoint had 314 (290 TRAIN,
+24 validation, zero official test). The pre-pilot 10,044 remaining
 IDs comprise 2,998 `ff`, 3,431 `bd`, and 3,615 `hd`, or 9,156 train and 888
 validation. Exact-image-unseen does not imply semantic independence: most of
 this pool reuses generator concepts already represented in the ledger.
+
+The later custody event is a distinct program-exposure fact. It charged the
+affected target family in the incident successor but opened no new images, so
+this history does not derive a new aggregate image-unused count from the
+program incident.
 
 Strict reusable DRILL capacity fell to zero. A separate strict DEV reserve had
 16 tasks, all `bd`, before the pilot and has 15 afterward. Although the pilot
 excluded exact DEV task IDs, it did not exclude engineering tasks sharing a
 DEV semantic disclosure key; one selected task therefore disqualified one DEV
-unit. The official test split has remained sealed from model use; hashing its
-bytes for release authentication is not exposure.
+unit. Official TEST panel pixels remained sealed from model use in these
+historical campaigns. That pixel fact must now be stated separately from the
+2026-08-10 conservative exposure of the HD program authority.
 
 ## Stage-A calibration sequence
 
@@ -132,10 +180,11 @@ generalization. The mapping error is why every diagnostic must bind source
 indices, exact PNG digests, and support/held-out roles rather than reporting
 unbound panel counts.
 
-## Current line
+## Historical pre-incident line
 
-The successor is Python-first: exact PNGs become candidate-independent typed
-loop packets and optional neutral calibrated tags; a closed positive predicate
+The pre-incident successor design was Python-first: exact PNGs become
+candidate-independent typed loop packets and optional neutral calibrated
+tags; a closed positive predicate
 uses one explicit object binding; the formula freezes before query release;
 and Python replays the result without a model. Lean is optional and removable,
 never semantic authority.
@@ -196,8 +245,13 @@ expressibility oracle. Its corrected v2 65,678-member proposer-reachable A3
 gate found exactly four separators, all among 1,260 contact-disabled
 relational predicates, and zero from the direct-count and symmetry branches. The
 strict 15-task DEV cohort remains stopped at 0/15 intended-concept
-expressibility. Any exact-unused TRAIN run before a new DEV freeze is reported
+expressibility. Any exact-unused TRAIN run before a new DEV freeze was reported
 only as semantics-reused representation engineering. The completed five-task
 campaign is exactly such a run: its tasks were image-unused but its generator
 semantics were historically exposed. Python remains canonical and Lean
 optional and removable.
+
+The later skeleton observer and calibration-custody advance, terminal
+incident, retirement cut, and current no-launch boundary are summarized in
+[`ADVANCES.md`](ADVANCES.md). They do not revise the frozen numerical results
+above; they supersede this section as an execution plan.
