@@ -1,0 +1,203 @@
+{
+  "schemaVersion": 2,
+  "sensorContractId": "rb01-roarm-c920-v3",
+  "frameShape": [
+    72,
+    128,
+    3
+  ],
+  "sceneId": "pick-place-v2",
+  "actionCount": 63,
+  "producer": "roboarm_game OperationalWorld, seed 0",
+  "purpose": "Python/browser turn-boundary parity fixture",
+  "keyframes": [
+    {
+      "turn": 0,
+      "joints": [
+        0.0,
+        0.018407769454627694,
+        1.8699225804325965
+      ],
+      "tcp": [
+        0.3099233025543649,
+        -1.101681783533137e-06,
+        0.2698967533694362
+      ],
+      "object": [
+        0.31000000087591506,
+        0.0,
+        0.025
+      ],
+      "aperture": 0.08,
+      "attached": false,
+      "success": false,
+      "events": [],
+      "frameSha256": "0f3a9bd0a0caf6c2209a270f8ef904c16df5f0366a404935992bfb595a0cead0"
+    },
+    {
+      "turn": 18,
+      "joints": [
+        0.0,
+        0.6565437772150544,
+        1.9880391010997909
+      ],
+      "tcp": [
+        0.31015348231459444,
+        -1.1025242476362162e-06,
+        0.045076939982159794
+      ],
+      "object": [
+        0.31000000087591506,
+        0.0,
+        0.025
+      ],
+      "aperture": 0.04,
+      "attached": true,
+      "success": false,
+      "events": [
+        {
+          "turn": 18,
+          "kind": "jaw_contact_left",
+          "detail": "workpiece"
+        },
+        {
+          "turn": 18,
+          "kind": "jaw_contact_right",
+          "detail": "workpiece"
+        },
+        {
+          "turn": 18,
+          "kind": "object_attached",
+          "detail": "workpiece"
+        }
+      ],
+      "frameSha256": "0e2210eae8bfef89fef374c86aceb29f50842bff066eb2b0f7ce8be2b1bf80a5"
+    },
+    {
+      "turn": 32,
+      "joints": [
+        0.0,
+        0.039883500485026674,
+        1.9006021961903095
+      ],
+      "tcp": [
+        0.30996712161299284,
+        -1.101842544077728e-06,
+        0.25538156950744617
+      ],
+      "object": [
+        0.3098136401783643,
+        1.2454732683662733e-09,
+        0.23530462952528639
+      ],
+      "aperture": 0.04,
+      "attached": true,
+      "success": false,
+      "events": [
+        {
+          "turn": 32,
+          "kind": "motion_accepted",
+          "detail": "height displacement=0.015332m"
+        }
+      ],
+      "frameSha256": "9370fe4391dca06ba5957ddd673ede1dd3335e092b485227748ffb6b41f24dbb"
+    },
+    {
+      "turn": 46,
+      "joints": [
+        1.047708878125893,
+        0.039883500485026674,
+        1.9006021961903095
+      ],
+      "tcp": [
+        0.15985166407500187,
+        0.25985525309482216,
+        0.25538156950744617
+      ],
+      "object": [
+        0.1597740357485495,
+        0.2597228461066719,
+        0.23530462952528639
+      ],
+      "aperture": 0.04,
+      "attached": true,
+      "success": false,
+      "events": [
+        {
+          "turn": 46,
+          "kind": "motion_accepted",
+          "detail": "azimuth displacement=0.026220m"
+        }
+      ],
+      "frameSha256": "7459284344af7c21224eb241e36fd1988ade99f6dd5ffd906dca942836872453"
+    },
+    {
+      "turn": 62,
+      "joints": [
+        1.047708878125893,
+        0.543029198911517,
+        2.018718716857504
+      ],
+      "tcp": [
+        0.15981939010775598,
+        0.2597992873549879,
+        0.07480880250764975
+      ],
+      "object": [
+        0.1597417617813047,
+        0.25966688036683705,
+        0.054731862525489956
+      ],
+      "aperture": 0.04,
+      "attached": true,
+      "success": false,
+      "events": [
+        {
+          "turn": 62,
+          "kind": "motion_rejected",
+          "detail": "held_object_target_collision"
+        }
+      ],
+      "frameSha256": "50bdfae9e7539933a727be941fdfacc022d5791e5374f342f95a4fab19f4bae6"
+    },
+    {
+      "turn": 63,
+      "joints": [
+        1.047708878125893,
+        0.543029198911517,
+        2.018718716857504
+      ],
+      "tcp": [
+        0.15981939010775598,
+        0.2597992873549879,
+        0.07480880250764975
+      ],
+      "object": [
+        0.1597417617813047,
+        0.25966688036683705,
+        0.043
+      ],
+      "aperture": 0.08,
+      "attached": false,
+      "success": true,
+      "events": [
+        {
+          "turn": 63,
+          "kind": "object_released",
+          "detail": "workpiece"
+        },
+        {
+          "turn": 63,
+          "kind": "gravity_settled",
+          "detail": "support=target-bin z=0.043000"
+        },
+        {
+          "turn": 63,
+          "kind": "level_completed",
+          "detail": "target-bin"
+        }
+      ],
+      "frameSha256": "f00a0174e1345539c97eb3cbc30a36dfb7af2f965997d1356766656c77d00339"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "captured": "2026-07-30",
+  "implementation": "CPython",
+  "machine": "arm64",
+  "numpy": "2.4.4",
+  "pip": "26.1.2",
+  "platform": "Darwin",
+  "platform_release": "25.4.0",
+  "pytest": "9.0.3",
+  "python": "3.14.6",
+  "runtime_dependencies": [
+    "numpy==2.4.4"
+  ],
+  "test_dependencies": [
+    "iniconfig==2.3.0",
+    "packaging==26.2",
+    "pluggy==1.6.0",
+    "Pygments==2.20.0",
+    "pytest==9.0.3"
+  ],
+  "forbidden_runtime_families": [
+    "arc",
+    "arc_agi",
+    "arcengine"
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "name": "gkm-roboarm-replay-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Replay-only viewer for authoritative Godel-Kolmogorov machine RoboArm evidence",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "live-run": "node scripts/live-run.mjs",
+    "mechanics-live-run": "node scripts/mechanics-live-run.mjs"
+  },
+  "dependencies": {
+    "next": "16.2.12",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "three": "0.185.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.2",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@types/three": "0.185.1",
+    "playwright-core": "1.62.0",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  },
+  "engines": {
+    "node": ">=20.9.0"
+  }
+}

@@ -1,0 +1,189 @@
+{
+  "campaign_id": "rb01-roarm-c920-v3-zero-seed-20260731",
+  "generations": [
+    {
+      "conditional_ast_drop_bytes": null,
+      "conditional_ast_ratio": null,
+      "conditional_ast_zlib_bytes": 3013,
+      "direct_unchanged_called_legs": [],
+      "exact_adjacent_source_transition": true,
+      "generation": 1,
+      "hard_direct_reuse_witness": false,
+      "historical_net_growth": 191,
+      "literal_reused_top_level_nodes": 5,
+      "milestone": "frontier experiments: empty_grasp, motion_rejection",
+      "novel_top_level_nodes": 11,
+      "outcome": {
+        "attempt_count": 3,
+        "dispositions": [
+          "probe_observed"
+        ],
+        "levels_completed": 0,
+        "observed_failure_evidence": [
+          "empty_grasp",
+          "motion_rejection"
+        ],
+        "winning_checkpoint": false
+      },
+      "positive_meaningful_line_additions": 163,
+      "previous_conditional_ast_zlib_bytes": null,
+      "sharp_drop_with_direct_reuse": false,
+      "sharp_marginal_drop": false,
+      "transitive_reuse_witness": false,
+      "transitive_unchanged_called_leg_sha256": {},
+      "transitive_unchanged_called_legs": [],
+      "winning_checkpoint": false
+    },
+    {
+      "conditional_ast_drop_bytes": -1082,
+      "conditional_ast_ratio": 1.3591105210753402,
+      "conditional_ast_zlib_bytes": 4095,
+      "direct_unchanged_called_legs": [],
+      "exact_adjacent_source_transition": true,
+      "generation": 2,
+      "hard_direct_reuse_witness": false,
+      "historical_net_growth": 323,
+      "literal_reused_top_level_nodes": 13,
+      "milestone": "uncommitted sparse success discovered",
+      "novel_top_level_nodes": 8,
+      "outcome": {
+        "attempt_count": 2,
+        "dispositions": [
+          "probe_observed",
+          "probe_success_uncommitted"
+        ],
+        "levels_completed": 1,
+        "observed_failure_evidence": [
+          "collision_rejection"
+        ],
+        "winning_checkpoint": false
+      },
+      "positive_meaningful_line_additions": 255,
+      "previous_conditional_ast_zlib_bytes": 3013,
+      "sharp_drop_with_direct_reuse": false,
+      "sharp_marginal_drop": false,
+      "transitive_reuse_witness": true,
+      "transitive_unchanged_called_leg_sha256": {
+        "legs.py:_project_world_point": "474182a206d7eeebd882e68c96c2ef2bf09a655eff9e42d1a41b0e780839c957"
+      },
+      "transitive_unchanged_called_legs": [
+        "legs.py:_project_world_point"
+      ],
+      "winning_checkpoint": false
+    },
+    {
+      "conditional_ast_drop_bytes": -103,
+      "conditional_ast_ratio": 1.025152625152625,
+      "conditional_ast_zlib_bytes": 4198,
+      "direct_unchanged_called_legs": [],
+      "exact_adjacent_source_transition": true,
+      "generation": 3,
+      "hard_direct_reuse_witness": false,
+      "historical_net_growth": 168,
+      "literal_reused_top_level_nodes": 17,
+      "milestone": "goal replay rejected by the safety FSA",
+      "novel_top_level_nodes": 8,
+      "outcome": {
+        "attempt_count": 1,
+        "dispositions": [
+          "candidate_rejected_by_fsa"
+        ],
+        "levels_completed": 1,
+        "observed_failure_evidence": [
+          "candidate_safety_rejection",
+          "collision_rejection"
+        ],
+        "winning_checkpoint": false
+      },
+      "positive_meaningful_line_additions": 145,
+      "previous_conditional_ast_zlib_bytes": 4095,
+      "sharp_drop_with_direct_reuse": false,
+      "sharp_marginal_drop": false,
+      "transitive_reuse_witness": true,
+      "transitive_unchanged_called_leg_sha256": {
+        "legs.py:_pickup_and_clear_actions": "a5e8f241166835df11400610bf11f7e5a276dc2c6c1000a4c8a64843a19c331a",
+        "legs.py:_project_world_point": "474182a206d7eeebd882e68c96c2ef2bf09a655eff9e42d1a41b0e780839c957",
+        "legs.py:_small_warm_object": "3a3945ae89a446c76949e771bdb34df2a2d206c3477ec6b5fd463aa00fed23eb",
+        "legs.py:_visible_release_surfaces": "2dd3e6fa9f59fc8dc84651eb32b85b321ae186043c8de62031e5672816b47f59",
+        "legs.py:sealed_grasp_frontier": "e01d72216c2a79be43295391727df5c894c4f2dd54ee1ca40f28bd84b7fa2389"
+      },
+      "transitive_unchanged_called_legs": [
+        "legs.py:_pickup_and_clear_actions",
+        "legs.py:_project_world_point",
+        "legs.py:_small_warm_object",
+        "legs.py:_visible_release_surfaces",
+        "legs.py:sealed_grasp_frontier"
+      ],
+      "winning_checkpoint": false
+    },
+    {
+      "conditional_ast_drop_bytes": 1458,
+      "conditional_ast_ratio": 0.6526917579799905,
+      "conditional_ast_zlib_bytes": 2740,
+      "direct_unchanged_called_legs": [],
+      "exact_adjacent_source_transition": true,
+      "generation": 4,
+      "hard_direct_reuse_witness": false,
+      "historical_net_growth": 172,
+      "literal_reused_top_level_nodes": 23,
+      "milestone": "safe revision committed, verified, and replayed",
+      "novel_top_level_nodes": 4,
+      "outcome": {
+        "attempt_count": 1,
+        "dispositions": [
+          "committed_success"
+        ],
+        "levels_completed": 1,
+        "observed_failure_evidence": [],
+        "winning_checkpoint": true
+      },
+      "positive_meaningful_line_additions": 146,
+      "previous_conditional_ast_zlib_bytes": 4198,
+      "sharp_drop_with_direct_reuse": false,
+      "sharp_marginal_drop": false,
+      "transitive_reuse_witness": true,
+      "transitive_unchanged_called_leg_sha256": {
+        "legs.py:_cyan_release_experiment_actions": "d5b46db86757a760e3f8feb692a503ac7343ec2fc4b983f0aa90dfe266eed400",
+        "legs.py:_cyan_release_terminal_prefix_actions": "599c9fa17974a22de4c696c7d52d48836a36e0ca67f2235a17be2a34a6d45228",
+        "legs.py:_pickup_and_clear_actions": "a5e8f241166835df11400610bf11f7e5a276dc2c6c1000a4c8a64843a19c331a",
+        "legs.py:_project_world_point": "474182a206d7eeebd882e68c96c2ef2bf09a655eff9e42d1a41b0e780839c957",
+        "legs.py:_small_warm_object": "3a3945ae89a446c76949e771bdb34df2a2d206c3477ec6b5fd463aa00fed23eb",
+        "legs.py:_visible_release_surfaces": "2dd3e6fa9f59fc8dc84651eb32b85b321ae186043c8de62031e5672816b47f59",
+        "legs.py:sealed_cyan_release_success": "8f842139fc9f1b976553f7bb7c7ecf8a25803f13b3cd40dd911587762837e507",
+        "legs.py:sealed_grasp_frontier": "e01d72216c2a79be43295391727df5c894c4f2dd54ee1ca40f28bd84b7fa2389"
+      },
+      "transitive_unchanged_called_legs": [
+        "legs.py:_cyan_release_experiment_actions",
+        "legs.py:_cyan_release_terminal_prefix_actions",
+        "legs.py:_pickup_and_clear_actions",
+        "legs.py:_project_world_point",
+        "legs.py:_small_warm_object",
+        "legs.py:_visible_release_surfaces",
+        "legs.py:sealed_cyan_release_success",
+        "legs.py:sealed_grasp_frontier"
+      ],
+      "winning_checkpoint": true
+    }
+  ],
+  "interpretation": {
+    "conditional_ast_direction_changes": 1,
+    "construction_profile_only": true,
+    "direct_reuse_generations": 0,
+    "historical_net_growth_direction_changes": 2,
+    "reason": "rb01 has one promoted round; generations 1-3 are acquisition and revision states rather than separate solved-level checkpoints",
+    "sharp_direct_coupled_witnesses": 0,
+    "solved_level_sawtooth_claim": false,
+    "transitive_reuse_generations": 3
+  },
+  "metric_contract": {
+    "conditional_ast_zlib_bytes": "zlib-9 bytes of normalized top-level AST units absent from the preceding admitted source state",
+    "direct_reuse": "propose_level_1 directly calls an unchanged legs.py definition",
+    "historical_net_growth": "sum over legs.py and players.py of max(0, d(after)-d(before)); d is nonblank noncomment LOC plus AST container elements",
+    "sharp_drop_threshold": "current <= previous / 2",
+    "transitive_reuse": "an unchanged legs.py definition is reachable from propose_level_1"
+  },
+  "profile_kind": "campaign-construction-lineage",
+  "profile_receipt_sha256": "71e33b60bcfa539737ba36d16371bbc0f50b22d3d74569245662205be93e3275",
+  "schema_version": 1,
+  "source_boundary": "clean-admitted proposer generation"
+}

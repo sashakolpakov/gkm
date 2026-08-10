@@ -1,0 +1,69 @@
+{
+  "attempts": [
+    "failed_attempt.json",
+    "failed_attempt_002.json",
+    "failed_attempt_003.json",
+    "successful_commit.json",
+    "successful_attempt.json"
+  ],
+  "camera_model": {
+    "audio_in_observation": false,
+    "auto_light_correction": true,
+    "autofocus": true,
+    "device": "Logitech C920s Pro HD",
+    "diagonal_fov_deg": 78.0,
+    "distortion_calibration": "unavailable",
+    "encoding": "rgb8",
+    "far_m": 5.0,
+    "near_m": 0.01,
+    "position_m": [
+      0.72,
+      -0.1,
+      0.5
+    ],
+    "processing": "decoded RGB, aspect-preserving area downsample",
+    "projection_model": "pinhole_approximation",
+    "shape": [
+      72,
+      128,
+      3
+    ],
+    "simulation_mode": "deterministic_render",
+    "source_format": "MJPG",
+    "source_fps": 30,
+    "source_shape": [
+      1080,
+      1920,
+      3
+    ],
+    "target_m": [
+      0.14,
+      0.07,
+      0.13
+    ],
+    "transport": "USB UVC",
+    "up_axis": [
+      0.0,
+      0.0,
+      1.0
+    ],
+    "vertical_fov_deg": 43.3
+  },
+  "campaign_id": "rb01-roarm-c920-v3-zero-seed-20260731",
+  "export_kind": "replay-validated-gkm-evidence",
+  "export_receipt_sha256": "9db5a4d3c2675dc30d48482a9bd416af622daae6f75a2e3d31dbdf613da8c202",
+  "failure_replays": 3,
+  "frame_encoding": "rgb8",
+  "frame_shape": [
+    72,
+    128,
+    3
+  ],
+  "lineage_profile": "lineage_profile.json",
+  "lineage_profile_receipt_sha256": "71e33b60bcfa539737ba36d16371bbc0f50b22d3d74569245662205be93e3275",
+  "promotion_receipt_sha256": "2a20a533246dff3ca8fc42145792001a05568c642c1d376c5dca3fa039129d9b",
+  "schema_version": 3,
+  "sensor_contract_id": "rb01-roarm-c920-v3",
+  "source_tree_sha256": "3c8c4f3f4d4527735f260bea39768a955e7bbcea5d8a71429bcb1f2b8e584188",
+  "success_replays": 2
+}

@@ -1,0 +1,18 @@
+.DS_Store
+.venv/
+__pycache__/
+*.py[cod]
+
+artifacts/*
+!artifacts/.gitkeep
+
+web/.next/
+web/node_modules/
+web/playwright-report/
+web/test-results/
+
+# The parent repository ignores every directory named lib/. These are
+# first-party RoboArm viewer sources and must remain visible to Git/package
+# tooling.
+!web/lib/
+!web/lib/**

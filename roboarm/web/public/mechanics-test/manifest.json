@@ -1,0 +1,65 @@
+{
+  "attempt_receipts": {
+    "collision_attempt.json": "2c029c85ae3435986589f3a38ece6b8196ae2e95287aed0010ca04efc7e9a7a1",
+    "successful_replay.json": "7a3ec0926bbaa3db251736dc2784cd63743843f67541991deb5bcaa01e833f14"
+  },
+  "attempts": [
+    "collision_attempt.json",
+    "successful_replay.json"
+  ],
+  "camera_model": {
+    "audio_in_observation": false,
+    "auto_light_correction": true,
+    "autofocus": true,
+    "device": "Logitech C920s Pro HD",
+    "diagonal_fov_deg": 78.0,
+    "distortion_calibration": "unavailable",
+    "encoding": "rgb8",
+    "far_m": 5.0,
+    "near_m": 0.01,
+    "position_m": [
+      0.72,
+      -0.1,
+      0.5
+    ],
+    "processing": "decoded RGB, aspect-preserving area downsample",
+    "projection_model": "pinhole_approximation",
+    "shape": [
+      72,
+      128,
+      3
+    ],
+    "simulation_mode": "deterministic_render",
+    "source_format": "MJPG",
+    "source_fps": 30,
+    "source_shape": [
+      1080,
+      1920,
+      3
+    ],
+    "target_m": [
+      0.14,
+      0.07,
+      0.13
+    ],
+    "transport": "USB UVC",
+    "up_axis": [
+      0.0,
+      0.0,
+      1.0
+    ],
+    "vertical_fov_deg": 43.3
+  },
+  "campaign_id": "canonical-mechanics-fixture",
+  "export_kind": "developer-mechanics-test",
+  "export_receipt_sha256": "122f7657654c2ec6a0cb8628246932ddf8df487896a2ca075728aeb70aec2fe2",
+  "frame_encoding": "rgb8",
+  "frame_shape": [
+    72,
+    128,
+    3
+  ],
+  "notice": "Developer mechanics regression only; not proposer activity, Godel-Kolmogorov machine learning, discovery, or promotion evidence.",
+  "schema_version": 3,
+  "sensor_contract_id": "rb01-roarm-c920-v3"
+}

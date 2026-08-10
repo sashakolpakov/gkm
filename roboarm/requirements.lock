@@ -1,0 +1,8 @@
+# Exact Phase-0 runtime/test environment resolved on 2026-07-30.
+# Build backend setuptools==80.9.0 is pinned separately in pyproject.toml.
+iniconfig==2.3.0
+numpy==2.4.4
+packaging==26.2
+pluggy==1.6.0
+Pygments==2.20.0
+pytest==9.0.3

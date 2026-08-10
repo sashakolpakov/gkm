@@ -163,6 +163,11 @@ same lens to a different substrate:
   carrying only human preconceptions, with a single free-energy rule deciding what
   structure (a growing *leg library*) is kept. The agent lives in
   [`arc/crack_lab/`](arc/crack_lab/).
+- **[roboarm/](roboarm/README.md)** — a standalone six-action tabletop
+  manipulation experiment with deterministic RGB/telemetry observations,
+  proposal-only Codex generations, a host-controlled safety FSA, and
+  replay-gated promotion. It is ARC-style in experimental shape but has no ARC
+  runtime dependency and makes no sim-to-real claim.
 
 Each domain guide is that domain's **hub**: it indexes the modules, runnable
 experiments, tests, and reports that live alongside it, and links the domain's
@@ -175,6 +180,7 @@ self-contained LaTeX manuscript (`make -C <domain>/manuscript`):
 | [`bongard/README.md`](bongard/README.md) | [`free_energy_abstraction.tex`](bongard/manuscript/free_energy_abstraction.tex) | protocol and reproduction guide |
 | [`cone/README.md`](cone/README.md) | — (program doc: [`COLIMIT_CONE_APPROACH.md`](COLIMIT_CONE_APPROACH.md)) | 3 reports linked in the hub |
 | [`arc/README.md`](arc/README.md) | [`arc_agi3.tex`](arc/manuscript/arc_agi3.tex) | [manuscript/reproduction bundle](arc/manuscript/README.md), [outreach one-pager](arc/manuscript/gkm_one_page_summary.md), promoted artifacts |
+| [`roboarm/README.md`](roboarm/README.md) | — | [operational report](roboarm/OPERATIONAL_SLICE_REPORT.md), [safety-FSA report](roboarm/SAFETY_FSA_REPORT.md), [hardware I/O reference](roboarm/HARDWARE_IO_REFERENCE.md) |
 
 ## Tests
 

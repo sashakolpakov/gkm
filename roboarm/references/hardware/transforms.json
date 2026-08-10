@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "model": "Waveshare RoArm-M2-S",
+  "source": {
+    "repository": "https://github.com/waveshareteam/roarm_ws",
+    "commit": "40dbd84b553695212fab713e8465f817ba95454d",
+    "path": "src/roarm_main/roarm_description/urdf/roarm_m2/roarm_m2.xacro",
+    "preserved_file": "roarm_m2.xacro",
+    "sha256": "4144e6f20919554755c7dd515f7a236a9aa128fc5507bede3b66cba4ee751c2c"
+  },
+  "joints": [
+    {
+      "name": "world_to_base_link",
+      "type": "fixed",
+      "parent": "world",
+      "child": "base_link",
+      "origin_xyz": ["0.0", "0.0", "0.0"],
+      "origin_rpy": ["0", "0", "0"],
+      "axis_xyz": ["0.0", "0.0", "1.0"],
+      "limit": null
+    },
+    {
+      "name": "base_link_to_link1",
+      "type": "revolute",
+      "parent": "base_link",
+      "child": "link1",
+      "origin_xyz": ["0.0100000008759151", "0", "0.123059270461044"],
+      "origin_rpy": ["0", "0", "0"],
+      "axis_xyz": ["0", "0", "1"],
+      "limit": {
+        "lower": "-3.1416",
+        "upper": "3.1416"
+      }
+    },
+    {
+      "name": "link1_to_link2",
+      "type": "revolute",
+      "parent": "link1",
+      "child": "link2",
+      "origin_xyz": ["0", "0", "0"],
+      "origin_rpy": ["-1.5708", "-1.5708", "0"],
+      "axis_xyz": ["0", "0", "1"],
+      "limit": {
+        "lower": "-1.5708",
+        "upper": "1.5708"
+      }
+    },
+    {
+      "name": "link2_to_link3",
+      "type": "revolute",
+      "parent": "link2",
+      "child": "link3",
+      "origin_xyz": ["0.236815132922094", "0.0300023995170449", "0"],
+      "origin_rpy": ["0", "0", "1.5708"],
+      "axis_xyz": ["0", "0", "1"],
+      "limit": {
+        "lower": "-1",
+        "upper": "2.95"
+      }
+    },
+    {
+      "name": "link3_to_gripper_link",
+      "type": "revolute",
+      "parent": "link3",
+      "child": "gripper_link",
+      "origin_xyz": ["0.002906", "-0.21599", "-0.00066683"],
+      "origin_rpy": ["-1.5708", "0", "-1.5708"],
+      "axis_xyz": ["0", "0", "1"],
+      "limit": {
+        "lower": "0",
+        "upper": "1.5"
+      }
+    },
+    {
+      "name": "link3_to_hand_tcp",
+      "type": "fixed",
+      "parent": "link3",
+      "child": "hand_tcp",
+      "origin_xyz": ["0.002", "-0.2802", "0"],
+      "origin_rpy": ["1.5708", "0", "-1.5708"],
+      "axis_xyz": ["0", "0", "0"],
+      "limit": null
+    }
+  ]
+}

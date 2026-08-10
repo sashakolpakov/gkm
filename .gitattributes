@@ -3,3 +3,6 @@ arc/crack_lab/releases/**/transcripts/*.log -whitespace
 
 # Receipt-pinned historical runner fixtures must retain their exact source bytes.
 arc/crack_lab/testdata/frozen_inner_0eeb29d6cce57a71dc0a20bffc471d21849d03de/*.py -text
+
+# The pinned upstream RoArm Xacro is a byte-exact hardware reference.
+roboarm/references/hardware/roarm_m2.xacro -whitespace

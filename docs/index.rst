@@ -67,6 +67,17 @@ historically exposed semantics, not strict DEV, official test, or unbiased
 generalization.  Official test remains sealed; strict DEV remains rejected at
 0/15 expressibility.  Python is canonical and Lean optional/removable.
 
+Current RoboArm track
+---------------------
+
+The standalone ``rb01-v1`` experiment applies replay-gated program growth to a
+deterministic tabletop manipulation round. A proposal-only Codex process emits
+bounded scenarios; the trusted host owns preflight, safety authorization,
+actuation, fresh-source verification, and exact replay. The promoted v3
+campaign uses separate 128x72 RGB camera bytes and stock-style RoArm feedback,
+with no ARC runtime dependency and no sim-to-real claim. See :doc:`the RoboArm
+experiment <experiments/roboarm>`.
+
 Subject directories
 -------------------
 
@@ -76,6 +87,7 @@ Each subject has a canonical repository README:
 * `Bongard <https://github.com/sashakolpakov/gkm/blob/master/bongard/README.md>`_
 * `Colimit-cone core <https://github.com/sashakolpakov/gkm/blob/master/cone/README.md>`_
 * `Foraging <https://github.com/sashakolpakov/gkm/blob/master/foraging/README.md>`_
+* `RoboArm <https://github.com/sashakolpakov/gkm/blob/master/roboarm/README.md>`_
 * `Transduction <https://github.com/sashakolpakov/gkm/blob/master/transduction/README.md>`_
 
 .. toctree::
@@ -92,6 +104,7 @@ Each subject has a canonical repository README:
    experiments/bongard
    experiments/abstraction_emergence
    experiments/reproduction
+   experiments/roboarm
 
 .. toctree::
    :maxdepth: 1
