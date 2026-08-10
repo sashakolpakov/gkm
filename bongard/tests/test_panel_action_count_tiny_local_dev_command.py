@@ -240,7 +240,6 @@ def test_checkpoint_without_training_authority_is_rejected(tmp_path) -> None:
         "state_dict": model.state_dict(),
         "state_dict_sha256": subject.state_dict_digest(model.state_dict()),
         "training_precommit_record_digest": SHA_A,
-        "training_result_record_digest": SHA_B,
     }
     path = tmp_path / "model.pt"
     torch.save(payload, path)
@@ -248,14 +247,46 @@ def test_checkpoint_without_training_authority_is_rejected(tmp_path) -> None:
         subject.load_verified_checkpoint(
             path,
             expected_training_precommit_record_digest=None,
+            training_result=None,
             expected_training_result_record_digest=None,
         )
+    result = subject._seal(
+        {
+            "checkpoint_raw_sha256": subject._address(path.read_bytes()),
+            "checkpoint_state_dict_sha256": payload["state_dict_sha256"],
+            "config_digest": payload["config_digest"],
+            "schema": "gkm.bongard-tiny-local-action-development-result.v1",
+            "selected_epoch": 0,
+            "training_precommit_record_digest": SHA_A,
+            "validation_gate": {"passed": True},
+        }
+    )
     loaded, envelope, _digest = subject.load_verified_checkpoint(
         path,
         expected_training_precommit_record_digest=SHA_A,
-        expected_training_result_record_digest=SHA_B,
+        training_result=result,
+        expected_training_result_record_digest=result["record_digest"],
     )
     assert subject.state_dict_digest(loaded.state_dict()) == envelope["state_dict_sha256"]
+    failed_body = dict(result)
+    failed_body.pop("record_digest")
+    failed_body["validation_gate"] = {"passed": False}
+    failed = subject._seal(failed_body)
+    with pytest.raises(subject.TinyLocalObserverError, match="gate did not pass"):
+        subject.load_verified_checkpoint(
+            path,
+            expected_training_precommit_record_digest=SHA_A,
+            training_result=failed,
+            expected_training_result_record_digest=failed["record_digest"],
+        )
+    diagnostic, _envelope, _digest = subject.load_verified_checkpoint(
+        path,
+        expected_training_precommit_record_digest=SHA_A,
+        training_result=failed,
+        expected_training_result_record_digest=failed["record_digest"],
+        require_passed_development_gate=False,
+    )
+    assert subject.state_dict_digest(diagnostic.state_dict()) == payload["state_dict_sha256"]
 
 
 def test_joint_calibration_and_cold_replay_are_model_free() -> None:
@@ -361,10 +392,12 @@ def test_precommit_is_zero_pixel_and_infrastructure_only(tmp_path, monkeypatch) 
             "parameter_count": subject.parameter_count(),
             "synthetic_only": True,
         },
+        trainer_source_sha256="a" * 64,
+        training_entrypoint_status="live_runnable_development_only",
         intended_checkpoint=tmp_path / "model.pt",
         intended_result=tmp_path / "result.json",
         output=output,
     )
     assert value["pixels_read_by_precommit"] == 0
-    assert value["training_entrypoint_status"] == "infrastructure_only_not_yet_live_runnable"
+    assert value["training_entrypoint_status"] == "live_runnable_development_only"
     assert value["runtime_work_bound"]["maximum_wall_runtime_seconds"] == 600.0

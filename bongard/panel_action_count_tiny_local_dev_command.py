@@ -349,13 +349,16 @@ def load_verified_checkpoint(
     path: Path,
     *,
     expected_training_precommit_record_digest: str | None,
+    training_result: Mapping[str, Any] | None,
     expected_training_result_record_digest: str | None,
+    require_passed_development_gate: bool = True,
 ):
-    """Load a checkpoint only with explicit precommit/result authority.
+    """Load an exact live-trainer checkpoint with precommit/result authority.
 
-    No training command/result exists in this infrastructure-only revision, so
-    callers cannot accidentally promote a merely source-compatible state to
-    benchmark evidence by omitting those external bindings.
+    Production inference requires the development gate to have passed.  The
+    explicit ``require_passed_development_gate=False`` path exists only for
+    replaying and diagnosing an archived failed development result; it does
+    not confer benchmark or inference authority.
     """
 
     torch, _, _ = _torch_runtime()
@@ -372,29 +375,50 @@ def load_verified_checkpoint(
         "state_dict",
         "state_dict_sha256",
         "training_precommit_record_digest",
-        "training_result_record_digest",
     }
     if not isinstance(payload, dict) or set(payload) != required:
         raise TinyLocalObserverError("tiny checkpoint envelope fields differ")
     if (
         expected_training_precommit_record_digest is None
+        or training_result is None
         or expected_training_result_record_digest is None
     ):
         raise TinyLocalObserverError("benchmark checkpoint authority is absent")
+    result_body = _record_body(
+        training_result,
+        schema="gkm.bongard-tiny-local-action-development-result.v1",
+        label="tiny training result",
+    )
+    if type(require_passed_development_gate) is not bool:
+        raise TinyLocalObserverError("development gate requirement is not exact")
+    if require_passed_development_gate and result_body.get("validation_gate", {}).get(
+        "passed"
+    ) is not True:
+        raise TinyLocalObserverError("development validation gate did not pass")
     if (
-        payload["architecture_id"] != ARCHITECTURE_ID
+        training_result.get("record_digest")
+        != expected_training_result_record_digest
+        or payload["architecture_id"] != ARCHITECTURE_ID
         or payload["source_sha256"] != source_sha256()
         or payload["config_digest"] != successor_config_digest()
         or payload["training_precommit_record_digest"]
         != expected_training_precommit_record_digest
-        or payload["training_result_record_digest"]
-        != expected_training_result_record_digest
         or payload["state_dict_sha256"] != state_dict_digest(payload["state_dict"])
         or isinstance(payload["selected_epoch"], bool)
         or not isinstance(payload["selected_epoch"], int)
         or payload["selected_epoch"] not in range(int(PROTOCOL["epochs"]))
     ):
         raise TinyLocalObserverError("tiny checkpoint envelope binding differs")
+    if (
+        result_body.get("training_precommit_record_digest")
+        != expected_training_precommit_record_digest
+        or result_body.get("checkpoint_raw_sha256") != _address(raw)
+        or result_body.get("checkpoint_state_dict_sha256")
+        != payload["state_dict_sha256"]
+        or result_body.get("selected_epoch") != payload["selected_epoch"]
+        or result_body.get("config_digest") != payload["config_digest"]
+    ):
+        raise TinyLocalObserverError("training result/checkpoint binding differs")
     model = build_model(seed=int(PROTOCOL["random_seed"]))
     model.load_state_dict(payload["state_dict"], strict=True)
     if state_dict_digest(model.state_dict()) != payload["state_dict_sha256"]:
@@ -735,6 +759,7 @@ def verify_raw_evidence_from_checkpoint(
     panel_png_bytes: Sequence[bytes],
     archived: Sequence[Mapping[str, Any]],
     expected_training_precommit_record_digest: str,
+    training_result: Mapping[str, Any],
     expected_training_result_record_digest: str,
 ) -> dict[str, Any]:
     """Recompute an exact inference batch from checkpoint and PNG bytes."""
@@ -744,7 +769,10 @@ def verify_raw_evidence_from_checkpoint(
         expected_training_precommit_record_digest=(
             expected_training_precommit_record_digest
         ),
-        expected_training_result_record_digest=expected_training_result_record_digest,
+        training_result=training_result,
+        expected_training_result_record_digest=(
+            expected_training_result_record_digest
+        ),
     )
     reconstructed = predict_raw_evidence(
         model,
@@ -1096,7 +1124,7 @@ def synthetic_runtime_probe(*, repetitions: int = 3) -> dict[str, Any]:
 
 
 class WallDeadline:
-    """Hard batch-boundary deadline; callers must check before and after every batch."""
+    """Cooperative deadline checked around every batch and durable finalization."""
 
     def __init__(self, *, seconds: float | None = None) -> None:
         limit = float(PROTOCOL["maximum_wall_runtime_seconds"] if seconds is None else seconds)
@@ -1105,9 +1133,13 @@ class WallDeadline:
         self._limit = limit
         self._started = time.monotonic()
 
-    def check(self) -> None:
-        if time.monotonic() - self._started > self._limit:
-            raise RuntimeBudgetExceeded("hard ten-minute wall deadline exceeded")
+    def check(self, *, reserve_seconds: float = 0.0) -> None:
+        if (
+            not math.isfinite(reserve_seconds)
+            or reserve_seconds < 0.0
+            or time.monotonic() - self._started + reserve_seconds > self._limit
+        ):
+            raise RuntimeBudgetExceeded("cooperative ten-minute wall deadline exceeded")
 
 
 def _authority_interval(
@@ -1376,6 +1408,8 @@ def create_successor_precommit(
     supervision_coverage: Mapping[str, Any],
     descriptor_conflict_audit: Mapping[str, Any],
     runtime_probe: Mapping[str, Any],
+    trainer_source_sha256: str,
+    training_entrypoint_status: str,
     intended_checkpoint: Path,
     intended_result: Path,
     output: Path,
@@ -1442,6 +1476,16 @@ def create_successor_precommit(
         or runtime_probe.get("parameter_count") != parameter_count()
     ):
         raise TinyLocalObserverError("synthetic runtime probe differs")
+    if (
+        not isinstance(trainer_source_sha256, str)
+        or len(trainer_source_sha256) != 64
+        or training_entrypoint_status != "live_runnable_development_only"
+    ):
+        raise TinyLocalObserverError("trainer source/status binding differs")
+    try:
+        int(trainer_source_sha256, 16)
+    except ValueError as exc:
+        raise TinyLocalObserverError("trainer source digest is not hexadecimal") from exc
     work = runtime_work_bound(
         training_occurrences=11_200,
         validation_occurrences=1_392,
@@ -1476,7 +1520,8 @@ def create_successor_precommit(
             "record_digest"
         ],
         "supervision_coverage": json.loads(canonical_json(dict(supervision_coverage))),
-        "training_entrypoint_status": "infrastructure_only_not_yet_live_runnable",
+        "trainer_source_sha256": trainer_source_sha256,
+        "training_entrypoint_status": training_entrypoint_status,
     }
     value = _seal(body)
     _write_once(output, value)
