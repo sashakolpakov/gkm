@@ -73,7 +73,7 @@ def test_logical_panel_id_maps_to_release_hd_images_path(tmp_path: Path) -> None
     assert resolved != decoy.resolve()
 
 
-def test_duplicate_digest_groups_are_path_independent_and_fail_on_leakage() -> None:
+def test_digest_groups_remove_validation_leakage_without_changing_training() -> None:
     raw = _png_bytes()
     rows = [
         _observation(
@@ -97,13 +97,51 @@ def test_duplicate_digest_groups_are_path_independent_and_fail_on_leakage() -> N
 
     cross_cohort = [dict(row) for row in rows]
     cross_cohort[1]["fit_cohort"] = "validation"
-    with pytest.raises(command.ActionCountCNNFitError, match="leaks across"):
-        command._audit_digest_groups(cross_cohort)
+    repaired, repaired_audit = command._audit_digest_groups(cross_cohort)
+    assert repaired[0]["fit_cohort"] == "train"
+    assert repaired[0]["multiplicity"] == 1
+    assert repaired[0]["panel_ids"] == ["hd/renamed_task/1/0.png"]
+    removed = repaired_audit[
+        "validation_removed_due_exact_train_duplicate"
+    ]
+    assert removed["panel_count"] == 1
+    assert removed["panel_ids"] == ["hd/renamed_task/1/1.png"]
+    assert removed["rows"][0]["png_sha256"] == command._address(raw)
+    assert repaired_audit["effective_training_panel_count"] == 1
+    assert repaired_audit["effective_validation_panel_count"] == 0
+    assert repaired_audit["validation_decontamination_gate"]["passed"] is False
+
+    validation_only = [
+        {**row, "fit_cohort": "validation"} for row in rows
+    ]
+    validation_groups, _ = command._audit_digest_groups(validation_only)
+    assert validation_groups[0]["fit_cohort"] == "validation"
+    assert validation_groups[0]["multiplicity"] == 2
 
     malformed = [dict(rows[0])]
     malformed[0]["png_sha256"] = "sha256:not-a-digest"
     with pytest.raises(command.ActionCountCNNFitError, match="observation value"):
         command._audit_digest_groups(malformed)
+
+
+def test_effective_validation_adequacy_floor_is_frozen() -> None:
+    rows = []
+    for index in range(1_000):
+        catalog = 0 if index < 50 else 1 if index < 100 else -1
+        rows.append(
+            _observation(
+                panel=f"hd/validation_task_{index:04d}/1/0.png",
+                cohort="validation",
+                labels=(index % 10, index % 10, catalog),
+                raw=f"unique-{index}".encode(),
+            )
+        )
+    _, audit = command._audit_digest_groups(rows)
+    assert audit["effective_validation_panel_count"] == 1_000
+    assert audit["effective_validation_class_counts"][
+        "catalog_unresolved_nonconvex_convex"
+    ] == [900, 50, 50]
+    assert audit["validation_decontamination_gate"]["passed"] is True
 
 
 def test_v3_authority_chain_and_exposure_authorization_are_metadata_only(
@@ -138,6 +176,15 @@ def test_v3_authority_chain_and_exposure_authorization_are_metadata_only(
     assert result["conservative_crash_exposure_policy"][
         "all_authorized_panels_count_as_exposed_once_this_record_is_durable"
     ] is True
+    assert result["development_decontamination_rule"] == {
+        "effective_validation_known_convex_minimum": 50,
+        "effective_validation_known_nonconvex_minimum": 50,
+        "effective_validation_panel_minimum": 1_000,
+        "keep_original_training_members_and_multiplicity": True,
+        "remove_every_validation_occurrence_whose_png_digest_occurs_in_training": True,
+        "retain_validation_only_duplicate_multiplicity": True,
+        "validation_members_may_be_added_to_training": False,
+    }
     assert output.exists()
     assert not opened_pngs
 

@@ -74,22 +74,27 @@ EXPECTED_V2_PLAN_CLAIM = (
 )
 V2_DEVELOPMENT_SCHEMA = "gkm.bongard-action-count-catalog-cnn-development-labels.v2"
 AUTHORIZATION_SCHEMA = (
-    "gkm.bongard-action-count-catalog-cnn-fit-exposure-authorization.v1"
+    "gkm.bongard-action-count-catalog-cnn-fit-exposure-authorization.v2"
 )
-PRECOMMIT_SCHEMA = "gkm.bongard-action-count-catalog-cnn-fit-pixel-precommit.v1"
-TRAINING_SCHEMA = "gkm.bongard-action-count-catalog-cnn-fit-result.v1"
-REPLAY_SCHEMA = "gkm.bongard-action-count-catalog-cnn-fit-replay.v1"
+PRECOMMIT_SCHEMA = "gkm.bongard-action-count-catalog-cnn-fit-pixel-precommit.v2"
+TRAINING_SCHEMA = "gkm.bongard-action-count-catalog-cnn-fit-result.v2"
+REPLAY_SCHEMA = "gkm.bongard-action-count-catalog-cnn-fit-replay.v2"
 ARCHITECTURE_ID = "shared-cnn-16-32-64-96-three-head/v1"
 CATALOG_VALUES = (-1, 0, 1)
 CATALOG_TO_INDEX = {-1: 0, 0: 1, 1: 2}
+EFFECTIVE_VALIDATION_MINIMUM = 1_000
+EFFECTIVE_VALIDATION_KNOWN_CLASS_MINIMUM = 50
 _SHA256_ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
 FIT_CORRECTION = MappingProxyType({
+    "adaptive_post_exposure_development_correction": True,
+    "exact_train_digest_validation_occurrences_removed_only": True,
     "fresh_v3_calibration_or_evaluation_authorized_by_this_command": False,
     "old_v2_calibration_and_evaluation_are_design_tainted": True,
     "old_v2_calibration_or_evaluation_authorized_by_this_command": False,
     "v2_development_labels_are_supervised_target_authority_only": True,
     "v2_plan_is_training_protocol_authority_only": True,
     "v3_plan_and_development_ids_are_execution_cohort_authority": True,
+    "validation_members_are_never_added_to_training": True,
 })
 EXECUTION_PROTOCOL = MappingProxyType(
     {
@@ -508,6 +513,19 @@ def _authorization_body(
             ),
         },
         "correction": dict(FIT_CORRECTION),
+        "development_decontamination_rule": {
+            "effective_validation_known_convex_minimum": (
+                EFFECTIVE_VALIDATION_KNOWN_CLASS_MINIMUM
+            ),
+            "effective_validation_known_nonconvex_minimum": (
+                EFFECTIVE_VALIDATION_KNOWN_CLASS_MINIMUM
+            ),
+            "effective_validation_panel_minimum": EFFECTIVE_VALIDATION_MINIMUM,
+            "keep_original_training_members_and_multiplicity": True,
+            "remove_every_validation_occurrence_whose_png_digest_occurs_in_training": True,
+            "retain_validation_only_duplicate_multiplicity": True,
+            "validation_members_may_be_added_to_training": False,
+        },
         "dataset_root": str(root),
         "intended_pixel_precommit_path": str(intended_precommit_path.resolve()),
         "runtime": _runtime_identity(),
@@ -646,45 +664,140 @@ def _audit_digest_groups(
             raise ActionCountCNNFitError("fit PNG observation value is invalid")
         grouped[row["png_sha256"]].append(row)
     groups: list[dict[str, Any]] = []
-    duplicate_panel_count = duplicate_group_count = 0
+    removed: list[dict[str, Any]] = []
+    original_duplicate_panel_count = original_duplicate_group_count = 0
+    effective_duplicate_panel_count = effective_duplicate_group_count = 0
+    cross_cohort_duplicate_group_count = 0
+    different_label_duplicate_group_count = 0
+    effective_validation_members: list[Mapping[str, Any]] = []
     for digest in sorted(grouped):
         members = grouped[digest]
-        triples = {tuple(member["label_triple"]) for member in members}
-        cohorts = {str(member["fit_cohort"]) for member in members}
         sizes = {int(member["png_size_bytes"]) for member in members}
-        if len(triples) != 1:
-            raise ActionCountCNNFitError(
-                "byte-identical PNGs carry different label triples"
-            )
-        if len(cohorts) != 1:
-            raise ActionCountCNNFitError(
-                "byte-identical PNG leaks across train and validation"
-            )
         if len(sizes) != 1:
             raise ActionCountCNNFitError("one PNG digest has different sizes")
         if len(members) > 1:
-            duplicate_group_count += 1
-            duplicate_panel_count += len(members)
+            original_duplicate_group_count += 1
+            original_duplicate_panel_count += len(members)
+        original_triples = {tuple(member["label_triple"]) for member in members}
+        if len(original_triples) > 1:
+            different_label_duplicate_group_count += 1
+        training_members = [
+            member for member in members if member["fit_cohort"] == "train"
+        ]
+        validation_members = [
+            member for member in members if member["fit_cohort"] == "validation"
+        ]
+        if training_members and validation_members:
+            cross_cohort_duplicate_group_count += 1
+            for member in validation_members:
+                removed.append(
+                    {
+                        "label_triple": list(member["label_triple"]),
+                        "panel_id": member["panel_id"],
+                        "png_sha256": digest,
+                    }
+                )
+        effective_members = training_members if training_members else validation_members
+        cohort = "train" if training_members else "validation"
+        triples = {tuple(member["label_triple"]) for member in effective_members}
+        if len(triples) != 1:
+            raise ActionCountCNNFitError(
+                "byte-identical effective PNGs carry different label triples"
+            )
+        if cohort == "validation":
+            effective_validation_members.extend(effective_members)
+        if len(effective_members) > 1:
+            effective_duplicate_group_count += 1
+            effective_duplicate_panel_count += len(effective_members)
         groups.append(
             {
-                "fit_cohort": next(iter(cohorts)),
+                "fit_cohort": cohort,
                 "label_triple": list(next(iter(triples))),
-                "multiplicity": len(members),
-                "metric_strata": [member["metric_strata"] for member in members],
-                "panel_ids": sorted(str(member["panel_id"]) for member in members),
+                "multiplicity": len(effective_members),
+                "metric_strata": [
+                    member["metric_strata"] for member in effective_members
+                ],
+                "panel_ids": sorted(
+                    str(member["panel_id"]) for member in effective_members
+                ),
                 "png_sha256": digest,
                 "png_size_bytes": next(iter(sizes)),
             }
         )
+    removed.sort(key=lambda row: (row["png_sha256"], row["panel_id"]))
+    straight_counts = [0] * 10
+    arc_counts = [0] * 10
+    catalog_counts = [0] * 3
+    for member in effective_validation_members:
+        straight, arc, catalog = member["label_triple"]
+        straight_counts[straight] += 1
+        arc_counts[arc] += 1
+        catalog_counts[CATALOG_TO_INDEX[catalog]] += 1
+    effective_validation_count = len(effective_validation_members)
+    gate_checks = {
+        "known_convex_at_least_50": (
+            catalog_counts[CATALOG_TO_INDEX[1]]
+            >= EFFECTIVE_VALIDATION_KNOWN_CLASS_MINIMUM
+        ),
+        "known_nonconvex_at_least_50": (
+            catalog_counts[CATALOG_TO_INDEX[0]]
+            >= EFFECTIVE_VALIDATION_KNOWN_CLASS_MINIMUM
+        ),
+        "panel_count_at_least_1000": (
+            effective_validation_count >= EFFECTIVE_VALIDATION_MINIMUM
+        ),
+    }
+    removed_record = {
+        "panel_count": len(removed),
+        "panel_ids": [row["panel_id"] for row in removed],
+        "panel_ids_digest": "sha256:"
+        + canonical_digest([row["panel_id"] for row in removed]),
+        "png_digest_count": len({row["png_sha256"] for row in removed}),
+        "rows": removed,
+        "rows_digest": "sha256:" + canonical_digest(removed),
+    }
     return groups, {
-        "cross_cohort_duplicate_group_count": 0,
-        "different_label_duplicate_group_count": 0,
-        "duplicate_group_count": duplicate_group_count,
-        "panels_in_duplicate_groups": duplicate_panel_count,
+        "cross_cohort_duplicate_group_count": cross_cohort_duplicate_group_count,
+        "different_label_duplicate_group_count": different_label_duplicate_group_count,
+        "duplicate_group_count": effective_duplicate_group_count,
+        "effective_duplicate_group_count": effective_duplicate_group_count,
+        "effective_panels_in_duplicate_groups": effective_duplicate_panel_count,
+        "effective_training_panel_count": sum(
+            group["multiplicity"] for group in groups if group["fit_cohort"] == "train"
+        ),
+        "effective_validation_class_counts": {
+            "arc_0_through_9": arc_counts,
+            "catalog_unresolved_nonconvex_convex": catalog_counts,
+            "straight_0_through_9": straight_counts,
+        },
+        "effective_validation_panel_count": effective_validation_count,
+        "original_duplicate_group_count": original_duplicate_group_count,
+        "original_panels_in_duplicate_groups": original_duplicate_panel_count,
+        "panels_in_duplicate_groups": effective_duplicate_panel_count,
         "path_independent_training_policy": (
             "sort_unique_digest_groups_by_epoch_hash_then_expand_each_group_by_"
             "multiplicity;_members_are_identical_pixels_and_labels"
         ),
+        "validation_decontamination_gate": {
+            "checks": gate_checks,
+            "on_failure": (
+                "emit_validation-decontamination_GAP_before_training_and_leave_"
+                "fresh_v3_calibration_and_evaluation_pixels_sealed"
+            ),
+            "passed": all(gate_checks.values()),
+            "thresholds": {
+                "effective_validation_known_convex_at_least": (
+                    EFFECTIVE_VALIDATION_KNOWN_CLASS_MINIMUM
+                ),
+                "effective_validation_known_nonconvex_at_least": (
+                    EFFECTIVE_VALIDATION_KNOWN_CLASS_MINIMUM
+                ),
+                "effective_validation_panel_count_at_least": (
+                    EFFECTIVE_VALIDATION_MINIMUM
+                ),
+            },
+        },
+        "validation_removed_due_exact_train_duplicate": removed_record,
         "unique_png_digest_count": len(groups),
     }
 
@@ -745,8 +858,18 @@ def create_fit_precommit(
         "authorization_source_sha256": _address(authorization_raw),
         "correction": dict(FIT_CORRECTION),
         "duplicate_digest_audit": duplicate_audit,
+        "effective_fit_panel_count": sum(
+            group["multiplicity"] for group in groups
+        ),
+        "effective_validation_class_counts": duplicate_audit[
+            "effective_validation_class_counts"
+        ],
+        "effective_validation_panel_count": duplicate_audit[
+            "effective_validation_panel_count"
+        ],
         "exact_png_observations": observations,
         "fit_panel_count": len(observations),
+        "original_fit_panel_count": len(observations),
         "path_independent_digest_groups": groups,
         "runtime": _runtime_identity(),
         "schema": PRECOMMIT_SCHEMA,
@@ -777,6 +900,12 @@ def create_fit_precommit(
         ),
         "v3_plan_record_digest": authorities.v3_plan["record_digest"],
         "v3_plan_source_sha256": _address(authorities.v3_plan_raw),
+        "validation_decontamination_gate": duplicate_audit[
+            "validation_decontamination_gate"
+        ],
+        "validation_removed_due_exact_train_duplicate": duplicate_audit[
+            "validation_removed_due_exact_train_duplicate"
+        ],
     }
     result = _seal_body(body)
     _write_fsynced(output_path, result)
@@ -873,10 +1002,29 @@ def _verify_precommit(
         "duplicate_digest_audit"
     ):
         raise ActionCountCNNFitError("fit precommit duplicate audit differs")
+    removed = rebuilt_audit["validation_removed_due_exact_train_duplicate"]
+    effective_count = len(observations) - removed["panel_count"]
+    copied_fields = {
+        "effective_fit_panel_count": effective_count,
+        "effective_validation_class_counts": rebuilt_audit[
+            "effective_validation_class_counts"
+        ],
+        "effective_validation_panel_count": rebuilt_audit[
+            "effective_validation_panel_count"
+        ],
+        "original_fit_panel_count": len(observations),
+        "validation_decontamination_gate": rebuilt_audit[
+            "validation_decontamination_gate"
+        ],
+        "validation_removed_due_exact_train_duplicate": removed,
+    }
+    if any(precommit.get(field) != value for field, value in copied_fields.items()):
+        raise ActionCountCNNFitError("fit precommit decontamination fields differ")
     if (
-        sum(group["multiplicity"] for group in rebuilt_groups) != len(observations)
+        rebuilt_audit["effective_training_panel_count"] != 11_200
+        or sum(group["multiplicity"] for group in rebuilt_groups) != effective_count
         or sum(len(group["panel_ids"]) for group in rebuilt_groups)
-        != len(observations)
+        != effective_count
         or any(
             group["multiplicity"] != len(group["panel_ids"])
             or group["multiplicity"] != len(group["metric_strata"])
@@ -1487,6 +1635,10 @@ def run_fit_training(
         authorities=authorities,
         dataset_root=dataset_root,
     )
+    if precommit["validation_decontamination_gate"].get("passed") is not True:
+        raise ActionCountCNNFitError(
+            "validation-decontamination GAP before training; fresh v3 CAL/eval remain sealed"
+        )
     groups = _materialize_groups(precommit=precommit, dataset_root=dataset_root)
     result = train_core(
         groups,
@@ -1537,6 +1689,23 @@ def run_fit_training(
         "config_digest": config_digest,
         "correction": dict(FIT_CORRECTION),
         "duplicate_digest_audit": precommit["duplicate_digest_audit"],
+        "adaptive_post_exposure_development_correction": {
+            "effective_training_panel_count": precommit["duplicate_digest_audit"][
+                "effective_training_panel_count"
+            ],
+            "effective_validation_class_counts": precommit[
+                "effective_validation_class_counts"
+            ],
+            "effective_validation_panel_count": precommit[
+                "effective_validation_panel_count"
+            ],
+            "validation_decontamination_gate": precommit[
+                "validation_decontamination_gate"
+            ],
+            "validation_removed_due_exact_train_duplicate": precommit[
+                "validation_removed_due_exact_train_duplicate"
+            ],
+        },
         "fit_precommit_record_digest": precommit["record_digest"],
         "fresh_load_replay": {
             "checkpoint_reloaded": True,
@@ -1601,6 +1770,23 @@ def replay_fit_training(
     if archived.get("schema") != TRAINING_SCHEMA:
         raise ActionCountCNNFitError("archived fit result schema differs")
     expected_execution = _execution_protocol_data()
+    expected_decontamination = {
+        "effective_training_panel_count": precommit["duplicate_digest_audit"][
+            "effective_training_panel_count"
+        ],
+        "effective_validation_class_counts": precommit[
+            "effective_validation_class_counts"
+        ],
+        "effective_validation_panel_count": precommit[
+            "effective_validation_panel_count"
+        ],
+        "validation_decontamination_gate": precommit[
+            "validation_decontamination_gate"
+        ],
+        "validation_removed_due_exact_train_duplicate": precommit[
+            "validation_removed_due_exact_train_duplicate"
+        ],
+    }
     if (
         archived.get("correction") != dict(FIT_CORRECTION)
         or archived.get("v3_plan_record_digest")
@@ -1610,11 +1796,15 @@ def replay_fit_training(
         or archived.get("fit_precommit_record_digest") != precommit["record_digest"]
         or archived.get("runtime") != precommit["runtime"]
         or archived.get("execution_protocol") != expected_execution
+        or archived.get("adaptive_post_exposure_development_correction")
+        != expected_decontamination
         or archived.get("config_digest")
         != "sha256:"
         + canonical_digest(authorities.v2_protocol_plan["training_protocol"])
     ):
         raise ActionCountCNNFitError("archived fit authority bindings differ")
+    if precommit["validation_decontamination_gate"].get("passed") is not True:
+        raise ActionCountCNNFitError("archived fit used an inadequate validation set")
     checkpoint, _ = _load_checkpoint(
         checkpoint_path, expected_raw_sha256=archived["checkpoint_raw_sha256"]
     )
