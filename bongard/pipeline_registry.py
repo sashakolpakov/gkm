@@ -198,24 +198,25 @@ _REGISTRATIONS = (
         "panel-soft-exact-unused-campaign-v1",
         PipelineLifecycle.RETIRED,
         new_execution_authorized=False,
-        authorized_scope="cold replay of the completed zero-coverage campaign only",
+        authorized_scope=(
+            "authenticated non-executable inspection of completed zero-coverage "
+            "campaign evidence only"
+        ),
         entrypoints=(
             "python -m bongard.panel_soft_engineering_campaign_command",
         ),
-        source_modules=(
+        source_modules=(),
+        removed_source_modules=(
             "bongard.panel_soft_engineering_campaign_command",
             "bongard.panel_soft_engineering_task_runner",
             "bongard.panel_soft_observer",
+            "bongard.panel_soft_predicate",
             "bongard.panel_soft_proposer",
             "bongard.panel_soft_ranker",
         ),
         retained_for=(
-            "75-call zero-coverage audit",
-            "historical exposure and replay evidence",
-        ),
-        removal_blockers=(
-            "checked campaign records bind the exact campaign module bytes",
-            "cold replay compares the loaded source digest with those records",
+            "authenticated inert source preimages",
+            "immutable 75-call zero-coverage audit and exposure evidence",
         ),
         successor_pipeline_id=ACTIVE_SUCCESSOR_PIPELINE_ID,
     ),
@@ -224,15 +225,16 @@ _REGISTRATIONS = (
         PipelineLifecycle.RETIRED,
         new_execution_authorized=False,
         authorized_scope=(
-            "cold replay and inspection of completed FIT-only prompt, multiview, "
-            "and decomposition diagnostics"
+            "authenticated non-executable inspection of completed FIT-only prompt, "
+            "multiview, and decomposition diagnostics"
         ),
         entrypoints=(
             "python -m bongard.panel_action_count_phase_command",
             "python -m bongard.panel_action_count_multiview_fit_command",
             "python -m bongard.panel_action_decomposition_fit_ablation_command",
         ),
-        source_modules=(
+        source_modules=(),
+        removed_source_modules=(
             "bongard.panel_action_count_phase_command",
             "bongard.panel_action_count_multiview_adapter",
             "bongard.panel_action_count_multiview_fit_command",
@@ -240,12 +242,8 @@ _REGISTRATIONS = (
             "bongard.panel_action_decomposition_fit_ablation_command",
         ),
         retained_for=(
-            "exact historical prompt receipts and cold replay",
-            "authenticated failure outcomes",
-        ),
-        removal_blockers=(
-            "historical result and replay records bind exact loaded source bytes",
-            "verification-only decoders have not yet been split from executors",
+            "authenticated inert source preimages",
+            "immutable prompt, multiview, and decomposition failure outcomes",
         ),
         successor_pipeline_id=ACTIVE_SUCCESSOR_PIPELINE_ID,
     ),
@@ -374,14 +372,19 @@ _REGISTRATIONS = (
         "completed-support-diagnostic-artifacts-v1",
         PipelineLifecycle.AUDIT_ONLY,
         new_execution_authorized=False,
-        authorized_scope="immutable data inspection and model-free replay only",
+        authorized_scope=(
+            "immutable data and inert source inspection and model-free replay only"
+        ),
         entrypoints=(),
-        source_modules=("bongard.panel_retired_probe_source_archive",),
+        source_modules=(
+            "bongard.panel_retired_pipeline_archive",
+            "bongard.panel_retired_probe_source_archive",
+        ),
         retained_for=(
             "exposure accounting",
             "failure provenance",
             "reproducible comparison with the successor",
-            "exact non-executable source preimages for retired authorization checks",
+            "exact non-executable source preimages for retired pipeline audits",
         ),
     ),
 )
@@ -456,6 +459,40 @@ def pipeline_registry_data() -> dict[str, object]:
                     "panel_retired_probe_source_snapshot_20260810_v1.json"
                 ),
             },
+            "phase_3_removed_source": [
+                "bongard/panel_action_count_phase_command.py",
+                "bongard/panel_action_count_multiview_adapter.py",
+                "bongard/panel_action_count_multiview_fit_command.py",
+                "bongard/panel_action_decomposition_threeview_adapter.py",
+                "bongard/panel_action_decomposition_fit_ablation_command.py",
+                "bongard/panel_soft_engineering_campaign_command.py",
+                "bongard/panel_soft_engineering_task_runner.py",
+                "bongard/panel_soft_observer.py",
+                "bongard/panel_soft_predicate.py",
+                "bongard/panel_soft_proposer.py",
+                "bongard/panel_soft_ranker.py",
+                "bongard/tests/test_panel_action_count_phase_command.py",
+                "bongard/tests/test_panel_action_count_multiview_fit_command.py",
+                "bongard/tests/test_panel_action_decomposition_fit_ablation_command.py",
+                "bongard/tests/test_panel_soft_engineering_campaign_command.py",
+                "bongard/tests/test_panel_soft_engineering_task_runner.py",
+                "bongard/tests/test_panel_soft_observer.py",
+                "bongard/tests/test_panel_soft_predicate.py",
+                "bongard/tests/test_panel_soft_proposer.py",
+                "bongard/tests/test_panel_soft_ranker.py",
+            ],
+            "phase_3_neutral_successors": {
+                "retired_source_decoder": (
+                    "bongard.panel_retired_pipeline_archive"
+                ),
+                "retired_source_snapshot": (
+                    "bongard/data/"
+                    "panel_retired_pipeline_source_snapshot_20260810_v1.json"
+                ),
+            },
+            "phase_3_test_preimage_commit": (
+                "a35cf269e418241da8db4fef6fb72ede20e5780f"
+            ),
             "audit_artifact_policy": {
                 "immutable_compact_records_to_retain": [
                     "bongard/data/historical_exposure_v1.json",
@@ -464,6 +501,7 @@ def pipeline_registry_data() -> dict[str, object]:
                     "bongard/data/panel_action_count_measurement_fit_outcome_20260809_v1.json",
                     "bongard/data/panel_convex_four_lines_same_family_train_drill_20260809_v1.json",
                     "bongard/data/panel_retired_probe_source_snapshot_20260810_v1.json",
+                    "bongard/data/panel_retired_pipeline_source_snapshot_20260810_v1.json",
                 ],
                 "raw_evidence_trees_pending_compaction": [
                     "downloads/ShapeBongard_V2_full/panel_soft_exact_unused_train_20260809_ranked_v1",

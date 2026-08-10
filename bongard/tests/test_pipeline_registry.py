@@ -21,6 +21,35 @@ from bongard.pipeline_registry import (
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 
+PHASE_3_REMOVED_MODULES = (
+    "bongard.panel_action_count_phase_command",
+    "bongard.panel_action_count_multiview_adapter",
+    "bongard.panel_action_count_multiview_fit_command",
+    "bongard.panel_action_decomposition_threeview_adapter",
+    "bongard.panel_action_decomposition_fit_ablation_command",
+    "bongard.panel_soft_engineering_campaign_command",
+    "bongard.panel_soft_engineering_task_runner",
+    "bongard.panel_soft_observer",
+    "bongard.panel_soft_predicate",
+    "bongard.panel_soft_proposer",
+    "bongard.panel_soft_ranker",
+)
+PHASE_3_REMOVED_SOURCE = (
+    *(
+        "bongard/" + module.rpartition(".")[2] + ".py"
+        for module in PHASE_3_REMOVED_MODULES
+    ),
+    "bongard/tests/test_panel_action_count_phase_command.py",
+    "bongard/tests/test_panel_action_count_multiview_fit_command.py",
+    "bongard/tests/test_panel_action_decomposition_fit_ablation_command.py",
+    "bongard/tests/test_panel_soft_engineering_campaign_command.py",
+    "bongard/tests/test_panel_soft_engineering_task_runner.py",
+    "bongard/tests/test_panel_soft_observer.py",
+    "bongard/tests/test_panel_soft_predicate.py",
+    "bongard/tests/test_panel_soft_proposer.py",
+    "bongard/tests/test_panel_soft_ranker.py",
+)
+
 
 def _imported_modules(source_module: str) -> set[str]:
     source = PACKAGE_ROOT / (source_module.rpartition(".")[2] + ".py")
@@ -57,25 +86,27 @@ def test_registry_has_one_python_successor_and_fail_closed_retirements() -> None
 
     removed_by_id = {
         "panel-feature-exposed-support-smoke-v1": (
-            "bongard.panel_feature_exposed_support_smoke_command"
+            "bongard.panel_feature_exposed_support_smoke_command",
         ),
         "panel-positive-prose-exposed-probe-v1": (
-            "bongard.panel_positive_prose_exposed_probe_command"
+            "bongard.panel_positive_prose_exposed_probe_command",
         ),
         "panel-positive-contextual-typed-count-probe-v1": (
-            "bongard.panel_positive_contextual_typed_count_probe_command"
+            "bongard.panel_positive_contextual_typed_count_probe_command",
         ),
         "panel-positive-atom-slate-exposed-probe-v1": (
-            "bongard.panel_positive_atom_slate_exposed_probe_command"
+            "bongard.panel_positive_atom_slate_exposed_probe_command",
         ),
         "panel-hierarchical-exposed-support-smoke-v1": (
-            "bongard.panel_hierarchical_exposed_support_smoke_command"
+            "bongard.panel_hierarchical_exposed_support_smoke_command",
         ),
+        "panel-soft-exact-unused-campaign-v1": PHASE_3_REMOVED_MODULES[5:],
+        "panel-action-count-prompt-development-v1": PHASE_3_REMOVED_MODULES[:5],
     }
-    for pipeline_id, module in removed_by_id.items():
+    for pipeline_id, modules in removed_by_id.items():
         removed = pipeline_registration(pipeline_id)
         assert removed.source_modules == ()
-        assert removed.removed_source_modules == (module,)
+        assert removed.removed_source_modules == modules
         assert removed.removal_blockers == ()
 
 
@@ -96,12 +127,29 @@ def test_registry_report_names_removal_blockers_and_unlean_authority() -> None:
             "bongard/data/panel_retired_probe_source_snapshot_20260810_v1.json"
         ),
     }
+    assert tuple(retirement["phase_3_removed_source"]) == PHASE_3_REMOVED_SOURCE
+    assert retirement["phase_3_neutral_successors"] == {
+        "retired_source_decoder": "bongard.panel_retired_pipeline_archive",
+        "retired_source_snapshot": (
+            "bongard/data/panel_retired_pipeline_source_snapshot_20260810_v1.json"
+        ),
+    }
+    assert retirement["phase_3_test_preimage_commit"] == (
+        "a35cf269e418241da8db4fef6fb72ede20e5780f"
+    )
+    assert (
+        "bongard/data/panel_retired_pipeline_source_snapshot_20260810_v1.json"
+        in retirement["audit_artifact_policy"]["immutable_compact_records_to_retain"]
+    )
     by_id = {item["pipeline_id"]: item for item in report["pipelines"]}
     assert by_id["panel-feature-exposed-support-smoke-v1"]["removal_blockers"] == []
-    assert by_id["panel-soft-exact-unused-campaign-v1"][
+    assert by_id["panel-soft-exact-unused-campaign-v1"]["removal_blockers"] == []
+    assert by_id["panel-action-count-prompt-development-v1"][
         "removal_blockers"
-    ]
+    ] == []
     assert by_id["panel-positive-prose-exposed-probe-v1"]["removal_blockers"] == []
+    audit = by_id["completed-support-diagnostic-artifacts-v1"]
+    assert "bongard.panel_retired_pipeline_archive" in audit["source_modules"]
 
 
 def test_active_typed_axis_sources_exclude_retired_action_count_executors() -> None:
@@ -127,19 +175,31 @@ def test_active_typed_axis_sources_exclude_retired_action_count_executors() -> N
     }.issubset(successor.source_modules)
 
 
-def test_failed_action_observers_are_registered_retired() -> None:
+def test_failed_action_observers_are_registered_by_physical_status() -> None:
+    soft = pipeline_registration("panel-soft-exact-unused-campaign-v1")
     prompt = pipeline_registration("panel-action-count-prompt-development-v1")
     cnn = pipeline_registration(
         "panel-action-count-global-spatial-cnn-development-v1"
     )
+    assert soft.lifecycle is PipelineLifecycle.RETIRED
     assert prompt.lifecycle is PipelineLifecycle.RETIRED
     assert cnn.lifecycle is PipelineLifecycle.RETIRED
+    assert soft.new_execution_authorized is False
     assert prompt.new_execution_authorized is False
     assert cnn.new_execution_authorized is False
-    assert "bongard.panel_action_count_multiview_fit_command" in prompt.source_modules
+    assert soft.source_modules == ()
+    assert soft.removed_source_modules == PHASE_3_REMOVED_MODULES[5:]
+    assert prompt.source_modules == ()
+    assert prompt.removed_source_modules == PHASE_3_REMOVED_MODULES[:5]
     assert "bongard.panel_action_count_spatial_dev_command" in cnn.source_modules
-    assert prompt.removal_blockers
+    assert soft.removal_blockers == ()
+    assert prompt.removal_blockers == ()
     assert cnn.removal_blockers
+
+
+@pytest.mark.parametrize("relative_path", PHASE_3_REMOVED_SOURCE)
+def test_phase_3_removed_source_is_physically_absent(relative_path: str) -> None:
+    assert not (PACKAGE_ROOT.parent / relative_path).exists()
 
 
 def test_removed_launcher_is_gone_but_immutable_failure_record_remains() -> None:
@@ -166,6 +226,28 @@ def test_removed_launcher_is_gone_but_immutable_failure_record_remains() -> None
     ),
 )
 def test_physically_retired_python_m_surfaces_fail_closed(module: str) -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", module, "--definitely-not-a-real-option"],
+        cwd=PACKAGE_ROOT.parent,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert f"No module named {module}" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "module",
+    (
+        "bongard.panel_soft_engineering_campaign_command",
+        "bongard.panel_action_count_phase_command",
+        "bongard.panel_action_count_multiview_fit_command",
+        "bongard.panel_action_decomposition_fit_ablation_command",
+    ),
+)
+def test_phase_3_removed_python_m_surfaces_fail_closed(module: str) -> None:
     result = subprocess.run(
         [sys.executable, "-m", module, "--definitely-not-a-real-option"],
         cwd=PACKAGE_ROOT.parent,

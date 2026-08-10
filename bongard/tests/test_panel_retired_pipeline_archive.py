@@ -43,6 +43,39 @@ SOFT_MANIFEST_BINDING = (
     "panel-soft-source-manifest/"
     "fd14be21b945788aa34cb8808823039cbb24e170d831fa48f6a626c6d9dffa11.json"
 )
+PHASE_3_RETIRED_SOURCE_SHA256 = {
+    "bongard.panel_action_count_multiview_adapter": (
+        "10c7a783c07307257b69c30821541eba94e1086f72940a88a8ca9a52bb9efb4c"
+    ),
+    "bongard.panel_action_count_multiview_fit_command": (
+        "b65309be4b0b238e296bf462605d41b5c48c0b6a5b76ba8b16a4b6d35141704e"
+    ),
+    "bongard.panel_action_count_phase_command": CURRENT_PHASE_SHA256,
+    "bongard.panel_action_decomposition_fit_ablation_command": (
+        "06becea4ae092a02f59e7639f40a74f4bc4fc1a0d7826650d2a6808a88275fb8"
+    ),
+    "bongard.panel_action_decomposition_threeview_adapter": (
+        "d293d1ff2ab11638ecf9d5c8c109ac3aae3fdd6658298c0addcc48ebb04244ee"
+    ),
+    "bongard.panel_soft_engineering_campaign_command": (
+        "f7c39ac052ceec2b9bf4f5a71111a8d509feb95dffb51a2c9f811a2504a762a5"
+    ),
+    "bongard.panel_soft_engineering_task_runner": (
+        "13da07afe3128b26617b156ccbee14c1a6eff1a5af14306311df2382c5ad9dfe"
+    ),
+    "bongard.panel_soft_observer": (
+        "bece852c6a2a40df046feed82ab04d9d34aba12bc3136c9d66da4ff924f5f1fd"
+    ),
+    "bongard.panel_soft_predicate": (
+        "9f6cdccf6f7b18c9c5454a095839f81cfc77defed215b99dae81459fd7272291"
+    ),
+    "bongard.panel_soft_proposer": (
+        "3afb38f006bbd9292e5157a096dd57491cd3e8c83dd719a07bbdbeb133661087"
+    ),
+    "bongard.panel_soft_ranker": (
+        "9e7f200e9d12d15da1cdd8daef9d6a1ef079cc27121168ca6bc090016261a84c"
+    ),
+}
 
 
 def _git_blob_oid(source: bytes) -> str:
@@ -185,6 +218,24 @@ def test_all_31_panel_soft_manifest_preimages_are_present() -> None:
     for entry in entries:
         assert entry["provenance_kind"] == "working_tree_and_git_blob"
         assert entry["source_commit"] == CURRENT_COMMIT
+
+
+def test_all_11_phase_3_production_preimages_are_inert_and_exact() -> None:
+    archive = load_retired_pipeline_source_archive()
+    assert len(PHASE_3_RETIRED_SOURCE_SHA256) == 11
+    for module, source_sha256 in PHASE_3_RETIRED_SOURCE_SHA256.items():
+        snapshot_id = f"{module}@sha256:{source_sha256}"
+        entry = archive.entries[snapshot_id]
+        relative_path = "bongard/" + module.rpartition(".")[2] + ".py"
+        assert entry["module"] == module
+        assert entry["relative_path"] == relative_path
+        assert entry["source_commit"] == CURRENT_COMMIT
+        assert entry["provenance_kind"] == "working_tree_and_git_blob"
+        assert entry["artifact_bindings"]
+        source = verify_retired_pipeline_source_binding(
+            module, source_sha256, archive=archive
+        )
+        assert source == _git_source(CURRENT_COMMIT, relative_path)
 
 
 def test_historical_phase_blob_round_trips_exact_git_preimage() -> None:
