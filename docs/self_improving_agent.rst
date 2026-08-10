@@ -71,6 +71,15 @@ OS-level lock rejects overlapping runs before artifact seeding, while checkpoint
 recording upserts by level. Legacy repeated level rows are normalized on load or
 save by retaining the last entry and subtracting superseded charges.
 
+The prospective campaign runner also supports a bounded failure-revision treatment.
+Each revision round runs in a fresh ephemeral proposer thread and is accepted only
+when its protocol digest, frontier binding, round order, sealed diagnostics, and
+terminal or promotion evidence authenticate as one aggregate. Unknown control fields,
+cross-frontier evidence, incomplete diagnostics, and exhausted or tainted aggregates
+fail closed. This is current campaign infrastructure, not a retroactive property of
+the frozen 181-boundary release: that release remains governed by the verifier and
+control revision named in its schema-v2 receipt.
+
 Source-Growth Statistic
 -----------------------
 

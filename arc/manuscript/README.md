@@ -158,3 +158,12 @@ observations through the public interface before any derived solver evidence
 can advance. A typed sidecar request inside that handoff may supply a
 same-frontier side-expert brief, but it does not allocate the slot or gain
 evidence authority.
+
+Current prospective campaign code additionally supports bounded failure-revision
+rounds in fresh ephemeral proposer threads. The aggregate is admissible only when its
+protocol digest, frontier binding, ordered round records, sealed diagnostics, and
+terminal or promotion evidence authenticate together; malformed, cross-frontier,
+tainted, or incomplete aggregates fail closed. This mechanism postdates the frozen
+181-boundary result and is not part of the historical release claim. The release
+continues to be interpreted solely under the verifier/control revision bound by its
+schema-v2 receipt.

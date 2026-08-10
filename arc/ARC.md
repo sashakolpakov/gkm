@@ -157,9 +157,11 @@ configuration excludes proposer-controlled `crack_lab/agent_solutions/` and
 substrate + free-energy admission), `gkm_solve_agent.py` (proposer = Claude with
 discovered context + tools + tester), `gkm_api_agent.py` (Messages-API proposer),
 `gkm_legs.py` (enforced leg-library orchestration + marginal-C accounting +
-interruption-proof WIP recovery), `gkm_crack.py` (the earlier discovered-connector
-cone), `gkm_discovery.py` (interaction probe). The frozen 25-game publication tree
-lives under
+interruption-proof WIP recovery), `codex_failure_revision_contract.py` (authenticated,
+bounded fresh-thread revision rounds), `gkm_crack.py` (the earlier
+discovered-connector cone), and `gkm_discovery.py` (interaction probe). Failure-revision
+treatment is prospective campaign machinery and is not retroactively attributed to
+the receipt-bound frozen release. The frozen 25-game publication tree lives under
 [`crack_lab/releases/arc_agi3_gkm_v2_181/artifacts/`](crack_lab/releases/arc_agi3_gkm_v2_181/artifacts/).
 Live promoted and partial work remains under
 [`crack_lab/agent_solutions/`](crack_lab/agent_solutions/); `wa30` and `ls20` are the
