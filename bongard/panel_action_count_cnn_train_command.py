@@ -1,9 +1,11 @@
-"""Deterministic, CPU-only train/validation command for the v2 typed CNN.
+"""Deterministic, CPU-only train/validation command for the typed CNN.
 
 This executable intentionally has no calibration or evaluation command.  The
-v2 CAL/eval metadata was read during preregistration/audit and is design-
-tainted; it is excluded from future scientific calibration/evaluation.  Only
-the checked-in development manifest (train + validation) is reachable here.
+v3 plan and identifier-only development manifest are the execution cohort
+authority.  The frozen v2 plan supplies only the retained training protocol,
+and the frozen v2 development labels supply supervised targets for the exact
+v3-retained train and validation IDs.  No old or fresh calibration/evaluation
+cohort is reachable here.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ import math
 import os
 from pathlib import Path, PurePosixPath
 import platform
+import re
 import sys
 from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
@@ -34,9 +37,44 @@ from PIL import Image
 from bongard.canonical import canonical_digest, canonical_json
 
 
-PLAN_SCHEMA = "gkm.bongard-action-count-catalog-cnn-preregistration.v2"
-EXPECTED_PLAN_RECORD_DIGEST = (
+V3_PLAN_SCHEMA = "gkm.bongard-action-count-catalog-cnn-preregistration.v3"
+EXPECTED_V3_PLAN_RECORD_DIGEST = (
+    "sha256:bb4524a0958cd21f2d4d49bc6a9caa964ccb96c67fbf7c6192185f7b2f363dcb"
+)
+EXPECTED_V3_PLAN_SOURCE_SHA256 = (
+    "sha256:71c68771b356658843c3d848cdeea0ba7f2d96fffacd1816ef72934214b055d0"
+)
+EXPECTED_V3_PLAN_CLAIM = (
+    "metadata-only-v3-cohort-repair;_no_selected-pixel-or-fresh-target-access"
+)
+V3_DEVELOPMENT_SCHEMA = (
+    "gkm.bongard-action-count-cnn-development-panel-ids.v3"
+)
+EXPECTED_V3_DEVELOPMENT_RECORD_DIGEST = (
+    "sha256:ee02e48ea3e07dd4804ad24e5c1c9228addc4a0fe658efe821993451bc749fde"
+)
+EXPECTED_V3_DEVELOPMENT_SOURCE_SHA256 = (
+    "sha256:9f0c8957bd1be7885022c0bf12d8104c531eea36b1680b902406c1b5e39923db"
+)
+EXPECTED_V2_PLAN_RECORD_DIGEST = (
     "sha256:0de57e610763a7fb77adbcaeb2be21b20864a02eb5af0656b76c291ef5b0a3a8"
+)
+EXPECTED_V2_PLAN_SOURCE_SHA256 = (
+    "sha256:b38fd75badd5090dc03fe8cecb34053d4045bc9a47e3a4b9ad2b7e433aa0ca5b"
+)
+EXPECTED_V2_DEVELOPMENT_RECORD_DIGEST = (
+    "sha256:c72d09eaa2bee02572694dacdb48ec80d2e23615c1c54f4c6616136b235b3d52"
+)
+EXPECTED_V2_DEVELOPMENT_SOURCE_SHA256 = (
+    "sha256:913c826d6be2aca47610b771c57859053d985640dca9a8ce9ea01c663a701333"
+)
+EXPECTED_V2_PLAN_CLAIM = (
+    "oracle-supervised-exact-unused-official-TRAIN-representation-engineering-"
+    "not-bongard-benchmark"
+)
+V2_DEVELOPMENT_SCHEMA = "gkm.bongard-action-count-catalog-cnn-development-labels.v2"
+AUTHORIZATION_SCHEMA = (
+    "gkm.bongard-action-count-catalog-cnn-fit-exposure-authorization.v1"
 )
 PRECOMMIT_SCHEMA = "gkm.bongard-action-count-catalog-cnn-fit-pixel-precommit.v1"
 TRAINING_SCHEMA = "gkm.bongard-action-count-catalog-cnn-fit-result.v1"
@@ -44,11 +82,14 @@ REPLAY_SCHEMA = "gkm.bongard-action-count-catalog-cnn-fit-replay.v1"
 ARCHITECTURE_ID = "shared-cnn-16-32-64-96-three-head/v1"
 CATALOG_VALUES = (-1, 0, 1)
 CATALOG_TO_INDEX = {-1: 0, 0: 1, 1: 2}
+_SHA256_ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
 FIT_CORRECTION = MappingProxyType({
-    "current_v2_calibration_and_evaluation_are_design_tainted": True,
-    "current_v2_calibration_or_evaluation_authorized_by_this_command": False,
-    "future_calibration_and_evaluation_require_fresh_superseding_cohorts": True,
-    "v2_plan_is_historical_authority_for_train_and_validation_only": True,
+    "fresh_v3_calibration_or_evaluation_authorized_by_this_command": False,
+    "old_v2_calibration_and_evaluation_are_design_tainted": True,
+    "old_v2_calibration_or_evaluation_authorized_by_this_command": False,
+    "v2_development_labels_are_supervised_target_authority_only": True,
+    "v2_plan_is_training_protocol_authority_only": True,
+    "v3_plan_and_development_ids_are_execution_cohort_authority": True,
 })
 EXECUTION_PROTOCOL = MappingProxyType(
     {
@@ -147,7 +188,7 @@ def _runtime_identity() -> dict[str, Any]:
     try:
         import numpy
         import PIL
-        import torch
+        torch = _configure_torch(int(EXECUTION_PROTOCOL["random_seed"]))
 
         module_sources = {
             name: _address(Path(module.__file__).resolve().read_bytes())
@@ -165,35 +206,212 @@ def _runtime_identity() -> dict[str, Any]:
         "python_implementation": platform.python_implementation(),
         "torch_build_config_sha256": torch_build,
         "torch_git_version": torch.version.git_version,
-        "torch_cpu_threads": 1,
+        "torch_cpu_threads": torch.get_num_threads(),
+        "torch_deterministic_algorithms": torch.are_deterministic_algorithms_enabled(),
+        "torch_interop_threads": torch.get_num_interop_threads(),
     }
 
 
-def _verify_plan_and_development(
-    plan_path: Path, development_path: Path
-) -> tuple[dict[str, Any], bytes, dict[str, Any], bytes]:
-    plan, plan_raw = _load_record(plan_path, label="v2 plan")
-    development, development_raw = _load_record(
-        development_path, label="development labels"
+@dataclass(frozen=True)
+class FitAuthorities:
+    v3_plan: dict[str, Any]
+    v3_plan_raw: bytes
+    v3_development: dict[str, Any]
+    v3_development_raw: bytes
+    v2_protocol_plan: dict[str, Any]
+    v2_protocol_plan_raw: bytes
+    v2_development_labels: dict[str, Any]
+    v2_development_labels_raw: bytes
+
+
+def _verify_execution_protocol(protocol_plan: Mapping[str, Any]) -> None:
+    training = protocol_plan.get("training_protocol")
+    if not isinstance(training, dict):
+        raise ActionCountCNNFitError("v2 training protocol is missing")
+    scalar_fields = {
+        "batch_size": EXECUTION_PROTOCOL["batch_size"],
+        "cpu_threads": EXECUTION_PROTOCOL["cpu_threads"],
+        "epochs": EXECUTION_PROTOCOL["epochs"],
+        "image_size": EXECUTION_PROTOCOL["image_size"],
+        "learning_rate": EXECUTION_PROTOCOL["learning_rate"],
+        "optimizer": EXECUTION_PROTOCOL["optimizer"],
+        "random_seed": EXECUTION_PROTOCOL["random_seed"],
+        "weight_decay": EXECUTION_PROTOCOL["weight_decay"],
+    }
+    if any(training.get(field) != value for field, value in scalar_fields.items()):
+        raise ActionCountCNNFitError("executable protocol differs from v2 plan")
+    if training.get("optimizer_parameters") != {
+        "betas": list(EXECUTION_PROTOCOL["optimizer_betas"]),
+        "eps": EXECUTION_PROTOCOL["optimizer_eps"],
+        "weight_decay": EXECUTION_PROTOCOL["weight_decay"],
+    }:
+        raise ActionCountCNNFitError("optimizer parameters differ from v2 plan")
+    if (
+        training.get("heads")
+        != {"arc": 10, "catalog_convexity": 3, "straight": 10}
+        or training.get("catalog_head_class_order")
+        != ["catalog_unresolved", "nonconvex", "convex"]
+        or training.get("pretrained_or_network_weights") is not False
+        or training.get("torch_deterministic_algorithms") is not True
+    ):
+        raise ActionCountCNNFitError("model/head protocol differs from v2 plan")
+
+
+def _expected_panel_ids(task_ids: Sequence[str]) -> list[str]:
+    return [
+        f"hd/{task_id}/{folder}/{panel_index}.png"
+        for task_id in task_ids
+        for folder in (1, 0)
+        for panel_index in range(7)
+    ]
+
+
+def _verify_fit_authorities(
+    *,
+    v3_plan_path: Path,
+    v3_development_path: Path,
+    v2_protocol_plan_path: Path,
+    v2_development_labels_path: Path,
+) -> FitAuthorities:
+    v3_plan, v3_plan_raw = _load_record(v3_plan_path, label="v3 plan")
+    v3_development, v3_development_raw = _load_record(
+        v3_development_path, label="v3 development panel IDs"
     )
-    if plan.get("schema") != PLAN_SCHEMA:
-        raise ActionCountCNNFitError("plan schema differs")
-    if plan.get("record_digest") != EXPECTED_PLAN_RECORD_DIGEST:
-        raise ActionCountCNNFitError("fit plan is not the frozen v2 plan")
-    binding = plan.get("manifest_bindings", {}).get("development_labels")
-    if not isinstance(binding, dict):
-        raise ActionCountCNNFitError("development binding is missing")
-    if binding.get("record_digest") != development.get("record_digest"):
-        raise ActionCountCNNFitError("development record differs from plan")
-    if binding.get("source_sha256") != _address(development_raw):
-        raise ActionCountCNNFitError("development bytes differ from plan")
-    if set(development.get("cohorts", {})) != {"train", "validation"}:
-        raise ActionCountCNNFitError("development manifest exposes another cohort")
-    if plan["cohorts"]["train"]["panel_count"] != 11_200:
-        raise ActionCountCNNFitError("training panel count differs")
-    if plan["cohorts"]["validation"]["panel_count"] != 1_400:
-        raise ActionCountCNNFitError("validation panel count differs")
-    return plan, plan_raw, development, development_raw
+    v2_plan, v2_plan_raw = _load_record(
+        v2_protocol_plan_path, label="v2 training-protocol plan"
+    )
+    v2_labels, v2_labels_raw = _load_record(
+        v2_development_labels_path, label="v2 retained development labels"
+    )
+    if (
+        v3_plan.get("schema") != V3_PLAN_SCHEMA
+        or v3_plan.get("claim") != EXPECTED_V3_PLAN_CLAIM
+        or v3_plan.get("record_digest") != EXPECTED_V3_PLAN_RECORD_DIGEST
+        or _address(v3_plan_raw) != EXPECTED_V3_PLAN_SOURCE_SHA256
+    ):
+        raise ActionCountCNNFitError("fit execution plan is not the frozen v3 plan")
+    if (
+        v3_development.get("schema") != V3_DEVELOPMENT_SCHEMA
+        or v3_development.get("record_digest")
+        != EXPECTED_V3_DEVELOPMENT_RECORD_DIGEST
+        or _address(v3_development_raw) != EXPECTED_V3_DEVELOPMENT_SOURCE_SHA256
+    ):
+        raise ActionCountCNNFitError("development IDs are not the frozen v3 manifest")
+    v3_binding = v3_plan.get("identifier_manifest_bindings", {}).get(
+        "development_panel_ids"
+    )
+    if not isinstance(v3_binding, dict) or v3_binding != {
+        "path": "bongard/data/panel_action_count_cnn_development_panels_20260810_v3.json",
+        "record_digest": EXPECTED_V3_DEVELOPMENT_RECORD_DIGEST,
+        "source_sha256": EXPECTED_V3_DEVELOPMENT_SOURCE_SHA256,
+    }:
+        raise ActionCountCNNFitError("v3 development-ID binding differs")
+    if (
+        v2_plan.get("claim") != EXPECTED_V2_PLAN_CLAIM
+        or v2_plan.get("record_digest") != EXPECTED_V2_PLAN_RECORD_DIGEST
+        or _address(v2_plan_raw) != EXPECTED_V2_PLAN_SOURCE_SHA256
+    ):
+        raise ActionCountCNNFitError("training protocol is not the frozen v2 plan")
+    v2_source_binding = v3_plan.get("metadata_source_bindings", {})
+    if (
+        v2_source_binding.get("v2_plan_record_digest")
+        != EXPECTED_V2_PLAN_RECORD_DIGEST
+        or v2_source_binding.get("v2_plan_source_sha256")
+        != EXPECTED_V2_PLAN_SOURCE_SHA256
+    ):
+        raise ActionCountCNNFitError("v3 does not bind the supplied v2 protocol")
+    v2_label_binding = v2_plan.get("manifest_bindings", {}).get(
+        "development_labels"
+    )
+    if (
+        v2_labels.get("schema") != V2_DEVELOPMENT_SCHEMA
+        or v2_labels.get("record_digest")
+        != EXPECTED_V2_DEVELOPMENT_RECORD_DIGEST
+        or _address(v2_labels_raw) != EXPECTED_V2_DEVELOPMENT_SOURCE_SHA256
+        or not isinstance(v2_label_binding, dict)
+        or v2_label_binding.get("record_digest")
+        != EXPECTED_V2_DEVELOPMENT_RECORD_DIGEST
+        or v2_label_binding.get("source_sha256")
+        != EXPECTED_V2_DEVELOPMENT_SOURCE_SHA256
+    ):
+        raise ActionCountCNNFitError("retained v2 development-label binding differs")
+    if set(v3_development.get("cohorts", {})) != {"train", "validation"}:
+        raise ActionCountCNNFitError("v3 development manifest exposes another cohort")
+    if set(v2_labels.get("cohorts", {})) != {"train", "validation"}:
+        raise ActionCountCNNFitError("v2 label manifest exposes another cohort")
+    if set(v3_plan.get("cohorts", {})) != {
+        "train",
+        "validation",
+        "calibration",
+        "evaluation",
+    }:
+        raise ActionCountCNNFitError("v3 plan cohort structure differs")
+
+    all_panel_ids: list[str] = []
+    for cohort, task_count, panel_count in (
+        ("train", 800, 11_200),
+        ("validation", 100, 1_400),
+    ):
+        v3_cohort = v3_plan["cohorts"][cohort]
+        id_cohort = v3_development["cohorts"][cohort]
+        label_rows = v2_labels["cohorts"][cohort].get("rows")
+        task_ids = id_cohort.get("task_ids") if isinstance(id_cohort, dict) else None
+        panel_ids = id_cohort.get("panel_ids") if isinstance(id_cohort, dict) else None
+        if (
+            not isinstance(task_ids, list)
+            or not isinstance(panel_ids, list)
+            or any(not isinstance(value, str) for value in task_ids + panel_ids)
+            or len(task_ids) != task_count
+            or len(task_ids) != len(set(task_ids))
+            or len(panel_ids) != panel_count
+            or len(panel_ids) != len(set(panel_ids))
+            or not isinstance(label_rows, list)
+            or len(label_rows) != panel_count
+        ):
+            raise ActionCountCNNFitError(f"{cohort} retained inventory is invalid")
+        expected_panels = _expected_panel_ids(task_ids)
+        v2_panel_ids = [
+            row.get("panel_id") if isinstance(row, dict) else None for row in label_rows
+        ]
+        task_digest = "sha256:" + canonical_digest(task_ids)
+        panel_digest = "sha256:" + canonical_digest(panel_ids)
+        if (
+            panel_ids != expected_panels
+            or v2_panel_ids != panel_ids
+            or v3_cohort.get("task_ids") != task_ids
+            or v3_cohort.get("task_count") != task_count
+            or v3_cohort.get("panel_count") != panel_count
+            or v3_cohort.get("task_ids_digest") != task_digest
+            or v2_plan["cohorts"][cohort].get("task_ids") != task_ids
+            or v2_plan["cohorts"][cohort].get("task_ids_digest") != task_digest
+            or v2_plan["cohorts"][cohort].get("panel_ids_digest") != panel_digest
+            or v2_plan["cohorts"][cohort].get("panel_count") != panel_count
+            or v2_plan["cohorts"][cohort].get("action_and_catalog_label_rows_digest")
+            != "sha256:" + canonical_digest(label_rows)
+        ):
+            raise ActionCountCNNFitError(
+                f"{cohort} IDs/order/digests differ across v3 and retained v2"
+            )
+        all_panel_ids.extend(panel_ids)
+    if len(all_panel_ids) != 12_600 or len(set(all_panel_ids)) != 12_600:
+        raise ActionCountCNNFitError("retained train/validation panels overlap")
+    if (
+        v3_plan.get("supersession", {}).get("retained_exactly")
+        != ["v2_train_800", "v2_validation_100"]
+        or v3_plan.get("old_v2_design_taint", {}).get("reuse_allowed") is not False
+    ):
+        raise ActionCountCNNFitError("v3 supersession/old-v2 exclusion differs")
+    _verify_execution_protocol(v2_plan)
+    return FitAuthorities(
+        v3_plan=v3_plan,
+        v3_plan_raw=v3_plan_raw,
+        v3_development=v3_development,
+        v3_development_raw=v3_development_raw,
+        v2_protocol_plan=v2_plan,
+        v2_protocol_plan_raw=v2_plan_raw,
+        v2_development_labels=v2_labels,
+        v2_development_labels_raw=v2_labels_raw,
+    )
 
 
 def _label_triple(row: Mapping[str, Any]) -> tuple[int, int, int]:
@@ -256,12 +474,177 @@ def _development_rows(development: Mapping[str, Any]) -> list[dict[str, Any]]:
     return result
 
 
+def _resolved_dataset_root(dataset_root: Path) -> Path:
+    try:
+        root = dataset_root.resolve(strict=True)
+    except OSError as exc:
+        raise ActionCountCNNFitError(f"cannot resolve dataset root: {exc}") from exc
+    if not root.is_dir():
+        raise ActionCountCNNFitError("dataset root is not a directory")
+    return root
+
+
+def _authorization_body(
+    *,
+    authorities: FitAuthorities,
+    dataset_root: Path,
+    intended_precommit_path: Path,
+) -> dict[str, Any]:
+    rows = _development_rows(authorities.v2_development_labels)
+    panel_ids = [row["panel_id"] for row in rows]
+    root = _resolved_dataset_root(dataset_root)
+    source_sha = verify_loaded_source(
+        __name__, expected_source_sha256=_LOADED_SOURCE_SHA256
+    )
+    return {
+        "authorized_fit_cohorts": ["train", "validation"],
+        "authorized_panel_count": len(panel_ids),
+        "authorized_panel_ids": panel_ids,
+        "authorized_panel_ids_digest": "sha256:" + canonical_digest(panel_ids),
+        "conservative_crash_exposure_policy": {
+            "all_authorized_panels_count_as_exposed_once_this_record_is_durable": True,
+            "crash_or_interruption_before_completed_pixel_precommit": (
+                "count_all_12600_authorized_train_validation_PNGs_as_exposed"
+            ),
+        },
+        "correction": dict(FIT_CORRECTION),
+        "dataset_root": str(root),
+        "intended_pixel_precommit_path": str(intended_precommit_path.resolve()),
+        "runtime": _runtime_identity(),
+        "schema": AUTHORIZATION_SCHEMA,
+        "trainer_source_sha256": source_sha,
+        "unopened_and_unauthorized": [
+            "old_v2_calibration_panel_PNGs",
+            "old_v2_evaluation_panel_PNGs",
+            "fresh_v3_calibration_panel_PNGs",
+            "fresh_v3_evaluation_panel_PNGs",
+        ],
+        "v2_development_labels_record_digest": authorities.v2_development_labels[
+            "record_digest"
+        ],
+        "v2_development_labels_source_sha256": _address(
+            authorities.v2_development_labels_raw
+        ),
+        "v2_protocol_plan_record_digest": authorities.v2_protocol_plan[
+            "record_digest"
+        ],
+        "v2_protocol_plan_source_sha256": _address(
+            authorities.v2_protocol_plan_raw
+        ),
+        "v3_development_ids_record_digest": authorities.v3_development[
+            "record_digest"
+        ],
+        "v3_development_ids_source_sha256": _address(
+            authorities.v3_development_raw
+        ),
+        "v3_plan_record_digest": authorities.v3_plan["record_digest"],
+        "v3_plan_source_sha256": _address(authorities.v3_plan_raw),
+    }
+
+
+def create_fit_exposure_authorization(
+    *,
+    v3_plan_path: Path,
+    v3_development_path: Path,
+    v2_protocol_plan_path: Path,
+    v2_development_labels_path: Path,
+    dataset_root: Path,
+    intended_precommit_path: Path,
+    output_path: Path,
+) -> dict[str, Any]:
+    authorities = _verify_fit_authorities(
+        v3_plan_path=v3_plan_path,
+        v3_development_path=v3_development_path,
+        v2_protocol_plan_path=v2_protocol_plan_path,
+        v2_development_labels_path=v2_development_labels_path,
+    )
+    if output_path.resolve() == intended_precommit_path.resolve():
+        raise ActionCountCNNFitError(
+            "authorization and intended pixel precommit paths must differ"
+        )
+    result = _seal_body(
+        _authorization_body(
+            authorities=authorities,
+            dataset_root=dataset_root,
+            intended_precommit_path=intended_precommit_path,
+        )
+    )
+    _write_fsynced(output_path, result)
+    reloaded, _ = _load_record(output_path, label="fit exposure authorization")
+    if reloaded != result:
+        raise ActionCountCNNFitError("fit exposure authorization fresh-load differs")
+    return result
+
+
+def _verify_fit_exposure_authorization(
+    *,
+    authorization_path: Path,
+    authorities: FitAuthorities,
+    dataset_root: Path,
+    intended_precommit_path: Path,
+) -> tuple[dict[str, Any], bytes]:
+    authorization, authorization_raw = _load_record(
+        authorization_path, label="fit exposure authorization"
+    )
+    expected = _seal_body(
+        _authorization_body(
+            authorities=authorities,
+            dataset_root=dataset_root,
+            intended_precommit_path=intended_precommit_path,
+        )
+    )
+    if authorization != expected:
+        raise ActionCountCNNFitError("fit exposure authorization differs")
+    return authorization, authorization_raw
+
+
 def _audit_digest_groups(
     observations: Sequence[Mapping[str, Any]],
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     grouped: defaultdict[str, list[Mapping[str, Any]]] = defaultdict(list)
     for row in observations:
-        grouped[str(row["png_sha256"])].append(row)
+        if not isinstance(row, Mapping) or set(row) != {
+            "fit_cohort",
+            "label_triple",
+            "metric_strata",
+            "panel_id",
+            "png_sha256",
+            "png_size_bytes",
+        }:
+            raise ActionCountCNNFitError("fit PNG observation fields differ")
+        label_triple = row["label_triple"]
+        metric_strata = row["metric_strata"]
+        if (
+            row["fit_cohort"] not in {"train", "validation"}
+            or not isinstance(row["panel_id"], str)
+            or not isinstance(row["png_sha256"], str)
+            or _SHA256_ADDRESS.fullmatch(row["png_sha256"]) is None
+            or isinstance(row["png_size_bytes"], bool)
+            or not isinstance(row["png_size_bytes"], int)
+            or row["png_size_bytes"] <= 0
+            or not isinstance(label_triple, list)
+            or len(label_triple) != 3
+            or _label_triple(
+                {
+                    "straight_action_count": label_triple[0],
+                    "arc_action_count": label_triple[1],
+                    "catalog_convexity_target": label_triple[2],
+                }
+            )
+            != tuple(label_triple)
+            or not isinstance(metric_strata, dict)
+            or set(metric_strata) != {
+                "crossing_task",
+                "line_decoration",
+                "thin_task",
+            }
+            or not isinstance(metric_strata["crossing_task"], bool)
+            or not isinstance(metric_strata["thin_task"], bool)
+            or not isinstance(metric_strata["line_decoration"], str)
+            or not metric_strata["line_decoration"]
+        ):
+            raise ActionCountCNNFitError("fit PNG observation value is invalid")
+        grouped[row["png_sha256"]].append(row)
     groups: list[dict[str, Any]] = []
     duplicate_panel_count = duplicate_group_count = 0
     for digest in sorted(grouped):
@@ -308,15 +691,30 @@ def _audit_digest_groups(
 
 def create_fit_precommit(
     *,
-    plan_path: Path,
-    development_path: Path,
+    v3_plan_path: Path,
+    v3_development_path: Path,
+    v2_protocol_plan_path: Path,
+    v2_development_labels_path: Path,
     dataset_root: Path,
+    authorization_path: Path,
     output_path: Path,
 ) -> dict[str, Any]:
-    plan, plan_raw, development, development_raw = _verify_plan_and_development(
-        plan_path, development_path
+    authorities = _verify_fit_authorities(
+        v3_plan_path=v3_plan_path,
+        v3_development_path=v3_development_path,
+        v2_protocol_plan_path=v2_protocol_plan_path,
+        v2_development_labels_path=v2_development_labels_path,
     )
-    rows = _development_rows(development)
+    authorization, authorization_raw = _verify_fit_exposure_authorization(
+        authorization_path=authorization_path,
+        authorities=authorities,
+        dataset_root=dataset_root,
+        intended_precommit_path=output_path,
+    )
+    # No PNG path is resolved or read above this line.  Once the durable
+    # authorization exists, its policy conservatively counts this entire
+    # 12,600-panel inventory as exposed even if this process crashes.
+    rows = _development_rows(authorities.v2_development_labels)
     observations: list[dict[str, Any]] = []
     for row in rows:
         panel_path = _panel_path(dataset_root, row["panel_id"])
@@ -343,24 +741,42 @@ def create_fit_precommit(
         __name__, expected_source_sha256=_LOADED_SOURCE_SHA256
     )
     body = {
+        "authorization_record_digest": authorization["record_digest"],
+        "authorization_source_sha256": _address(authorization_raw),
         "correction": dict(FIT_CORRECTION),
-        "development_record_digest": development["record_digest"],
-        "development_source_sha256": _address(development_raw),
         "duplicate_digest_audit": duplicate_audit,
         "exact_png_observations": observations,
         "fit_panel_count": len(observations),
         "path_independent_digest_groups": groups,
-        "plan_record_digest": plan["record_digest"],
-        "plan_source_sha256": _address(plan_raw),
         "runtime": _runtime_identity(),
         "schema": PRECOMMIT_SCHEMA,
         "trainer_source_sha256": source_sha,
         "unopened_by_this_precommit": [
-            "v2_calibration_panel_PNGs",
-            "v2_calibration_label_manifest",
-            "v2_evaluation_panel_PNGs",
-            "v2_evaluation_label_manifest",
+            "old_v2_calibration_panel_PNGs",
+            "old_v2_evaluation_panel_PNGs",
+            "fresh_v3_calibration_panel_PNGs",
+            "fresh_v3_evaluation_panel_PNGs",
         ],
+        "v2_development_labels_record_digest": authorities.v2_development_labels[
+            "record_digest"
+        ],
+        "v2_development_labels_source_sha256": _address(
+            authorities.v2_development_labels_raw
+        ),
+        "v2_protocol_plan_record_digest": authorities.v2_protocol_plan[
+            "record_digest"
+        ],
+        "v2_protocol_plan_source_sha256": _address(
+            authorities.v2_protocol_plan_raw
+        ),
+        "v3_development_ids_record_digest": authorities.v3_development[
+            "record_digest"
+        ],
+        "v3_development_ids_source_sha256": _address(
+            authorities.v3_development_raw
+        ),
+        "v3_plan_record_digest": authorities.v3_plan["record_digest"],
+        "v3_plan_source_sha256": _address(authorities.v3_plan_raw),
     }
     result = _seal_body(body)
     _write_fsynced(output_path, result)
@@ -373,19 +789,42 @@ def create_fit_precommit(
 def _verify_precommit(
     *,
     precommit_path: Path,
-    plan: Mapping[str, Any],
-    plan_raw: bytes,
-    development: Mapping[str, Any],
-    development_raw: bytes,
+    authorization_path: Path,
+    authorities: FitAuthorities,
+    dataset_root: Path,
 ) -> dict[str, Any]:
+    authorization, authorization_raw = _verify_fit_exposure_authorization(
+        authorization_path=authorization_path,
+        authorities=authorities,
+        dataset_root=dataset_root,
+        intended_precommit_path=precommit_path,
+    )
     precommit, _ = _load_record(precommit_path, label="fit precommit")
     if precommit.get("schema") != PRECOMMIT_SCHEMA:
         raise ActionCountCNNFitError("fit precommit schema differs")
     expected = {
-        "plan_record_digest": plan["record_digest"],
-        "plan_source_sha256": _address(plan_raw),
-        "development_record_digest": development["record_digest"],
-        "development_source_sha256": _address(development_raw),
+        "authorization_record_digest": authorization["record_digest"],
+        "authorization_source_sha256": _address(authorization_raw),
+        "v3_plan_record_digest": authorities.v3_plan["record_digest"],
+        "v3_plan_source_sha256": _address(authorities.v3_plan_raw),
+        "v3_development_ids_record_digest": authorities.v3_development[
+            "record_digest"
+        ],
+        "v3_development_ids_source_sha256": _address(
+            authorities.v3_development_raw
+        ),
+        "v2_protocol_plan_record_digest": authorities.v2_protocol_plan[
+            "record_digest"
+        ],
+        "v2_protocol_plan_source_sha256": _address(
+            authorities.v2_protocol_plan_raw
+        ),
+        "v2_development_labels_record_digest": authorities.v2_development_labels[
+            "record_digest"
+        ],
+        "v2_development_labels_source_sha256": _address(
+            authorities.v2_development_labels_raw
+        ),
         "trainer_source_sha256": verify_loaded_source(
             __name__, expected_source_sha256=_LOADED_SOURCE_SHA256
         ),
@@ -402,7 +841,11 @@ def _verify_precommit(
     groups = precommit.get("path_independent_digest_groups")
     if not isinstance(observations, list) or not isinstance(groups, list):
         raise ActionCountCNNFitError("fit precommit observations are invalid")
-    expected_rows = _development_rows(development)
+    if len(observations) != 12_600 or precommit.get("fit_panel_count") != len(
+        observations
+    ):
+        raise ActionCountCNNFitError("fit precommit observation count differs")
+    expected_rows = _development_rows(authorities.v2_development_labels)
     expected = {
         row["panel_id"]: {
             "fit_cohort": row["fit_cohort"],
@@ -430,6 +873,17 @@ def _verify_precommit(
         "duplicate_digest_audit"
     ):
         raise ActionCountCNNFitError("fit precommit duplicate audit differs")
+    if (
+        sum(group["multiplicity"] for group in rebuilt_groups) != len(observations)
+        or sum(len(group["panel_ids"]) for group in rebuilt_groups)
+        != len(observations)
+        or any(
+            group["multiplicity"] != len(group["panel_ids"])
+            or group["multiplicity"] != len(group["metric_strata"])
+            for group in rebuilt_groups
+        )
+    ):
+        raise ActionCountCNNFitError("fit precommit group multiplicity differs")
     return precommit
 
 
@@ -606,7 +1060,13 @@ def _materialize_groups(
     result: list[MaterializedGroup] = []
     for group in groups:
         panel_ids = group["panel_ids"]
-        if not isinstance(panel_ids, list) or not panel_ids:
+        if (
+            not isinstance(panel_ids, list)
+            or not panel_ids
+            or group.get("multiplicity") != len(panel_ids)
+            or not isinstance(group.get("metric_strata"), list)
+            or len(group["metric_strata"]) != len(panel_ids)
+        ):
             raise ActionCountCNNFitError("digest group has no panels")
         representative_raw: bytes | None = None
         for panel_id in panel_ids:
@@ -614,6 +1074,8 @@ def _materialize_groups(
             expected = observed_by_panel.get(panel_id)
             if (
                 expected is None
+                or expected.get("png_sha256") != group["png_sha256"]
+                or expected.get("png_size_bytes") != group["png_size_bytes"]
                 or _address(raw) != group["png_sha256"]
                 or len(raw) != group["png_size_bytes"]
             ):
@@ -1003,27 +1465,38 @@ def _load_checkpoint(path: Path, *, expected_raw_sha256: str | None = None):
 
 def run_fit_training(
     *,
-    plan_path: Path,
-    development_path: Path,
+    v3_plan_path: Path,
+    v3_development_path: Path,
+    v2_protocol_plan_path: Path,
+    v2_development_labels_path: Path,
     dataset_root: Path,
+    authorization_path: Path,
     precommit_path: Path,
     checkpoint_path: Path,
     record_path: Path,
 ) -> dict[str, Any]:
-    plan, plan_raw, development, development_raw = _verify_plan_and_development(
-        plan_path, development_path
+    authorities = _verify_fit_authorities(
+        v3_plan_path=v3_plan_path,
+        v3_development_path=v3_development_path,
+        v2_protocol_plan_path=v2_protocol_plan_path,
+        v2_development_labels_path=v2_development_labels_path,
     )
     precommit = _verify_precommit(
         precommit_path=precommit_path,
-        plan=plan,
-        plan_raw=plan_raw,
-        development=development,
-        development_raw=development_raw,
+        authorization_path=authorization_path,
+        authorities=authorities,
+        dataset_root=dataset_root,
     )
     groups = _materialize_groups(precommit=precommit, dataset_root=dataset_root)
-    result = train_core(groups, epochs=16, seed=260810)
+    result = train_core(
+        groups,
+        epochs=int(EXECUTION_PROTOCOL["epochs"]),
+        seed=int(EXECUTION_PROTOCOL["random_seed"]),
+    )
     state_digest = state_dict_digest(result["state"])
-    config_digest = "sha256:" + canonical_digest(plan["training_protocol"])
+    config_digest = "sha256:" + canonical_digest(
+        authorities.v2_protocol_plan["training_protocol"]
+    )
     checkpoint = {
         "architecture_id": ARCHITECTURE_ID,
         "catalog_class_values": list(CATALOG_VALUES),
@@ -1044,7 +1517,7 @@ def run_fit_training(
         raise ActionCountCNNFitError("fresh-loaded checkpoint configuration differs")
     if state_dict_digest(loaded["state_dict"]) != state_digest:
         raise ActionCountCNNFitError("fresh-loaded checkpoint state differs")
-    fresh_model = build_model(seed=260810)
+    fresh_model = build_model(seed=int(EXECUTION_PROTOCOL["random_seed"]))
     fresh_model.load_state_dict(loaded["state_dict"], strict=True)
     fresh_predictions, fresh_loss = _predict_groups(
         fresh_model,
@@ -1073,7 +1546,10 @@ def run_fit_training(
         },
         "history": result["history"],
         "execution_protocol": _execution_protocol_data(),
-        "plan_record_digest": plan["record_digest"],
+        "v2_protocol_plan_record_digest": authorities.v2_protocol_plan[
+            "record_digest"
+        ],
+        "v3_plan_record_digest": authorities.v3_plan["record_digest"],
         "runtime": precommit["runtime"],
         "schema": TRAINING_SCHEMA,
         "selected_epoch": result["best_epoch"],
@@ -1081,7 +1557,9 @@ def run_fit_training(
         "training_metrics_at_selected_checkpoint": result[
             "selected_checkpoint_training_metrics"
         ],
-        "validation_gate": _validation_gate(plan, fresh_metrics),
+        "validation_gate": _validation_gate(
+            authorities.v2_protocol_plan, fresh_metrics
+        ),
         "validation_metrics": fresh_metrics,
         "validation_prediction_rows": prediction_rows,
         "validation_predictions_digest": "sha256:" + canonical_digest(prediction_rows),
@@ -1096,23 +1574,28 @@ def run_fit_training(
 
 def replay_fit_training(
     *,
-    plan_path: Path,
-    development_path: Path,
+    v3_plan_path: Path,
+    v3_development_path: Path,
+    v2_protocol_plan_path: Path,
+    v2_development_labels_path: Path,
     dataset_root: Path,
+    authorization_path: Path,
     precommit_path: Path,
     checkpoint_path: Path,
     record_path: Path,
     replay_output_path: Path,
 ) -> dict[str, Any]:
-    plan, plan_raw, development, development_raw = _verify_plan_and_development(
-        plan_path, development_path
+    authorities = _verify_fit_authorities(
+        v3_plan_path=v3_plan_path,
+        v3_development_path=v3_development_path,
+        v2_protocol_plan_path=v2_protocol_plan_path,
+        v2_development_labels_path=v2_development_labels_path,
     )
     precommit = _verify_precommit(
         precommit_path=precommit_path,
-        plan=plan,
-        plan_raw=plan_raw,
-        development=development,
-        development_raw=development_raw,
+        authorization_path=authorization_path,
+        authorities=authorities,
+        dataset_root=dataset_root,
     )
     archived, _ = _load_record(record_path, label="archived fit result")
     if archived.get("schema") != TRAINING_SCHEMA:
@@ -1120,12 +1603,16 @@ def replay_fit_training(
     expected_execution = _execution_protocol_data()
     if (
         archived.get("correction") != dict(FIT_CORRECTION)
-        or archived.get("plan_record_digest") != plan["record_digest"]
+        or archived.get("v3_plan_record_digest")
+        != authorities.v3_plan["record_digest"]
+        or archived.get("v2_protocol_plan_record_digest")
+        != authorities.v2_protocol_plan["record_digest"]
         or archived.get("fit_precommit_record_digest") != precommit["record_digest"]
         or archived.get("runtime") != precommit["runtime"]
         or archived.get("execution_protocol") != expected_execution
         or archived.get("config_digest")
-        != "sha256:" + canonical_digest(plan["training_protocol"])
+        != "sha256:"
+        + canonical_digest(authorities.v2_protocol_plan["training_protocol"])
     ):
         raise ActionCountCNNFitError("archived fit authority bindings differ")
     checkpoint, _ = _load_checkpoint(
@@ -1178,15 +1665,22 @@ def replay_fit_training(
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    authorize = commands.add_parser("authorize-fit-exposure")
     precommit = commands.add_parser("precommit-fit")
     train = commands.add_parser("train-fit")
     replay = commands.add_parser("replay-fit")
-    for subparser in (precommit, train, replay):
-        subparser.add_argument("--plan", type=Path, required=True)
-        subparser.add_argument("--development-labels", type=Path, required=True)
+    for subparser in (authorize, precommit, train, replay):
+        subparser.add_argument("--v3-plan", type=Path, required=True)
+        subparser.add_argument("--v3-development-panels", type=Path, required=True)
+        subparser.add_argument("--v2-training-plan", type=Path, required=True)
+        subparser.add_argument("--v2-development-labels", type=Path, required=True)
         subparser.add_argument("--dataset-root", type=Path, required=True)
+    authorize.add_argument("--intended-precommit", type=Path, required=True)
+    authorize.add_argument("--output", type=Path, required=True)
+    precommit.add_argument("--authorization", type=Path, required=True)
     precommit.add_argument("--output", type=Path, required=True)
     for subparser in (train, replay):
+        subparser.add_argument("--authorization", type=Path, required=True)
         subparser.add_argument("--precommit", type=Path, required=True)
         subparser.add_argument("--checkpoint", type=Path, required=True)
         subparser.add_argument("--record", type=Path, required=True)
@@ -1197,15 +1691,28 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     common = {
-        "plan_path": args.plan.resolve(),
-        "development_path": args.development_labels.resolve(),
+        "v3_plan_path": args.v3_plan.resolve(),
+        "v3_development_path": args.v3_development_panels.resolve(),
+        "v2_protocol_plan_path": args.v2_training_plan.resolve(),
+        "v2_development_labels_path": args.v2_development_labels.resolve(),
         "dataset_root": args.dataset_root.resolve(),
     }
-    if args.command == "precommit-fit":
-        result = create_fit_precommit(**common, output_path=args.output.resolve())
+    if args.command == "authorize-fit-exposure":
+        result = create_fit_exposure_authorization(
+            **common,
+            intended_precommit_path=args.intended_precommit.resolve(),
+            output_path=args.output.resolve(),
+        )
+    elif args.command == "precommit-fit":
+        result = create_fit_precommit(
+            **common,
+            authorization_path=args.authorization.resolve(),
+            output_path=args.output.resolve(),
+        )
     elif args.command == "train-fit":
         result = run_fit_training(
             **common,
+            authorization_path=args.authorization.resolve(),
             precommit_path=args.precommit.resolve(),
             checkpoint_path=args.checkpoint.resolve(),
             record_path=args.record.resolve(),
@@ -1213,6 +1720,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.command == "replay-fit":
         result = replay_fit_training(
             **common,
+            authorization_path=args.authorization.resolve(),
             precommit_path=args.precommit.resolve(),
             checkpoint_path=args.checkpoint.resolve(),
             record_path=args.record.resolve(),
