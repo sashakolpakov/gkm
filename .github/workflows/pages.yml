@@ -29,6 +29,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Verify manuscript integrity manifest
+        run: make -C arc/manuscript verify-manifest
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 

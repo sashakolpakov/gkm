@@ -20,11 +20,20 @@ from typing import Any
 
 import codex_campaign_status as Status
 import codex_usage_guard as Guard
+import codex_failure_revision_contract as Revision
 
 
 DEFAULT_RESERVE = 20
 DEFAULT_MAX_RUNS = 60
 DEFAULT_MAX_TOKENS = 32_000_000
+DEFAULT_FAILURE_REVISION_ROUNDS = Revision.DEFAULT_ROUNDS
+FAILURE_REVISION_ROUND_CHOICES = frozenset({
+    Revision.DEFAULT_ROUNDS, Revision.TREATMENT_ROUNDS,
+})
+FAILURE_REVISION_PROTOCOL_SHA256 = Revision.PROTOCOL_SHA256
+FAILURE_REVISION_TREATMENT_EFFORT = "max"
+FAILURE_REVISION_TREATMENT_MINUTES = 300
+FAILURE_REVISION_TREATMENT_ALLOCATION_POLICY = "hard"
 BOUNDARY_POLICY_WIP_REJECTION = (
     "rejected:filesystem_boundary_policy_binding"
 )
@@ -119,6 +128,18 @@ def required_headroom(effort: str, minutes: int,
     return max(floor, math.ceil(max(rates) * minutes) + 1)
 
 
+def validate_failure_revision_rounds(value: object) -> int:
+    """Return the one canonical bounded inner-revision configuration."""
+
+    if (
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or value not in FAILURE_REVISION_ROUND_CHOICES
+    ):
+        raise ValueError("failure revision rounds must be exactly 1 or 4")
+    return value
+
+
 def _command(
     row: dict[str, Any],
     effort: str,
@@ -127,7 +148,14 @@ def _command(
     turns: list[dict[str, Any]],
     minutes: int,
     unlimited: bool,
+    failure_revision_rounds: int = DEFAULT_FAILURE_REVISION_ROUNDS,
 ) -> dict[str, Any]:
+    failure_revision_rounds = validate_failure_revision_rounds(
+        failure_revision_rounds
+    )
+    failure_revision_treatment = (
+        failure_revision_rounds > DEFAULT_FAILURE_REVISION_ROUNDS
+    )
     binding = Status.validate_frontier_binding({
         field: row.get(field)
         for field in (
@@ -171,8 +199,23 @@ def _command(
                 f"frontier {key} disagrees with retry policy: "
                 f"{row[key]!r} != {value!r}"
             )
+    generation_effort = (
+        FAILURE_REVISION_TREATMENT_EFFORT
+        if failure_revision_treatment
+        else effort
+    )
+    generation_minutes = (
+        FAILURE_REVISION_TREATMENT_MINUTES
+        if failure_revision_treatment
+        else minutes
+    )
+    allocation_policy = (
+        FAILURE_REVISION_TREATMENT_ALLOCATION_POLICY
+        if failure_revision_treatment
+        else "drain"
+    )
     headroom = 1 if unlimited else required_headroom(
-        effort, minutes, turns
+        generation_effort, generation_minutes, turns
     )
     effective_reserve = 0 if unlimited else reserve
     max_runs = -1 if unlimited else DEFAULT_MAX_RUNS
@@ -196,10 +239,10 @@ def _command(
         f"--max-level={row['next_level']}",
         "--proposer=codex",
         "--model=gpt-5.6-sol",
-        f"--minutes={minutes}",
-        f"--codex-effort={effort}",
+        f"--minutes={generation_minutes}",
+        f"--codex-effort={generation_effort}",
         "--codex-debrief-effort=medium",
-        "--codex-allocation-policy=drain",
+        f"--codex-allocation-policy={allocation_policy}",
         "--debrief-policy=never",
         f"--codex-weekly-reserve={effective_reserve}",
         f"--codex-weekly-headroom={headroom}",
@@ -232,12 +275,16 @@ def _command(
                 "WIP continuation lacks one scheduler-selected capsule"
             )
         args.append(f"--expected-wip-attempt={expected_wip_attempt}")
-    return {
+    if failure_revision_rounds > DEFAULT_FAILURE_REVISION_ROUNDS:
+        args.append(
+            f"--failure-revision-rounds={failure_revision_rounds}"
+        )
+    item = {
         **binding,
         "game": row["game"],
         "target_level": row["next_level"],
-        "effort": effort,
-        "minutes": minutes,
+        "effort": generation_effort,
+        "minutes": generation_minutes,
         "retry_complexity_n": n,
         "policy_dispatch_mode": policy["dispatch_mode"],
         "dispatch_mode": effective_dispatch_mode,
@@ -260,6 +307,14 @@ def _command(
         "argv": args,
         "command": shlex.join(args),
     }
+    if failure_revision_rounds > DEFAULT_FAILURE_REVISION_ROUNDS:
+        item.update({
+            "failure_revision_rounds": failure_revision_rounds,
+            "failure_revision_protocol_sha256": (
+                FAILURE_REVISION_PROTOCOL_SHA256
+            ),
+        })
+    return item
 
 
 def choose_exploitation_effort(
@@ -371,7 +426,8 @@ def unlimited_escalation(
 
 
 def adaptive_campaign_item(
-    report: dict[str, Any], *, reserve: int
+    report: dict[str, Any], *, reserve: int,
+    failure_revision_rounds: int = DEFAULT_FAILURE_REVISION_ROUNDS,
 ) -> dict[str, Any] | None:
     """Build the next item from fresh exact-frontier retry evidence."""
     frontiers = report.get("frontiers", [])
@@ -413,6 +469,7 @@ def adaptive_campaign_item(
         turns=turns,
         minutes=minutes,
         unlimited=unlimited,
+        failure_revision_rounds=failure_revision_rounds,
     )
     if item["warm_wip_recovery_required"]:
         item["experiment_role"] = (
@@ -428,14 +485,21 @@ def adaptive_campaign_item(
     return item
 
 
-def initial_queue(report: dict[str, Any], *, reserve: int) -> list[dict[str, Any]]:
+def initial_queue(
+    report: dict[str, Any], *, reserve: int,
+    failure_revision_rounds: int = DEFAULT_FAILURE_REVISION_ROUNDS,
+) -> list[dict[str, Any]]:
     """Seed one fresh, currently highest-ranked item.
 
     Only one item is frozen into the plan because every clear or failed attempt
     changes the frontier ranking.  The runner rebuilds all later items from fresh
     artifacts and a fresh allowance read.
     """
-    item = adaptive_campaign_item(report, reserve=reserve)
+    item = adaptive_campaign_item(
+        report,
+        reserve=reserve,
+        failure_revision_rounds=failure_revision_rounds,
+    )
     return [item] if item is not None else []
 
 
@@ -466,8 +530,18 @@ def cold_screen_cohort(report: dict[str, Any], *, reserve: int,
 
 
 def policy_report(report: dict[str, Any], *, reserve: int = DEFAULT_RESERVE,
-                  cohort_size: int = 4) -> dict[str, Any]:
-    queue = initial_queue(report, reserve=reserve)
+                  cohort_size: int = 4,
+                  failure_revision_rounds: int = (
+                      DEFAULT_FAILURE_REVISION_ROUNDS
+                  )) -> dict[str, Any]:
+    failure_revision_rounds = validate_failure_revision_rounds(
+        failure_revision_rounds
+    )
+    queue = initial_queue(
+        report,
+        reserve=reserve,
+        failure_revision_rounds=failure_revision_rounds,
+    )
     allowance = report.get("allowance") or {}
     unlimited = allowance.get("window_name") == "unlimited"
     remaining = allowance.get("remaining_percent")
@@ -494,7 +568,12 @@ def policy_report(report: dict[str, Any], *, reserve: int = DEFAULT_RESERVE,
     else:
         phase = "run_initial_item_then_adapt"
         admit = True
-    return {
+    if (
+        failure_revision_rounds > DEFAULT_FAILURE_REVISION_ROUNDS
+        and phase == "run_initial_item_then_adapt"
+    ):
+        phase = "run_one_frozen_failure_revision_item"
+    payload = {
         "phase": phase,
         "admit_next_turn": admit,
         "reserve_percent": 0 if unlimited else reserve,
@@ -534,6 +613,14 @@ def policy_report(report: dict[str, Any], *, reserve: int = DEFAULT_RESERVE,
         "cold_screen_cohort": [],
         "next_frontiers": report.get("frontiers", []),
     }
+    if failure_revision_rounds > DEFAULT_FAILURE_REVISION_ROUNDS:
+        payload.update({
+            "failure_revision_rounds": failure_revision_rounds,
+            "failure_revision_protocol_sha256": (
+                FAILURE_REVISION_PROTOCOL_SHA256
+            ),
+        })
+    return payload
 
 
 def main() -> int:
@@ -542,6 +629,12 @@ def main() -> int:
     parser.add_argument("--ledger", type=Path, default=Guard.DEFAULT_LEDGER)
     parser.add_argument("--reserve-percent", type=int, default=DEFAULT_RESERVE)
     parser.add_argument("--cohort-size", type=int, default=4)
+    parser.add_argument(
+        "--failure-revision-rounds",
+        type=int,
+        choices=sorted(FAILURE_REVISION_ROUND_CHOICES),
+        default=DEFAULT_FAILURE_REVISION_ROUNDS,
+    )
     parser.add_argument("--write-plan", type=Path)
     args = parser.parse_args()
     snapshot = Guard.query_rate_limits() if args.live else None
@@ -555,7 +648,10 @@ def main() -> int:
         max_tokens=DEFAULT_MAX_TOKENS,
     )
     payload = policy_report(
-        report, reserve=args.reserve_percent, cohort_size=args.cohort_size
+        report,
+        reserve=args.reserve_percent,
+        cohort_size=args.cohort_size,
+        failure_revision_rounds=args.failure_revision_rounds,
     )
     rendered = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     if args.write_plan:

@@ -1000,6 +1000,7 @@ CONTROL_CONTRACT_FILES = (
     "arc/crack_lab/arc_agi3_boundary_certifier.py",
     "arc/arc_agi3_adapter.py",
     "arc/crack_lab/codex_campaign_status.py",
+    "arc/crack_lab/codex_failure_revision_contract.py",
     "arc/crack_lab/claude_usage_guard.py",
     "arc/crack_lab/codex_usage_guard.py",
     "arc/crack_lab/gkm_arena.py",

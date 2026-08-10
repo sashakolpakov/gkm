@@ -23,7 +23,6 @@ from typing import Any, Optional
 
 import codex_usage_guard as Guard
 import arc_agi3_proposer_boundary as Boundary
-import codex_failure_revision_contract as Revision
 
 
 HERE = Path(__file__).resolve().parent
@@ -1023,8 +1022,6 @@ def _is_clean_no_progress(turn: dict[str, Any]) -> bool:
 
 
 def _is_solver_attempt(turn: dict[str, Any]) -> bool:
-    if turn.get("failure_revision_contract_valid") == 0:
-        return False
     if turn.get("failure_class") is not None:
         return False
     if turn.get("solved_target") is True:
@@ -1485,18 +1482,11 @@ def _transcript_counts(
 ) -> dict[str, int]:
     workspace = record.get("workspace")
     transcript = record.get("transcript")
-    aggregate_claimed = Revision.has_aggregate_markers(record)
     result = {
         "command_executions": 0,
         "file_changes": 0,
         "turn_completed_events": 0,
     }
-    if aggregate_claimed:
-        result.update({
-            "failure_revision_contract_valid": 0,
-            "authenticated_revision_rounds_used": 0,
-            "authenticated_revision_rounds_max": 0,
-        })
     if not isinstance(workspace, str) or not isinstance(transcript, str):
         return result
     # ``gkm_legs`` seals the authoritative transcript outside the proposer-
@@ -1514,15 +1504,7 @@ def _transcript_counts(
         return result
     roots = _configured_transcript_roots(transcript_roots)
     canonical = roots[0]
-    diagnostics = record.get("diagnostics")
-    if aggregate_claimed and (
-        not isinstance(diagnostics, str)
-        or not diagnostics
-        or Path(diagnostics).name != diagnostics
-    ):
-        return result
     raw_candidates: dict[str, bytes] = {}
-    aggregate_candidates: dict[tuple[str, str], tuple[bytes, bytes]] = {}
     for scratch in roots:
         protected = (
             scratch / ".proposer_transcripts" / workspace / transcript
@@ -1531,7 +1513,7 @@ def _transcript_counts(
         is_canonical = scratch == canonical
         if protected.exists():
             path = protected
-        elif not aggregate_claimed and is_canonical and live.exists():
+        elif is_canonical and live.exists():
             # Backward compatibility for legacy canonical turns that predate
             # protected transcript sealing.  Noncanonical evidence must always
             # use the protected copy authenticated by the terminal ledger row.
@@ -1544,24 +1526,6 @@ def _transcript_counts(
             raw = _read_stable_regular(path)
         except (OSError, ValueError):
             return result
-        if aggregate_claimed:
-            assert isinstance(diagnostics, str)
-            diagnostics_path = path.parent / diagnostics
-            if (
-                not diagnostics_path.exists()
-                or not _physical_transcript_candidate(
-                    scratch, diagnostics_path
-                )
-            ):
-                return result
-            try:
-                diagnostics_raw = _read_stable_regular(diagnostics_path)
-            except (OSError, ValueError):
-                return result
-            aggregate_candidates[(
-                hashlib.sha256(raw).hexdigest(),
-                hashlib.sha256(diagnostics_raw).hexdigest(),
-            )] = (raw, diagnostics_raw)
         if not is_canonical:
             expected_sha = record.get("protected_transcript_sha256")
             if (
@@ -1577,30 +1541,6 @@ def _transcript_counts(
         # Missing evidence and conflicting cross-root candidates are both
         # noncounting.  In particular, never pick one root by precedence.
         return result
-    if aggregate_claimed:
-        if len(aggregate_candidates) != 1:
-            return result
-        transcript_payload, diagnostics_payload = next(
-            iter(aggregate_candidates.values())
-        )
-        try:
-            aggregate = Revision.validate_exec(
-                record,
-                target_level=record.get("target_level"),
-                reached_before=record.get("reached"),
-                transcript_payload=transcript_payload,
-                diagnostics_payload=diagnostics_payload,
-                require_evidence=True,
-            )
-        except Revision.ContractError:
-            return result
-        if aggregate is None:
-            return result
-        result.update({
-            "failure_revision_contract_valid": 1,
-            "authenticated_revision_rounds_used": aggregate.rounds_used,
-            "authenticated_revision_rounds_max": aggregate.rounds_max,
-        })
     raw_transcript = next(iter(raw_candidates.values())).decode(
         "utf-8", errors="ignore"
     )
@@ -1621,76 +1561,16 @@ def _transcript_counts(
     return result
 
 
-def _failure_revision_counts(
-    record: dict[str, Any], transcript: dict[str, Any],
-    outcome: dict[str, Any],
-) -> tuple[int | None, int | None]:
-    """Project legacy rows to one turn and reject malformed aggregates."""
-
-    if not Revision.has_aggregate_markers(record):
-        return 1, 1
-    if transcript.get("failure_revision_contract_valid") != 1:
-        return None, None
-    try:
-        aggregate = Revision.validate_exec(
-            record,
-            target_level=record.get("target_level"),
-            reached_before=record.get("reached"),
-        )
-        if outcome:
-            if any((
-                outcome.get("thread_id") != record.get("thread_id"),
-                outcome.get("codex_exec_transcript")
-                != record.get("transcript"),
-            )):
-                raise Revision.ContractError(
-                    "aggregate outcome binding changed"
-                )
-            assert aggregate is not None
-            Revision.validate_outcome(
-                record, outcome, aggregate,
-                target_level=record.get("target_level"),
-                reached_before=record.get("reached"),
-            )
-    except Revision.ContractError:
-        return None, None
-    return (
-        transcript["authenticated_revision_rounds_used"],
-        transcript["authenticated_revision_rounds_max"],
-    )
-
-
-def _monotonic_aggregate_correction(
-    correction: dict[str, Any],
-) -> bool:
-    """Allow a post-hoc aggregate correction only to remove solver authority."""
-
-    if not correction:
-        return True
-    solved = correction.get("solved_target")
-    failure_class = correction.get("failure_class")
-    taint = correction.get("taint_verdict")
-    return bool(
-        failure_class in {"taint", "infrastructure"}
-        and correction.get("retry_increment") == 0
-        and (solved is None or solved is False)
-        and taint != "clean"
-        and (failure_class != "taint" or taint == "tainted")
-    )
-
-
 def joined_turns(
     records: list[dict[str, Any]],
     *,
     transcript_roots: Optional[tuple[Path, ...]] = None,
 ) -> list[dict[str, Any]]:
-    outcomes: dict[object, list[dict[str, Any]]] = defaultdict(list)
-    for record in records:
-        if (
-            record.get("event") == "codex_level_outcome"
-            and record.get("thread_id")
-        ):
-            outcomes[record["thread_id"]].append(record)
+    outcomes = {
+        row.get("thread_id"): row
+        for row in records
+        if row.get("event") == "codex_level_outcome" and row.get("thread_id")
+    }
     corrections_by_thread = {
         row.get("thread_id"): row
         for row in records
@@ -1722,9 +1602,7 @@ def joined_turns(
     for row in records:
         if row.get("event") != "codex_exec":
             continue
-        aggregate_claimed = Revision.has_aggregate_markers(row)
-        bound_outcomes = outcomes.get(row.get("thread_id"), [])
-        outcome = bound_outcomes[-1] if bound_outcomes else {}
+        outcome = outcomes.get(row.get("thread_id"), {})
         correction = (
             corrections_by_thread.get(row.get("thread_id"))
             or corrections_by_transcript.get(row.get("transcript"))
@@ -1737,83 +1615,18 @@ def joined_turns(
                 row, transcript_roots=transcript_roots
             )
         )
-        if aggregate_claimed and len(bound_outcomes) > 1:
-            # The treatment protocol appends at most one bound outcome.  A
-            # duplicate is ambiguous even when both JSON objects happen to
-            # compare equal; do not let the last row silently win status or
-            # retry authority.
-            transcript["failure_revision_contract_valid"] = 0
-        rounds_used, rounds_max = _failure_revision_counts(
-            row, transcript, outcome
+        failure_class = correction.get(
+            "failure_class", row.get("failure_class")
         )
-        if aggregate_claimed and rounds_used is None:
-            transcript["failure_revision_contract_valid"] = 0
-        aggregate_valid = bool(
-            not aggregate_claimed or rounds_used is not None
+        solved_target = (
+            correction["solved_target"]
+            if "solved_target" in correction
+            else outcome.get("solved_target")
         )
-        correction_valid = bool(
-            not aggregate_claimed
-            or _monotonic_aggregate_correction(correction)
+        taint_verdict = correction.get(
+            "taint_verdict", outcome.get("taint_verdict")
         )
-        if aggregate_claimed and not correction_valid:
-            # A retrospective row may veto a solver result, but it cannot
-            # upgrade, reclassify, or make an authenticated aggregate count.
-            transcript["failure_revision_contract_valid"] = 0
-            rounds_used = rounds_max = None
-            aggregate_valid = False
-        if aggregate_claimed:
-            failure_class = row.get("failure_class")
-            failure_detail_class = row.get("failure_detail_class")
-            terminal_errors = row.get("terminal_errors")
-            solved_target = outcome.get("solved_target")
-            taint_verdict = outcome.get(
-                "taint_verdict", row.get("taint_verdict")
-            )
-            retry_increment: int | object | None = None
-            if correction and correction_valid and aggregate_valid:
-                failure_class = correction["failure_class"]
-                failure_detail_class = correction.get(
-                    "failure_detail_class", failure_detail_class
-                )
-                terminal_errors = correction.get(
-                    "terminal_errors", terminal_errors
-                )
-                solved_target = correction.get("solved_target")
-                taint_verdict = correction.get(
-                    "taint_verdict", taint_verdict
-                )
-                retry_increment = 0
-            if not aggregate_valid:
-                solved_target = None
-                taint_verdict = row.get("taint_verdict")
-                retry_increment = 0
-        else:
-            failure_class = correction.get(
-                "failure_class", row.get("failure_class")
-            )
-            failure_detail_class = correction.get(
-                "failure_detail_class", row.get("failure_detail_class")
-            )
-            terminal_errors = correction.get(
-                "terminal_errors", row.get("terminal_errors")
-            )
-            solved_target = (
-                correction["solved_target"]
-                if "solved_target" in correction
-                else outcome.get("solved_target")
-            )
-            taint_verdict = correction.get(
-                "taint_verdict", outcome.get("taint_verdict")
-            )
-            retry_increment = correction.get("retry_increment")
-        transcript_complete = bool(
-            rounds_used is not None
-            and (
-                transcript.get("failure_revision_contract_valid") == 1
-                if aggregate_claimed
-                else transcript["turn_completed_events"] == 1
-            )
-        )
+        transcript_complete = transcript["turn_completed_events"] == 1
         clean_no_progress = bool(
             solved_target is False
             and failure_class is None
@@ -1822,8 +1635,6 @@ def joined_turns(
             and taint_verdict == "clean"
             and transcript_complete
         )
-        if retry_increment is None:
-            retry_increment = int(clean_no_progress)
         before, after = row.get("weekly_remaining_before"), row.get("weekly_remaining_after")
         weekly_delta = before - after if isinstance(before, int) and isinstance(after, int) else None
         binding_claims = []
@@ -1884,25 +1695,18 @@ def joined_turns(
                 "parent_action_count",
             )
         }
-        aggregate_telemetry = (
-            {
-                "failure_revision_rounds_used": rounds_used,
-                "failure_revision_rounds_max": rounds_max,
-                "failure_revision_protocol_sha256": row.get(
-                    "failure_revision_protocol_sha256"
-                ),
-            }
-            if aggregate_claimed else {}
-        )
-        trusted_outcome = outcome if aggregate_valid else {}
         result.append({
             "thread_id": row.get("thread_id"),
             "transcript": row.get("transcript"),
             "started_at": row.get("started_at"),
             "run_label": row.get("run_label"),
             "failure_class": failure_class,
-            "failure_detail_class": failure_detail_class,
-            "terminal_errors": terminal_errors,
+            "failure_detail_class": correction.get(
+                "failure_detail_class", row.get("failure_detail_class")
+            ),
+            "terminal_errors": correction.get(
+                "terminal_errors", row.get("terminal_errors")
+            ),
             "model": row.get("model"),
             "reasoning_effort": row.get("reasoning_effort"),
             "duration_seconds": row.get("duration_seconds"),
@@ -1920,25 +1724,21 @@ def joined_turns(
             "displayed_weekly_points_used": weekly_delta,
             "solved_target": solved_target,
             "clean_no_progress": clean_no_progress,
-            "retry_increment": retry_increment,
-            "game": trusted_outcome.get(
-                "game",
-                correction.get("game", row.get("game"))
-                if not aggregate_claimed else row.get("game"),
+            "retry_increment": correction.get(
+                "retry_increment", int(clean_no_progress)
             ),
-            "target_level": trusted_outcome.get(
+            "game": outcome.get(
+                "game", correction.get("game", row.get("game"))
+            ),
+            "target_level": outcome.get(
                 "target_level",
-                correction.get("target_level", row.get("target_level"))
-                if not aggregate_claimed else row.get("target_level"),
+                correction.get("target_level", row.get("target_level")),
             ),
-            "winning_marginal_C": trusted_outcome.get(
-                "winning_marginal_C"
-            ),
+            "winning_marginal_C": outcome.get("winning_marginal_C"),
             "taint_verdict": taint_verdict,
             "transcript_complete": transcript_complete,
             "frontier_binding_authority": binding_authority,
             **frontier_binding,
-            **aggregate_telemetry,
             **transcript,
         })
     return result

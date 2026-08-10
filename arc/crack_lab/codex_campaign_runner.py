@@ -21,6 +21,7 @@ import fcntl
 import glob
 import hashlib
 import json
+import math
 import os
 import re
 import shlex
@@ -30,7 +31,7 @@ import stat
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -40,6 +41,7 @@ import codex_campaign_policy as Policy
 import codex_campaign_reboot_recovery as RebootRecovery
 import codex_campaign_status as Status
 import codex_usage_guard as Guard
+import codex_failure_revision_contract as Revision
 import arc_agi3_contiguous_supervisor as Contiguous
 import gkm_legs as Legs
 
@@ -164,6 +166,76 @@ INTERRUPTED_RELEASE_AUTHORITY_KIND = (
 INTERRUPTED_FAILURE_DETAIL = "sandbox_isolated_outer_sigint_exec_zero"
 SANDBOX_ABSENCE_SAMPLES = 3
 SANDBOX_ABSENCE_INTERVAL_SECONDS = 0.5
+OPEN_FILE_HOLDER_ABSENCE_SAMPLES = 3
+OPEN_FILE_HOLDER_ABSENCE_INTERVAL_SECONDS = 0.1
+MAX_OPEN_FILE_HOLDER_PIDS = 65_536
+MAX_OPEN_FILE_HOLDER_TRAVERSAL_DEPTH = 512
+MAX_DETACHED_TEARDOWN_ADOPTIONS = 128
+MAX_OPEN_FILE_HOLDER_OUTPUT_BYTES = 2 * 1024 * 1024
+OPEN_FILE_HOLDER_SCAN_TIMEOUT_SECONDS = 60.0
+LSOF_EXECUTABLE_CANDIDATES = (
+    Path("/usr/sbin/lsof"),
+    Path("/usr/bin/lsof"),
+)
+DETACHED_TEARDOWN_ARM_SCHEMA = (
+    "scheduler_detached_generation_teardown_arm_v1"
+)
+DETACHED_TEARDOWN_ARM_EVENT = "detached_generation_teardown_armed"
+DETACHED_TEARDOWN_COMPLETION_SCHEMA = (
+    "scheduler_detached_generation_teardown_completed_v1"
+)
+DETACHED_TEARDOWN_COMPLETION_EVENT = (
+    "detached_generation_teardown_completed"
+)
+DETACHED_TEARDOWN_CORRECTION_SCHEMA = (
+    "scheduler_detached_generation_stale_arm_retired_v1"
+)
+DETACHED_TEARDOWN_CORRECTION_EVENT = (
+    "detached_generation_stale_arm_retired"
+)
+DETACHED_TEARDOWN_ADOPTION_SCHEMA = (
+    "scheduler_detached_generation_teardown_adoption_v1"
+)
+DETACHED_TEARDOWN_ADOPTION_EVENT = "detached_generation_teardown_adopted"
+DETACHED_TEARDOWN_TERM_SECONDS = 5.0
+DETACHED_TEARDOWN_KILL_SECONDS = 10.0
+DETACHED_TEARDOWN_ARM_KEYS = frozenset({
+    "schema", "event", "recorded_at", "dispatch_id", "recovery_nonce",
+    "boot_identity_source", "boot_identity", "projected_item_sha256",
+    "historical_runner_source_sha256", "historical_runner_head_commit",
+    "frontier_binding", "sandbox_contract_sha256", "exec_record_sha256",
+    "canonical_root", "canonical_root_identity", "canonical_digest",
+    "scratch_root", "scratch_root_identity", "workspace",
+    "workspace_identity", "protected", "protected_identity",
+    "marker_name", "marker_root", "marker_root_identity",
+    "marker_identity", "marker_bytes", "marker_sha256",
+    "marker_prefix_bytes", "marker_prefix_sha256",
+    "stale_recovery_arm_present", "stale_recovery_nonce",
+    "stale_recovery_arm_sha256", "ledger_prefix_bytes",
+    "ledger_prefix_sha256", "wip_state_sha256",
+    "workspace_tree_observation_sha256", "protected_tree_sha256",
+    "mutable_roots", "lsof_executable", "lsof_executable_identity",
+    "holder_inventory", "holder_inventory_sha256", "anchor_pids",
+    "holder_selector", "delegated_process_class", "process_claim",
+})
+DETACHED_TEARDOWN_COMPLETION_KEYS = frozenset({
+    "schema", "event", "recorded_at", "dispatch_id", "recovery_nonce",
+    "arm_record_sha256", "arm_identity", "holder_inventory_sha256",
+    "adoption_record_names", "adoption_record_sha256s",
+    "workspace_tree_observation_sha256", "protected_tree_sha256",
+    "boundary_finding_counts", "terminal_taint_scan_passed",
+    "captured_process_identities_absent", "captured_groups_absent",
+    "open_file_holders_absent", "stale_recovery_arm_retirement_authorized",
+    "absence_sample_count", "absence_window_ns", "absence_first_at",
+    "absence_last_at",
+})
+DETACHED_TEARDOWN_CORRECTION_KEYS = frozenset({
+    "schema", "event", "recorded_at", "dispatch_id", "recovery_nonce",
+    "arm_record_sha256", "completion_record_sha256",
+    "old_marker_identity", "new_marker_identity", "marker_prefix_bytes",
+    "marker_prefix_sha256", "stale_recovery_nonce",
+    "stale_recovery_arm_invalidated",
+})
 SANDBOX_CONTRACTS = {
     "bb3474290d3411f980d53ffcee75be8234e634d478b1136677b9c6a93fe9ec64":
         RebootRecovery.SANDBOX_CONTRACT_SHA256,
@@ -176,6 +248,8 @@ SANDBOX_CONTRACTS = {
     "18b5a3f1da18d10e9f7dba2c73b5d097abe691bd1b2cdfad3f3dcdf99d6a9fc0":
         RebootRecovery.SANDBOX_CONTRACT_SHA256,
     "3bbd7ca93c9d74eef0b532ca8159283ce6d7fa81b6be316f0792a72ccd054398":
+        RebootRecovery.SANDBOX_CONTRACT_SHA256,
+    "eefa34dcef63adb4d99deb07de9fa1920d8ef792080427557d5460201ff32f94":
         RebootRecovery.SANDBOX_CONTRACT_SHA256,
 }
 SANDBOX_ABANDON_EVENT_KEYS = frozenset({
@@ -338,13 +412,31 @@ PINNED_HISTORICAL_RUNNERS = {
         "evidence_schema": "sealed_transcript_only_v1",
         "lock_schema": "in_workspace_v1",
     },
+    # Bounded fresh-ephemeral failure-revision treatment.
+    "eefa34dcef63adb4d99deb07de9fa1920d8ef792080427557d5460201ff32f94": {
+        "head_commit": "0eeb29d6cce57a71dc0a20bffc471d21849d03de",
+        "evidence_schema": "sealed_transcript_diagnostics_v1",
+        "lock_schema": "hashed_external_v1",
+    },
 }
+PINNED_FAILURE_REVISION_CONTRACTS = {
+    "eefa34dcef63adb4d99deb07de9fa1920d8ef792080427557d5460201ff32f94": {
+        "protocol_sha256": Policy.FAILURE_REVISION_PROTOCOL_SHA256,
+        "boundary_binding": Revision.BOUNDARY_BINDING,
+    },
+}
+FAILURE_REVISION_ITEM_FIELDS = frozenset({
+    "failure_revision_rounds",
+    "failure_revision_protocol_sha256",
+})
 MAX_WIP_SNAPSHOT_ENTRIES = 200_000
 MAX_WIP_SNAPSHOT_BYTES = 16 * 1024 * 1024 * 1024
 MAX_CANONICAL_ROLLBACK_ENTRIES = 100_000
 MAX_CANONICAL_ROLLBACK_BYTES = 512 * 1024 * 1024
 LIVE_BOUNDARY_POLL_SECONDS = 0.25
 LIVE_TRANSCRIPT_SCAN_ATTEMPTS = 3
+EXACT_CHILD_LIFECYCLE_SCHEMA = "scheduler_exact_child_lifecycle_v1"
+EXACT_CHILD_MAX_DRAIN_SECONDS = 300.0
 EXACT_CHILD_TERMINATE_SECONDS = 30.0
 UNQUIESCED_BOUNDARY_CODES = RebootRecovery.BOUNDARY_FINDING_COUNT_CODES
 
@@ -371,6 +463,16 @@ class ContainedNormalExitResidualError(CampaignPlanError):
     """A residual was contained, but is forbidden from clean acceptance."""
 
 
+class ExactChildHardDeadlineExceeded(CampaignPlanError):
+    """The exact child reached the outer hard lifecycle deadline."""
+
+    def __init__(
+        self, message: str, *, telemetry: "ExactChildLifecycleTelemetry"
+    ) -> None:
+        super().__init__(message)
+        self.telemetry = telemetry
+
+
 class ConfirmedGenerationTaint(CampaignPlanError):
     """Terminal authentication independently confirmed current-policy taint."""
 
@@ -388,6 +490,75 @@ class IncompleteDispatchReleaseAuthority(CampaignPlanError):
 
 
 @dataclass(frozen=True)
+class ExactChildLifecycleTelemetry:
+    soft_allocation_seconds: float
+    drain_limit_seconds: float
+    shutdown_limit_seconds: float
+    proposer_active_seconds: float
+    drain_seconds: float
+    deadline_overshoot_seconds: float
+    settlement_seconds: float
+    shutdown_seconds: float
+    elapsed_seconds: float
+    hard_deadline_exceeded: bool
+    schema: str = EXACT_CHILD_LIFECYCLE_SCHEMA
+
+    def __post_init__(self) -> None:
+        values = (
+            self.soft_allocation_seconds,
+            self.drain_limit_seconds,
+            self.shutdown_limit_seconds,
+            self.proposer_active_seconds,
+            self.drain_seconds,
+            self.deadline_overshoot_seconds,
+            self.settlement_seconds,
+            self.shutdown_seconds,
+            self.elapsed_seconds,
+        )
+        if (
+            self.schema != EXACT_CHILD_LIFECYCLE_SCHEMA
+            or not isinstance(self.hard_deadline_exceeded, bool)
+            or any(
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value < 0
+                for value in values
+            )
+        ):
+            raise ValueError(
+                "exact-child lifecycle telemetry violates its phase schema"
+            )
+        (soft, drain_limit, shutdown_limit, active, drain, overshoot,
+         settlement, shutdown, elapsed) = values
+        epsilon = 1e-6
+        if any((
+            soft <= 0,
+            drain_limit != EXACT_CHILD_MAX_DRAIN_SECONDS,
+            shutdown_limit != EXACT_CHILD_TERMINATE_SECONDS,
+            active > soft + epsilon,
+            drain > drain_limit + epsilon,
+            max(settlement, shutdown) > shutdown_limit + epsilon,
+            min(settlement, shutdown) > epsilon,
+            not math.isclose(
+                sum((active, drain, overshoot, settlement, shutdown)),
+                elapsed,
+                rel_tol=0.0,
+                abs_tol=epsilon,
+            ),
+            self.hard_deadline_exceeded
+            and (active + epsilon < soft or drain + epsilon < drain_limit),
+            not self.hard_deadline_exceeded and overshoot > epsilon,
+        )):
+            raise ValueError(
+                "exact-child lifecycle telemetry violates its phase schema"
+            )
+
+    def as_record(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class GuardedChildResult:
     returncode: int
     taint_reason: str | None = None
@@ -400,6 +571,7 @@ class GuardedChildResult:
     detached_processes_proven_absent: bool = False
     normal_exit_left_captured_descendants: bool = False
     boundary_finding_counts: tuple[tuple[str, int], ...] = ()
+    lifecycle: ExactChildLifecycleTelemetry | None = None
 
 
 @dataclass(frozen=True)
@@ -463,6 +635,15 @@ class CanonicalRollbackState:
     excluded_prefixes: frozenset[str]
 
 
+@dataclass(frozen=True)
+class BoundMutableRoot:
+    """One inode-bound directory that a terminal process must not hold."""
+
+    label: str
+    path: Path
+    identity: tuple[int, int]
+
+
 @dataclass
 class SchedulerArtifactLock:
     handle: Any
@@ -470,6 +651,17 @@ class SchedulerArtifactLock:
     root_identity: tuple[int, int]
     path: Path
     lock_identity: tuple[int, int]
+    shared: bool = False
+
+
+@dataclass(frozen=True)
+class ScratchAdmissionLock:
+    authority: SchedulerArtifactLock
+    authorities: tuple[SchedulerArtifactLock, ...]
+    coordinates: tuple[tuple[tuple[int, int], bool], ...]
+    scratch_root: Path
+    scratch_identity: tuple[int, int]
+    ancestry_receipt: tuple[tuple[str, tuple[int, ...]], ...]
 
 
 @dataclass
@@ -527,6 +719,98 @@ def _single_cli_value(argv: list[str], option: str) -> str | None:
     if len(values) > 1:
         raise CampaignPlanError(f"duplicate campaign argument: {option}")
     return values[0] if values else None
+
+
+def _unknown_failure_revision_control_fields(
+    value: dict[str, Any],
+) -> set[str]:
+    return {
+        key for key in value
+        if (
+            key in Revision.AGGREGATE_MARKERS
+            or key.startswith(
+                ("failure_revision_", "round_", "rounds_")
+            )
+        )
+        and key not in FAILURE_REVISION_ITEM_FIELDS
+    }
+
+
+def _plan_failure_revision_rounds(plan: dict[str, Any]) -> int:
+    unknown = _unknown_failure_revision_control_fields(plan)
+    if unknown:
+        raise CampaignPlanError(
+            "plan carries unknown failure-revision fields"
+        )
+    present = FAILURE_REVISION_ITEM_FIELDS & set(plan)
+    if not present:
+        return Policy.DEFAULT_FAILURE_REVISION_ROUNDS
+    if present != FAILURE_REVISION_ITEM_FIELDS:
+        raise CampaignPlanError(
+            "plan failure-revision fields must be all-or-none"
+        )
+    try:
+        rounds = Policy.validate_failure_revision_rounds(
+            plan.get("failure_revision_rounds")
+        )
+    except ValueError as exc:
+        raise CampaignPlanError(str(exc)) from exc
+    if (
+        rounds == Policy.DEFAULT_FAILURE_REVISION_ROUNDS
+        or plan.get("failure_revision_protocol_sha256")
+        != Policy.FAILURE_REVISION_PROTOCOL_SHA256
+    ):
+        raise CampaignPlanError(
+            "plan failure-revision treatment is not canonical"
+        )
+    return rounds
+
+
+def _failure_revision_item_rounds(
+    item: dict[str, Any], *, plan: dict[str, Any] | None = None
+) -> int:
+    argv = item.get("argv")
+    if not isinstance(argv, list) or not all(isinstance(x, str) for x in argv):
+        raise CampaignPlanError("failure-revision item argv is malformed")
+    unknown = _unknown_failure_revision_control_fields(item)
+    revision_args = [
+        argument for argument in argv
+        if argument == "--failure-revision-rounds"
+        or argument.startswith("--failure-revision-rounds=")
+    ]
+    if unknown or any("=" not in argument for argument in revision_args):
+        raise CampaignPlanError(
+            "item carries ambiguous failure-revision configuration"
+        )
+    option = _single_cli_value(argv, "--failure-revision-rounds")
+    present = FAILURE_REVISION_ITEM_FIELDS & set(item)
+    if not present and option is None:
+        rounds = Policy.DEFAULT_FAILURE_REVISION_ROUNDS
+    else:
+        if present != FAILURE_REVISION_ITEM_FIELDS or option is None:
+            raise CampaignPlanError(
+                "item failure-revision fields and argv must be all-or-none"
+            )
+        try:
+            rounds = Policy.validate_failure_revision_rounds(
+                item.get("failure_revision_rounds")
+            )
+        except ValueError as exc:
+            raise CampaignPlanError(str(exc)) from exc
+        if (
+            rounds == Policy.DEFAULT_FAILURE_REVISION_ROUNDS
+            or option != str(rounds)
+            or item.get("failure_revision_protocol_sha256")
+            != Policy.FAILURE_REVISION_PROTOCOL_SHA256
+        ):
+            raise CampaignPlanError(
+                "item failure-revision treatment is not canonical"
+            )
+    if plan is not None and rounds != _plan_failure_revision_rounds(plan):
+        raise CampaignPlanError(
+            "item failure-revision treatment does not match plan"
+        )
+    return rounds
 
 
 def _normalized_absolute_path(value: object, label: str) -> Path:
@@ -636,30 +920,131 @@ def _runner_receipt(
     return dict(receipt)
 
 
+def _nofollow_directory_ancestry_receipt(
+    path: Path,
+    label: str,
+    *,
+    allow_missing: bool = False,
+) -> tuple[tuple[str, tuple[int, ...]], ...] | None:
+    """Bind every directory component from ``/`` without following aliases."""
+
+    directory_flag = getattr(os, "O_DIRECTORY", 0)
+    nofollow_flag = getattr(os, "O_NOFOLLOW", 0)
+    if (
+        not isinstance(path, Path)
+        or not path.is_absolute()
+        or Path(os.path.abspath(path)) != path
+        or not isinstance(label, str)
+        or not label
+        or not directory_flag
+        or not nofollow_flag
+    ):
+        raise CampaignPlanError(f"{label} lacks fd-relative nofollow custody")
+    flags = (
+        os.O_RDONLY
+        | directory_flag
+        | nofollow_flag
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    fields = ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid")
+
+    def receipt(metadata: os.stat_result) -> tuple[int, ...]:
+        return tuple(int(getattr(metadata, field)) for field in fields)
+
+    descriptor: int | None = None
+    observed: list[tuple[str, tuple[int, ...]]] = []
+    current = Path(path.anchor)
+    try:
+        descriptor = os.open(current, flags)
+        root_opened = os.fstat(descriptor)
+        root_at_path = current.stat(follow_symlinks=False)
+        root_receipt = receipt(root_opened)
+        if (
+            not stat.S_ISDIR(root_opened.st_mode)
+            or receipt(root_at_path) != root_receipt
+        ):
+            raise CampaignPlanError(f"{label} root custody changed")
+        observed.append((os.fspath(current), root_receipt))
+        for part in path.parts[1:]:
+            current /= part
+            try:
+                before = os.stat(
+                    part, dir_fd=descriptor, follow_symlinks=False
+                )
+            except FileNotFoundError:
+                if allow_missing:
+                    return None
+                raise CampaignPlanError(
+                    f"{label} is unavailable: {current}"
+                ) from None
+            if stat.S_ISLNK(before.st_mode) or not stat.S_ISDIR(before.st_mode):
+                raise CampaignPlanError(
+                    f"{label} has non-directory or symlinked ancestry: "
+                    f"{current}"
+                )
+            child = os.open(part, flags, dir_fd=descriptor)
+            try:
+                opened = os.fstat(child)
+                after = os.stat(
+                    part, dir_fd=descriptor, follow_symlinks=False
+                )
+                expected = receipt(before)
+                if any((
+                    not stat.S_ISDIR(opened.st_mode),
+                    receipt(opened) != expected,
+                    receipt(after) != expected,
+                )):
+                    raise CampaignPlanError(
+                        f"{label} ancestry changed while binding: {current}"
+                    )
+            except BaseException:
+                os.close(child)
+                raise
+            os.close(descriptor)
+            descriptor = child
+            observed.append((os.fspath(current), expected))
+        if receipt(os.fstat(descriptor)) != observed[-1][1]:
+            raise CampaignPlanError(f"{label} final custody changed")
+    except CampaignPlanError:
+        raise
+    except FileNotFoundError:
+        if allow_missing:
+            return None
+        raise CampaignPlanError(f"{label} is unavailable: {current}") from None
+    except (OSError, TypeError, NotImplementedError) as exc:
+        raise CampaignPlanError(f"{label} ancestry is unavailable") from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    return tuple(observed)
+
+
 def _reject_abandoned_scratch_root(scratch_root: Path, ledger: Path) -> None:
-    """Never dispatch into a namespace abandoned by operator isolation."""
+    """Reject every live or retired sandbox namespace, including moved inodes."""
 
     try:
-        records = Guard.read_ledger(ledger)
+        ledger_before = _capture_ledger_prefix(ledger)
     except (OSError, ValueError, Guard.CodexUsageGuardError) as exc:
         raise CampaignPlanError(
             "cannot authenticate abandoned scratch namespaces"
         ) from exc
+    candidate_before = _nofollow_directory_ancestry_receipt(
+        scratch_root, "runner scratch root"
+    )
+    assert candidate_before is not None
+    current_identity = (
+        candidate_before[-1][1][0], candidate_before[-1][1][1]
+    )
     try:
-        current = scratch_root.stat(follow_symlinks=False)
-        current_identity: tuple[int, int] | None = (
-            current.st_dev, current.st_ino
-        )
-    except FileNotFoundError:
-        current_identity = None
-    except OSError as exc:
-        raise CampaignPlanError("runner scratch root is unavailable") from exc
-    try:
-        _reject_symlinked_ancestry(scratch_root, "runner scratch root")
         resolved_scratch = scratch_root.resolve(strict=True)
     except OSError as exc:
         raise CampaignPlanError("runner scratch root is unavailable") from exc
-    for record in records:
+
+    forbidden_identities: set[tuple[int, int]] = set()
+    tombstone_ancestries: list[
+        tuple[Path, tuple[tuple[str, tuple[int, ...]], ...] | None]
+    ] = []
+    for record in ledger_before.records:
         if (
             record.get("event") != SANDBOX_ABANDON_EVENT
             or record.get("schema") not in {
@@ -675,25 +1060,126 @@ def _reject_abandoned_scratch_root(scratch_root: Path, ledger: Path) -> None:
         identity = _marker_identity(
             record.get("scratch_root_identity"), "abandoned scratch root"
         )
+        forbidden_identities.add(identity)
+
+        # The recorded path is a permanent lexical tombstone.  Its removal
+        # cannot make the same path, an ancestor, or a descendant reusable.
+        if (
+            scratch_root == abandoned
+            or scratch_root.is_relative_to(abandoned)
+            or abandoned.is_relative_to(scratch_root)
+            or current_identity == identity
+        ):
+            raise CampaignPlanError(
+                "runner scratch root belongs to an abandoned sandbox namespace"
+            )
+        abandoned_ancestry = _nofollow_directory_ancestry_receipt(
+            abandoned,
+            "abandoned scratch root",
+            allow_missing=True,
+        )
+        tombstone_ancestries.append((abandoned, abandoned_ancestry))
+        if abandoned_ancestry is None:
+            continue
         try:
-            _reject_symlinked_ancestry(abandoned, "abandoned scratch root")
             resolved_abandoned = abandoned.resolve(strict=True)
         except OSError as exc:
             raise CampaignPlanError(
                 "abandoned scratch root is unavailable"
             ) from exc
         if (
-            scratch_root == abandoned
-            or scratch_root.is_relative_to(abandoned)
-            or abandoned.is_relative_to(scratch_root)
-            or resolved_scratch == resolved_abandoned
+            resolved_scratch == resolved_abandoned
             or resolved_scratch.is_relative_to(resolved_abandoned)
             or resolved_abandoned.is_relative_to(resolved_scratch)
-            or current_identity == identity
         ):
             raise CampaignPlanError(
                 "runner scratch root belongs to an abandoned sandbox namespace"
             )
+        if _nofollow_directory_ancestry_receipt(
+            abandoned,
+            "abandoned scratch root",
+            allow_missing=True,
+        ) != abandoned_ancestry:
+            raise CampaignPlanError(
+                "abandoned scratch root changed during alias authentication"
+            )
+
+    tree_before: str | None = None
+    if forbidden_identities:
+        ancestry_identities = {
+            (metadata[0], metadata[1])
+            for _component, metadata in candidate_before
+        }
+        if ancestry_identities & forbidden_identities:
+            raise CampaignPlanError(
+                "runner scratch ancestry contains an abandoned sandbox inode"
+            )
+        candidate = _bound_mutable_root(
+            scratch_root,
+            current_identity,
+            label="runner scratch root",
+        )
+        tree_before = _mutable_root_traversal_receipt(
+            candidate,
+            forbidden_identities=frozenset(forbidden_identities),
+            reject_symlinks=True,
+            require_same_device=True,
+        )
+
+    def revalidate_ancestry() -> None:
+        candidate_after = _nofollow_directory_ancestry_receipt(
+            scratch_root, "runner scratch root"
+        )
+        if candidate_after != candidate_before:
+            raise CampaignPlanError(
+                "runner scratch ancestry changed during abandoned-inode proof"
+            )
+
+    def revalidate_tombstones() -> None:
+        for abandoned, expected in tombstone_ancestries:
+            if _nofollow_directory_ancestry_receipt(
+                abandoned,
+                "abandoned scratch root",
+                allow_missing=True,
+            ) != expected:
+                raise CampaignPlanError(
+                    "abandoned scratch custody changed during inode proof"
+                )
+
+    def revalidate_ledger() -> None:
+        try:
+            ledger_after = _capture_ledger_prefix(ledger)
+        except (OSError, ValueError, Guard.CodexUsageGuardError) as exc:
+            raise CampaignPlanError(
+                "cannot reauthenticate abandoned scratch namespaces"
+            ) from exc
+        if any((
+            ledger_after.path != ledger_before.path,
+            ledger_after.parent_identity != ledger_before.parent_identity,
+            ledger_after.file_identity != ledger_before.file_identity,
+            ledger_after.raw_prefix != ledger_before.raw_prefix,
+        )):
+            raise CampaignPlanError(
+                "Codex ledger changed during abandoned scratch authentication"
+            )
+
+    revalidate_tombstones()
+    revalidate_ancestry()
+    revalidate_ledger()
+    if tree_before is not None:
+        tree_after = _mutable_root_traversal_receipt(
+            candidate,
+            forbidden_identities=frozenset(forbidden_identities),
+            reject_symlinks=True,
+            require_same_device=True,
+        )
+        if tree_after != tree_before:
+            raise CampaignPlanError(
+                "runner scratch tree changed during abandoned-inode proof"
+            )
+        revalidate_tombstones()
+        revalidate_ancestry()
+        revalidate_ledger()
 
 
 def _project_runner_receipt(
@@ -831,10 +1317,15 @@ def _validate_runner_prefix(
 ) -> None:
     """Admit the current runner or one receipt-bound historical worktree."""
 
+    failure_revision_rounds = _failure_revision_item_rounds(item)
     if argv[:3] == ["python3", "-u", "arc/crack_lab/gkm_legs.py"]:
         if item.get("historical_runner") is not None:
             raise CampaignPlanError(
                 "relative current runner carries unexpected historical authority"
+            )
+        if failure_revision_rounds > Policy.DEFAULT_FAILURE_REVISION_ROUNDS:
+            raise CampaignPlanError(
+                "failure-revision treatment requires a pinned historical runner"
             )
         return
     authority = item.get("historical_runner")
@@ -900,6 +1391,28 @@ def _validate_runner_prefix(
         raise CampaignPlanError("historical runner source is unstable") from exc
     if hashlib.sha256(source_bytes).hexdigest() != source_sha256:
         raise CampaignPlanError("historical runner source hash mismatch")
+    if failure_revision_rounds > Policy.DEFAULT_FAILURE_REVISION_ROUNDS:
+        contract = PINNED_FAILURE_REVISION_CONTRACTS.get(source_sha256)
+        live_boundary_binding = {
+            "filesystem_boundary_policy_schema": Boundary.POLICY_SCHEMA,
+            "filesystem_boundary_policy_sha256": Boundary.policy_sha256(),
+            "compatibility_arena_module_sha256": (
+                Boundary.arena_module_sha256(HERE)
+            ),
+            "compatibility_boundary_authority": (
+                "behavioral_defense_in_depth"
+            ),
+        }
+        if (
+            contract is None
+            or contract.get("protocol_sha256")
+            != item.get("failure_revision_protocol_sha256")
+            or contract.get("boundary_binding") != live_boundary_binding
+        ):
+            raise CampaignPlanError(
+                "historical runner is not pinned to the live "
+                "failure-revision/boundary contract"
+            )
     actual_head, tracked_clean = _historical_runner_git_state(worktree)
     if actual_head != head_commit or not tracked_clean:
         raise CampaignPlanError(
@@ -1102,6 +1615,65 @@ def _assert_no_incomplete_taint_cleanup(
         )
 
 
+def _validate_failure_revision_exec_record(
+    item: dict[str, Any], record: dict[str, Any]
+) -> Revision.Aggregate | None:
+    """Authenticate the non-byte portions of one aggregate exec record."""
+
+    configured = _failure_revision_item_rounds(item)
+    if configured == Policy.DEFAULT_FAILURE_REVISION_ROUNDS:
+        if Revision.has_aggregate_markers(record):
+            raise CampaignPlanError(
+                "default-one child emitted failure-revision aggregate fields"
+            )
+        return None
+    source_sha256 = (item.get("historical_runner") or {}).get(
+        "source_sha256"
+    )
+    contract = PINNED_FAILURE_REVISION_CONTRACTS.get(source_sha256)
+    if contract is None:
+        raise CampaignPlanError(
+            "failure-revision aggregate lacks a pinned source contract"
+        )
+    try:
+        return Revision.validate_exec(
+            record,
+            expected_rounds_max=configured,
+            expected_protocol_sha256=contract["protocol_sha256"],
+            expected_boundary_binding=contract["boundary_binding"],
+            target_level=item["target_level"],
+            reached_before=item["reached"],
+        )
+    except Revision.ContractError as exc:
+        raise CampaignPlanError(str(exc)) from exc
+
+def _validate_failure_revision_outcome(
+    item: dict[str, Any],
+    record: dict[str, Any],
+    outcome: dict[str, Any],
+    aggregate: Revision.Aggregate | None,
+) -> None:
+    configured = _failure_revision_item_rounds(item)
+    if configured == Policy.DEFAULT_FAILURE_REVISION_ROUNDS:
+        if "failure_revision_rounds" in outcome:
+            raise CampaignPlanError(
+                "default-one outcome emitted failure-revision metadata"
+            )
+        return
+    if aggregate is None:
+        raise CampaignPlanError(
+            "failure-revision outcome lacks aggregate metadata"
+        )
+    try:
+        Revision.validate_outcome(
+            record, outcome, aggregate,
+            target_level=item["target_level"],
+            reached_before=item["reached"],
+        )
+    except Revision.ContractError as exc:
+        raise CampaignPlanError(str(exc)) from exc
+    return
+
 def _expected_exec_record(
     item: dict[str, Any],
     before: list[dict[str, Any]] | LedgerPrefixState,
@@ -1132,7 +1704,12 @@ def _expected_exec_record(
         "model": "gpt-5.6-sol",
         "reasoning_effort": item["effort"],
         "minutes_limit": item["minutes"],
-        "allocation_policy": "drain",
+        "allocation_policy": (
+            Policy.FAILURE_REVISION_TREATMENT_ALLOCATION_POLICY
+            if _failure_revision_item_rounds(item)
+            > Policy.DEFAULT_FAILURE_REVISION_ROUNDS
+            else "drain"
+        ),
         "reached": item["reached"],
         "parent_action_count": item["parent_action_count"],
         **{
@@ -1160,6 +1737,7 @@ def _expected_exec_record(
         raise CampaignPlanError(
             "exact child did not append the bound Codex exec record"
         )
+    aggregate = _validate_failure_revision_exec_record(item, record)
     if clean_terminal is True or (
         clean_terminal is None and expected_length == 2
     ):
@@ -1192,6 +1770,9 @@ def _expected_exec_record(
             raise CampaignPlanError(
                 "clean child outcome does not bind its exact Codex exec"
             )
+        _validate_failure_revision_outcome(
+            item, record, outcome, aggregate
+        )
         reached_after = outcome.get("reached_after")
         solved_target = outcome.get("solved_target")
         if (
@@ -1246,6 +1827,43 @@ def _sealed_file_bytes(path: Path, expected_sha256: str, label: str) -> bytes:
         raise CampaignPlanError(f"sealed {label} hash does not match ledger")
     return payload
 
+
+def _authenticate_failure_revision_slices(
+    item: dict[str, Any],
+    record: dict[str, Any],
+    transcript_payload: bytes,
+    diagnostics_payload: bytes | None,
+) -> None:
+    aggregate = _validate_failure_revision_exec_record(item, record)
+    if aggregate is None:
+        return
+    if diagnostics_payload is None:
+        raise CampaignPlanError(
+            "failure-revision aggregate lacks sealed diagnostics"
+        )
+    source_sha256 = (item.get("historical_runner") or {}).get(
+        "source_sha256"
+    )
+    contract = PINNED_FAILURE_REVISION_CONTRACTS.get(source_sha256)
+    if contract is None:
+        raise CampaignPlanError(
+            "failure-revision evidence lacks a pinned source contract"
+        )
+    try:
+        Revision.validate_exec(
+            record,
+            expected_rounds_max=_failure_revision_item_rounds(item),
+            expected_protocol_sha256=contract["protocol_sha256"],
+            expected_boundary_binding=contract["boundary_binding"],
+            target_level=item["target_level"],
+            reached_before=item["reached"],
+            transcript_payload=transcript_payload,
+            diagnostics_payload=diagnostics_payload,
+            require_evidence=True,
+        )
+    except Revision.ContractError as exc:
+        raise CampaignPlanError(str(exc)) from exc
+    return
 
 def _artifact_root(item: dict[str, Any]) -> Path:
     canonical = (HERE / "agent_solutions").absolute()
@@ -2689,13 +3307,19 @@ def _exact_tainted_generation(
         expected_inventory.append(diagnostics_name)
     if inventory != sorted(expected_inventory):
         raise CampaignPlanError("protected evidence directory has an ambiguous inventory")
-    _sealed_file_bytes(protected / transcript_name, transcript_sha, "transcript")
+    transcript_payload = _sealed_file_bytes(
+        protected / transcript_name, transcript_sha, "transcript"
+    )
+    diagnostics_payload: bytes | None = None
     if diagnostics_name is not None and diagnostics_sha is not None:
-        _sealed_file_bytes(
+        diagnostics_payload = _sealed_file_bytes(
             protected / diagnostics_name, diagnostics_sha, "diagnostics"
         )
+    _authenticate_failure_revision_slices(
+        item, record, transcript_payload, diagnostics_payload
+    )
     try:
-        historical = evidence_schema == "sealed_transcript_only_v1"
+        historical = isinstance(item.get("historical_runner"), dict)
         module_root = (
             Path(item["historical_runner"]["worktree"])
             / "arc"
@@ -2715,7 +3339,9 @@ def _exact_tainted_generation(
                 workspace_root=workspace,
                 arena_module_root=module_root,
                 accepted_workspace_root=os.fspath(workspace),
-                allow_historical_transport_banner=historical,
+                allow_historical_transport_banner=(
+                    evidence_schema == "sealed_transcript_only_v1"
+                ),
             ),
         )
         boundary_findings = Legs._filter_trusted_scaffold_root_literal(
@@ -2731,7 +3357,7 @@ def _exact_tainted_generation(
             raise CampaignPlanError(
                 "exact generation boundary finding counts changed"
             )
-        if evidence_schema == "sealed_transcript_only_v1":
+        if historical or evidence_schema == "sealed_transcript_only_v1":
             reason = (
                 boundary_findings[0].describe()
                 if boundary_findings
@@ -3204,6 +3830,136 @@ def _authenticate_clean_generation(
     return record
 
 
+def _preserve_failure_revision_terminal(
+    item: dict[str, Any],
+    *,
+    ledger: Path,
+    ledger_before: list[dict[str, Any]] | LedgerPrefixState,
+    observed: GuardedChildResult,
+) -> None:
+    """Authenticate a non-taint terminal aggregate, then retain custody."""
+
+    record = _expected_exec_record(
+        item,
+        ledger_before,
+        None
+        if isinstance(ledger_before, LedgerPrefixState)
+        else _read_ledger_locked(ledger),
+        clean_terminal=False,
+    )
+    aggregate = _validate_failure_revision_exec_record(item, record)
+    if aggregate is None or not aggregate.terminal_failure:
+        raise CampaignPlanError(
+            "nonzero treatment lacks a terminal aggregate"
+        )
+    if any((
+        observed.workspace is None,
+        observed.transcript is None,
+        record.get("workspace") != observed.workspace,
+        record.get("transcript") != observed.transcript,
+    )):
+        raise CampaignPlanError(
+            "terminal aggregate differs from the live generation"
+        )
+    workspace, protected, reason, _transcript_sha, _diagnostics_sha, _ = (
+        _exact_tainted_generation(item, record, require_taint=False)
+    )
+    if any((
+        observed.workspace_identity is None,
+        observed.protected_identity is None,
+        _host_directory_identity(workspace, "terminal live workspace")
+        != observed.workspace_identity,
+        _host_directory_identity(protected, "terminal protected evidence")
+        != observed.protected_identity,
+    )):
+        raise CampaignPlanError(
+            "terminal aggregate generation identity changed"
+        )
+    details = {
+        "child_returncode": observed.returncode,
+        "workspace": observed.workspace,
+        "protected": observed.workspace,
+        "transcript": observed.transcript,
+        "workspace_identity": observed.workspace_identity,
+        "protected_identity": observed.protected_identity,
+    }
+    if reason:
+        message = (
+            "authenticated terminal failure-revision aggregate contains "
+            "independently confirmed taint and remains quarantined; no "
+            "cleanup or release is authorized"
+        )
+    elif record.get("failure_class") == "taint":
+        message = (
+            "taint-classified terminal failure-revision aggregate remains "
+            "quarantined; no cleanup or release is authorized"
+        )
+    else:
+        message = (
+            "authenticated terminal failure-revision aggregate remains "
+            "quarantined; no cleanup or release is authorized"
+        )
+    raise UnquiescedChildError(
+        message,
+        details=details,
+    )
+
+
+def _authenticate_failure_revision_promotion(
+    item: dict[str, Any], record: dict[str, Any], reached: int,
+) -> None:
+    """Bind a treatment solve to its independently persisted authority."""
+
+    if (
+        _failure_revision_item_rounds(item)
+        == Policy.DEFAULT_FAILURE_REVISION_ROUNDS
+        or reached < item["target_level"]
+    ):
+        return
+    aggregate = _validate_failure_revision_exec_record(item, record)
+    if (
+        aggregate is None
+        or aggregate.timed_out
+        or record.get("failure_class") == "taint"
+        or record.get("interrupted") is True
+    ):
+        raise CampaignPlanError(
+            "solved treatment lacks an eligible aggregate authority"
+        )
+    artifact = _artifact_root(item) / f"{item['game']}_legs"
+    manifest_path = (
+        artifact / "promotion_evidence"
+        / f"level_{item['target_level']:02d}" / "manifest.json"
+    )
+    try:
+        payload = Legs._read_single_link_regular(os.fspath(manifest_path))
+        manifest = json.loads(payload.decode("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError,
+            Legs.WorkspaceTainted) as exc:
+        raise CampaignPlanError(
+            "solved treatment promotion manifest is unavailable"
+        ) from exc
+    try:
+        expected_authority = Revision.promotion_authority(
+            record, aggregate
+        )
+    except Revision.ContractError as exc:
+        raise CampaignPlanError(str(exc)) from exc
+    if any((
+        not isinstance(manifest, dict),
+        manifest.get("game") != item["game"]
+        if isinstance(manifest, dict) else True,
+        manifest.get("level") != item["target_level"]
+        if isinstance(manifest, dict) else True,
+        manifest.get("failure_revision_authority")
+        != expected_authority
+        if isinstance(manifest, dict) else True,
+    )):
+        raise CampaignPlanError(
+            "solved treatment promotion authority changed"
+        )
+
+
 def _recover_confirmed_taint(
     item: dict[str, Any],
     *,
@@ -3548,12 +4304,23 @@ def validate_item(
     _validate_runner_prefix(
         item, argv, allow_abandoned_scratch=allow_abandoned_scratch
     )
+    failure_revision_rounds = _failure_revision_item_rounds(
+        item, plan=plan
+    )
     _artifact_root(item)
     if "--proposer=codex" not in argv or "--model=gpt-5.6-sol" not in argv:
         raise CampaignPlanError("plan item must pin the isolated Codex proposer and model")
-    if "--codex-allocation-policy=drain" not in argv:
+    expected_allocation_policy = (
+        Policy.FAILURE_REVISION_TREATMENT_ALLOCATION_POLICY
+        if failure_revision_rounds > Policy.DEFAULT_FAILURE_REVISION_ROUNDS
+        else "drain"
+    )
+    if (
+        _single_cli_value(argv, "--codex-allocation-policy")
+        != expected_allocation_policy
+    ):
         raise CampaignPlanError(
-            "plan item must use the non-interrupting drain allocation policy"
+            "command allocation policy does not match failure-revision mode"
         )
     if "--debrief-policy=never" not in argv:
         raise CampaignPlanError("campaign items must disable extra debrief turns")
@@ -3652,9 +4419,19 @@ def validate_item(
         )
     policy = Status.retry_policy(n)
     effective_wip, effective_dispatch = _effective_retry_inputs(item, policy)
+    expected_effort = (
+        Policy.FAILURE_REVISION_TREATMENT_EFFORT
+        if failure_revision_rounds > Policy.DEFAULT_FAILURE_REVISION_ROUNDS
+        else policy["effort"]
+    )
+    expected_minutes = (
+        Policy.FAILURE_REVISION_TREATMENT_MINUTES
+        if failure_revision_rounds > Policy.DEFAULT_FAILURE_REVISION_ROUNDS
+        else policy["minutes"]
+    )
     expected_fields = {
-        "effort": policy["effort"],
-        "minutes": policy["minutes"],
+        "effort": expected_effort,
+        "minutes": expected_minutes,
         "wip_mode": effective_wip,
         "dispatch_mode": effective_dispatch,
         "recommended_auxiliary_parallelism": policy[
@@ -3666,11 +4443,11 @@ def validate_item(
             raise CampaignPlanError(
                 f"plan item {key} does not match retry policy"
             )
-    if f"--codex-effort={policy['effort']}" not in argv:
+    if _single_cli_value(argv, "--codex-effort") != expected_effort:
         raise CampaignPlanError(
             "command effort does not match retry policy"
         )
-    if f"--minutes={policy['minutes']}" not in argv:
+    if _single_cli_value(argv, "--minutes") != str(expected_minutes):
         raise CampaignPlanError(
             "command allocation does not match retry policy"
         )
@@ -3778,9 +4555,45 @@ def active_workspace_lock(game: str) -> Path | None:
     return None
 
 
+def _active_scratch_workspace_lock(
+    scratch: Path,
+    *,
+    exclude_workspace: Path | None = None,
+) -> Path | None:
+    """Return any cross-game active workspace in one exact scratch root."""
+
+    if (
+        not isinstance(scratch, Path)
+        or not scratch.is_absolute()
+        or Path(os.path.abspath(scratch)) != scratch
+        or (
+            exclude_workspace is not None
+            and (
+                not isinstance(exclude_workspace, Path)
+                or exclude_workspace.parent != scratch
+            )
+        )
+    ):
+        raise CampaignPlanError("cross-game scratch lock scope is malformed")
+    pattern = os.fspath(scratch / "gkm_legs_ws_*")
+    for selected in sorted(glob.glob(pattern)):
+        workspace = Path(selected)
+        if workspace == exclude_workspace:
+            continue
+        if _workspace_lock_is_active(workspace):
+            return workspace
+    return None
+
+
 def _acquire_scheduler_artifact_lock(
-    item: dict[str, Any], *, name: str, purpose: str
+    item: dict[str, Any],
+    *,
+    name: str,
+    purpose: str,
+    shared: bool = False,
 ) -> SchedulerArtifactLock:
+    if not isinstance(shared, bool):
+        raise CampaignPlanError("scheduler artifact lock mode is malformed")
     artifact_root = _artifact_root(item)
     lock_root = artifact_root / ".campaign_locks"
     try:
@@ -3794,7 +4607,8 @@ def _acquire_scheduler_artifact_lock(
     lock_path = lock_root / name
     try:
         lock = Legs._open_unaliased_lock(os.fspath(lock_path))
-        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        mode = fcntl.LOCK_SH if shared else fcntl.LOCK_EX
+        fcntl.flock(lock.fileno(), mode | fcntl.LOCK_NB)
     except (OSError, RuntimeError, BlockingIOError) as exc:
         try:
             lock.close()
@@ -3817,14 +4631,15 @@ def _acquire_scheduler_artifact_lock(
             ) != root_identity
         ):
             raise CampaignPlanError("scheduler artifact lock identity changed")
-        lock.seek(0)
-        lock.truncate()
-        artifact = artifact_root / f"{item['game']}_legs"
-        lock.write(
-            f"pid={os.getpid()}\nartifact={artifact}\npurpose={purpose}\n"
-        )
-        lock.flush()
-        os.fsync(lock.fileno())
+        if not shared:
+            lock.seek(0)
+            lock.truncate()
+            artifact = artifact_root / f"{item['game']}_legs"
+            lock.write(
+                f"pid={os.getpid()}\nartifact={artifact}\npurpose={purpose}\n"
+            )
+            lock.flush()
+            os.fsync(lock.fileno())
     except BaseException:
         Legs._release_workspace_lock(lock)
         raise
@@ -3834,6 +4649,7 @@ def _acquire_scheduler_artifact_lock(
         root_identity=root_identity,
         path=lock_path,
         lock_identity=lock_identity,
+        shared=shared,
     )
 
 
@@ -3841,7 +4657,8 @@ def _validate_scheduler_artifact_lock(lock: SchedulerArtifactLock) -> None:
     descriptor = os.fstat(lock.handle.fileno())
     path_metadata = lock.path.stat(follow_symlinks=False)
     if (
-        _host_directory_identity(lock.root, "scheduler artifact lock root")
+        not isinstance(lock.shared, bool)
+        or _host_directory_identity(lock.root, "scheduler artifact lock root")
         != lock.root_identity
         or lock.path.is_symlink()
         or not stat.S_ISREG(path_metadata.st_mode)
@@ -3883,6 +4700,186 @@ def _acquire_scheduler_dispatch_lock(
     return _acquire_scheduler_artifact_lock(
         item, name=f"{item['game']}.scheduler.lock", purpose="dispatch"
     )
+
+
+def _item_scratch_root(item: dict[str, Any]) -> Path:
+    authority = item.get("historical_runner")
+    if authority is None:
+        scratch = Path(Legs.SCRATCH).absolute()
+    elif isinstance(authority, dict):
+        scratch = _normalized_absolute_path(
+            authority.get("scratch_root"), "scratch_root"
+        )
+    else:
+        raise CampaignPlanError("scratch admission runner receipt is malformed")
+    if not scratch.is_absolute() or Path(os.path.abspath(scratch)) != scratch:
+        raise CampaignPlanError("scratch admission root is malformed")
+    return scratch
+
+
+def _scratch_admission_lock_name(identity: tuple[int, int]) -> str:
+    """Make every lexical alias of one physical directory contend."""
+
+    if (
+        not isinstance(identity, tuple)
+        or len(identity) != 2
+        or any(
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < 0
+            for value in identity
+        )
+    ):
+        raise CampaignPlanError("scratch admission identity is malformed")
+    coordinate = hashlib.sha256(
+        f"{identity[0]}:{identity[1]}".encode("ascii")
+    ).hexdigest()
+    return f"scratch-admission-inode-{coordinate}.lock"
+
+
+def _scratch_admission_coordinates(
+    ancestry: tuple[tuple[str, tuple[int, ...]], ...],
+) -> tuple[tuple[tuple[int, int], bool], ...]:
+    """Return globally ordered inode coordinates; ``True`` means shared."""
+
+    if not ancestry:
+        raise CampaignPlanError("scratch admission ancestry is empty")
+    modes: dict[tuple[int, int], bool] = {}
+    for _component, metadata in ancestry[:-1]:
+        identity = (metadata[0], metadata[1])
+        modes.setdefault(identity, True)
+    root_metadata = ancestry[-1][1]
+    root_identity = (root_metadata[0], root_metadata[1])
+    # The exact-root exclusive mode wins if a mount alias repeated this inode
+    # earlier in the lexical ancestry.
+    modes[root_identity] = False
+    return tuple(sorted(modes.items()))
+
+
+def _acquire_scheduler_scratch_admission_lock(
+    item: dict[str, Any],
+    *,
+    scratch_root: Path | None = None,
+) -> ScratchAdmissionLock:
+    """Serialize a physical scratch namespace for one complete lifecycle."""
+
+    selected = scratch_root if scratch_root is not None else _item_scratch_root(item)
+    ancestry = _nofollow_directory_ancestry_receipt(
+        selected, "scratch admission root"
+    )
+    assert ancestry is not None
+    identity = (ancestry[-1][1][0], ancestry[-1][1][1])
+    coordinates = _scratch_admission_coordinates(ancestry)
+    authorities: list[SchedulerArtifactLock] = []
+    try:
+        for coordinate, shared in coordinates:
+            authorities.append(_acquire_scheduler_artifact_lock(
+                item,
+                name=_scratch_admission_lock_name(coordinate),
+                purpose=(
+                    "scratch admission ancestry"
+                    if shared
+                    else "scratch admission"
+                ),
+                shared=shared,
+            ))
+        rebound = _nofollow_directory_ancestry_receipt(
+            selected, "scratch admission root"
+        )
+        if rebound != ancestry:
+            raise CampaignPlanError(
+                "scratch admission root changed while acquiring custody"
+            )
+    except BaseException:
+        for acquired in reversed(authorities):
+            try:
+                _release_scheduler_artifact_lock(acquired)
+            except BaseException:
+                pass
+        raise
+    exact = next(
+        authority
+        for authority, (coordinate, shared) in zip(
+            authorities, coordinates, strict=True
+        )
+        if coordinate == identity and not shared
+    )
+    return ScratchAdmissionLock(
+        authority=exact,
+        authorities=tuple(authorities),
+        coordinates=coordinates,
+        scratch_root=selected,
+        scratch_identity=identity,
+        ancestry_receipt=ancestry,
+    )
+
+
+def _validate_scheduler_scratch_admission_lock(
+    lock: ScratchAdmissionLock,
+    item: dict[str, Any],
+    *,
+    scratch_root: Path | None = None,
+) -> None:
+    selected = scratch_root if scratch_root is not None else _item_scratch_root(item)
+    if selected != lock.scratch_root:
+        raise CampaignPlanError(
+            "scratch admission lock path binding changed"
+        )
+    rebound = _nofollow_directory_ancestry_receipt(
+        selected, "scratch admission root"
+    )
+    expected_coordinates = _scratch_admission_coordinates(rebound)
+    if any((
+        rebound != lock.ancestry_receipt,
+        expected_coordinates != lock.coordinates,
+        len(lock.authorities) != len(lock.coordinates),
+    )):
+        raise CampaignPlanError(
+            "scratch admission lock lost its physical namespace binding"
+        )
+    exact: SchedulerArtifactLock | None = None
+    for authority, (identity, shared) in zip(
+        lock.authorities, lock.coordinates, strict=True
+    ):
+        _validate_scheduler_artifact_lock(authority)
+        if any((
+            authority.shared is not shared,
+            authority.path.name != _scratch_admission_lock_name(identity),
+            authority.root != lock.authority.root,
+            authority.root_identity != lock.authority.root_identity,
+        )):
+            raise CampaignPlanError(
+                "scratch admission lock coordinate binding changed"
+            )
+        if identity == lock.scratch_identity and not shared:
+            exact = authority
+    if exact is not lock.authority:
+        raise CampaignPlanError(
+            "scratch admission lock lost its exclusive root coordinate"
+        )
+
+
+def _release_scheduler_scratch_admission_lock(
+    lock: ScratchAdmissionLock,
+    item: dict[str, Any],
+    *,
+    scratch_root: Path | None = None,
+) -> None:
+    failure: BaseException | None = None
+    try:
+        _validate_scheduler_scratch_admission_lock(
+            lock, item, scratch_root=scratch_root
+        )
+    except BaseException as exc:
+        failure = exc
+    for authority in reversed(lock.authorities):
+        try:
+            _release_scheduler_artifact_lock(authority)
+        except BaseException as exc:
+            if failure is None:
+                failure = exc
+    if failure is not None:
+        raise failure
 
 
 def _dispatch_quarantine_name(item: dict[str, Any]) -> str:
@@ -9363,11 +10360,24 @@ def _validate_quiesced_incomplete_evidence_binding(
                 "dispatch"
             )
     historical = armed.get("historical_runner")
-    if not isinstance(historical, dict) or any((
-        historical.get("source_sha256") not in SANDBOX_CONTRACTS,
-        historical.get("evidence_schema") != "sealed_transcript_only_v1",
-        historical.get("lock_schema") != "in_workspace_v1",
-    )):
+    source_sha256 = (
+        historical.get("source_sha256")
+        if isinstance(historical, dict) else None
+    )
+    approved_runner = RebootRecovery.QUIESCED_INCOMPLETE_RUNNERS.get(
+        source_sha256
+    )
+    if (
+        not isinstance(historical, dict)
+        or source_sha256 not in SANDBOX_CONTRACTS
+        or approved_runner is None
+        or any(
+            historical.get(field) != approved_runner[field]
+            for field in (
+                "head_commit", "evidence_schema", "lock_schema"
+            )
+        )
+    ):
         raise CampaignPlanError(
             "quiesced incomplete-evidence historical runner is not approved"
         )
@@ -14316,6 +15326,830 @@ def _revalidate_sandboxed_generation_tree_hashes(
         )
 
 
+def _bound_mutable_root(
+    path: Path,
+    identity: tuple[int, int],
+    *,
+    label: str,
+) -> BoundMutableRoot:
+    """Rebind a mutable directory before using it for holder discovery."""
+
+    if (
+        not isinstance(path, Path)
+        or not path.is_absolute()
+        or Path(os.path.abspath(path)) != path
+        or not isinstance(identity, tuple)
+        or len(identity) != 2
+        or any(
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < 0
+            for value in identity
+        )
+        or not isinstance(label, str)
+        or not label
+    ):
+        raise CampaignPlanError("mutable-root holder binding is malformed")
+    if _host_directory_identity(path, label) != identity:
+        raise CampaignPlanError(f"{label} identity changed before holder scan")
+    return BoundMutableRoot(label=label, path=path, identity=identity)
+
+
+def _authenticated_lsof_executable() -> tuple[Path, tuple[int, int]]:
+    """Select only a fixed, host-owned ``lsof`` executable."""
+
+    for candidate in LSOF_EXECUTABLE_CANDIDATES:
+        try:
+            metadata = candidate.stat(follow_symlinks=False)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise CampaignPlanError(
+                "open-file holder scanner executable is unavailable"
+            ) from exc
+        if any((
+            not candidate.is_absolute(),
+            candidate.is_symlink(),
+            not stat.S_ISREG(metadata.st_mode),
+            metadata.st_nlink != 1,
+            metadata.st_uid != 0,
+            not metadata.st_mode & stat.S_IXUSR,
+            bool(metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH)),
+        )):
+            raise CampaignPlanError(
+                "open-file holder scanner executable is not host authority"
+            )
+        return candidate, (metadata.st_dev, metadata.st_ino)
+    raise CampaignPlanError(
+        "authenticated open-file holder scanning is unavailable"
+    )
+
+
+def _mutable_root_traversal_receipt(
+    root: BoundMutableRoot,
+    *,
+    forbidden_identities: frozenset[tuple[int, int]] = frozenset(),
+    reject_symlinks: bool = False,
+    require_same_device: bool = False,
+) -> str:
+    """Prove every name via an inode-bound, fd-relative nofollow walk."""
+
+    if (
+        not isinstance(forbidden_identities, frozenset)
+        or any(
+            not isinstance(identity, tuple)
+            or len(identity) != 2
+            or any(
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 0
+                for value in identity
+            )
+            for identity in forbidden_identities
+        )
+        or not isinstance(reject_symlinks, bool)
+        or not isinstance(require_same_device, bool)
+    ):
+        raise CampaignPlanError(
+            f"{root.label} nofollow traversal policy is malformed"
+        )
+
+    directory_flag = getattr(os, "O_DIRECTORY", 0)
+    nofollow_flag = getattr(os, "O_NOFOLLOW", 0)
+    if not directory_flag or not nofollow_flag:
+        raise CampaignPlanError(
+            f"{root.label} lacks fd-relative nofollow holder traversal"
+        )
+    directory_open_flags = (
+        os.O_RDONLY
+        | directory_flag
+        | nofollow_flag
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    metadata_fields = (
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_nlink",
+        "st_uid",
+        "st_gid",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
+    )
+
+    def metadata_receipt(metadata: os.stat_result) -> tuple[int, ...]:
+        return tuple(int(getattr(metadata, field)) for field in metadata_fields)
+
+    entries: list[tuple[Any, ...]] = []
+
+    entry_limit = MAX_OPEN_FILE_HOLDER_PIDS * 4
+
+    def direct_entries(
+        descriptor: int, *, maximum_names: int
+    ) -> list[tuple[str, tuple[int, ...]]]:
+        names: list[str] = []
+        with os.scandir(descriptor) as iterator:
+            for entry in iterator:
+                if len(names) >= maximum_names:
+                    raise CampaignPlanError(
+                        f"{root.label} holder traversal exceeded its entry bound"
+                    )
+                name = entry.name
+                if not isinstance(name, str) or not name:
+                    raise CampaignPlanError(
+                        f"{root.label} holder traversal returned an unsafe name"
+                    )
+                names.append(name)
+        names.sort()
+        observed: list[tuple[str, tuple[int, ...]]] = []
+        for name in names:
+            metadata = os.stat(
+                name, dir_fd=descriptor, follow_symlinks=False
+            )
+            observed.append((name, metadata_receipt(metadata)))
+        return observed
+
+    def walk_directory(
+        descriptor: int,
+        relative: str,
+        expected: tuple[int, ...],
+        depth: int,
+    ) -> None:
+        if depth > MAX_OPEN_FILE_HOLDER_TRAVERSAL_DEPTH:
+            raise CampaignPlanError(
+                f"{root.label} holder traversal exceeded its depth bound"
+            )
+        opened_before = os.fstat(descriptor)
+        if (
+            not stat.S_ISDIR(opened_before.st_mode)
+            or metadata_receipt(opened_before) != expected
+        ):
+            raise CampaignPlanError(
+                f"{root.label} holder traversal directory identity changed"
+            )
+        children_before = direct_entries(
+            descriptor, maximum_names=entry_limit - len(entries)
+        )
+        for name, child_receipt in children_before:
+            if len(entries) >= entry_limit:
+                raise CampaignPlanError(
+                    f"{root.label} holder traversal exceeded its entry bound"
+                )
+            child_relative = name if relative == "." else f"{relative}/{name}"
+            entries.append((child_relative, *child_receipt))
+            child_identity = (child_receipt[0], child_receipt[1])
+            child_mode = child_receipt[2]
+            if child_identity in forbidden_identities:
+                raise CampaignPlanError(
+                    f"{root.label} contains an abandoned sandbox inode"
+                )
+            if reject_symlinks and stat.S_ISLNK(child_mode):
+                raise CampaignPlanError(
+                    f"{root.label} contains a symlink during abandoned-inode "
+                    "proof"
+                )
+            if require_same_device and child_receipt[0] != root.identity[0]:
+                raise CampaignPlanError(
+                    f"{root.label} crosses a filesystem during "
+                    "abandoned-inode proof"
+                )
+            if not stat.S_ISDIR(child_mode):
+                continue
+            if child_receipt[0] != root.identity[0]:
+                raise CampaignPlanError(
+                    f"{root.label} crosses a filesystem lsof will not scan"
+                )
+            child_fd: int | None = None
+            try:
+                child_fd = os.open(
+                    name, directory_open_flags, dir_fd=descriptor
+                )
+                child_opened = os.fstat(child_fd)
+                child_at_path = os.stat(
+                    name, dir_fd=descriptor, follow_symlinks=False
+                )
+                if any((
+                    not stat.S_ISDIR(child_opened.st_mode),
+                    metadata_receipt(child_opened) != child_receipt,
+                    metadata_receipt(child_at_path) != child_receipt,
+                )):
+                    raise CampaignPlanError(
+                        f"{root.label} holder traversal directory was replaced"
+                    )
+                walk_directory(
+                    child_fd, child_relative, child_receipt, depth + 1
+                )
+                child_after = os.stat(
+                    name, dir_fd=descriptor, follow_symlinks=False
+                )
+                if metadata_receipt(child_after) != child_receipt:
+                    raise CampaignPlanError(
+                        f"{root.label} holder traversal directory was replaced"
+                    )
+            finally:
+                if child_fd is not None:
+                    os.close(child_fd)
+        if (
+            direct_entries(
+                descriptor, maximum_names=len(children_before)
+            ) != children_before
+            or metadata_receipt(os.fstat(descriptor)) != expected
+        ):
+            raise CampaignPlanError(
+                f"{root.label} changed during holder traversal"
+            )
+
+    root_fd: int | None = None
+    try:
+        root_fd = os.open(root.path, directory_open_flags)
+        root_opened = os.fstat(root_fd)
+        root_at_path = root.path.stat(follow_symlinks=False)
+        root_receipt = metadata_receipt(root_opened)
+        if any((
+            not stat.S_ISDIR(root_opened.st_mode),
+            (root_opened.st_dev, root_opened.st_ino) != root.identity,
+            metadata_receipt(root_at_path) != root_receipt,
+            root.identity in forbidden_identities,
+        )):
+            raise CampaignPlanError(
+                f"{root.label} identity changed before holder traversal"
+            )
+        walk_directory(root_fd, ".", root_receipt, 0)
+        root_after = root.path.stat(follow_symlinks=False)
+        if metadata_receipt(root_after) != root_receipt:
+            raise CampaignPlanError(
+                f"{root.label} identity changed during holder traversal"
+            )
+    except CampaignPlanError:
+        raise
+    except (OSError, TypeError, NotImplementedError) as exc:
+        raise CampaignPlanError(
+            f"{root.label} cannot be completely traversed for holder scan"
+        ) from exc
+    finally:
+        if root_fd is not None:
+            os.close(root_fd)
+    return hashlib.sha256(json.dumps(
+        sorted(entries), separators=(",", ":"), allow_nan=False
+    ).encode("utf-8")).hexdigest()
+
+
+def _open_file_holder_pids(root: BoundMutableRoot) -> frozenset[int]:
+    """Return PID-only recursive holders for one exact directory inode."""
+
+    if _host_directory_identity(root.path, root.label) != root.identity:
+        raise CampaignPlanError(
+            f"{root.label} identity changed before open-file holder scan"
+        )
+    traversal_before = _mutable_root_traversal_receipt(root)
+    executable, executable_identity = _authenticated_lsof_executable()
+    try:
+        observed = subprocess.run(
+            [
+                os.fspath(executable),
+                "-n",
+                "-P",
+                "-t",
+                # Darwin lsof's terse mode implies warning suppression, so
+                # warning enablement must follow -t.  Any diagnostic then
+                # makes the strict proof fail closed below.
+                "+w",
+                "+D",
+                os.fspath(root.path),
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=OPEN_FILE_HOLDER_SCAN_TIMEOUT_SECONDS,
+            env={
+                "LANG": "C",
+                "LC_ALL": "C",
+                "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            },
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise CampaignPlanError(
+            f"{root.label} open-file holder scan failed"
+        ) from exc
+    try:
+        executable_after = executable.stat(follow_symlinks=False)
+    except OSError as exc:
+        raise CampaignPlanError(
+            "open-file holder scanner executable disappeared"
+        ) from exc
+    if any((
+        (executable_after.st_dev, executable_after.st_ino)
+        != executable_identity,
+        not stat.S_ISREG(executable_after.st_mode),
+        executable_after.st_nlink != 1,
+        executable_after.st_uid != 0,
+        bool(executable_after.st_mode & (stat.S_IWGRP | stat.S_IWOTH)),
+        _host_directory_identity(root.path, root.label) != root.identity,
+        _mutable_root_traversal_receipt(root) != traversal_before,
+    )):
+        raise CampaignPlanError(
+            f"{root.label} holder-scan authority changed during observation"
+        )
+    stdout = observed.stdout
+    stderr = observed.stderr
+    if not isinstance(stdout, bytes) or not isinstance(stderr, bytes):
+        raise CampaignPlanError(
+            f"{root.label} holder scanner returned an invalid stream"
+        )
+    if (
+        len(stdout) > MAX_OPEN_FILE_HOLDER_OUTPUT_BYTES
+        or len(stderr) > MAX_OPEN_FILE_HOLDER_OUTPUT_BYTES
+    ):
+        raise CampaignPlanError(
+            f"{root.label} holder scanner exceeded its byte bound"
+        )
+    if stderr or observed.returncode not in {0, 1}:
+        raise CampaignPlanError(
+            f"{root.label} holder scanner did not prove a complete inventory"
+        )
+    # Darwin lsof 4.91 returns status 1 both for no matches and with valid PID
+    # evidence when not every +D-expanded name is located.  Status 1 therefore
+    # carries no completeness meaning.  Completeness comes from
+    # the identical accessible nofollow traversals bracketing the fixed-host
+    # scan.  Empty output proves no match only with status 1; PID evidence is
+    # valid with either status.  Every accepted shape still requires empty
+    # stderr and exact bounded PID-only framing.
+    if not stdout and observed.returncode == 1:
+        return frozenset()
+    if not stdout:
+        raise CampaignPlanError(
+            f"{root.label} holder scanner returned an ambiguous empty result"
+        )
+    if not stdout.endswith(b"\n"):
+        raise CampaignPlanError(
+            f"{root.label} holder scanner returned malformed PID output"
+        )
+    try:
+        lines = stdout.decode("ascii").splitlines()
+    except UnicodeError as exc:
+        raise CampaignPlanError(
+            f"{root.label} holder scanner returned non-ASCII PID output"
+        ) from exc
+    if len(lines) > MAX_OPEN_FILE_HOLDER_PIDS:
+        raise CampaignPlanError(
+            f"{root.label} holder inventory exceeded its PID bound"
+        )
+    if any(
+        not line
+        or not line.isascii()
+        or not line.isdecimal()
+        or int(line) <= 1
+        or int(line) > 2_147_483_647
+        for line in lines
+    ):
+        raise CampaignPlanError(
+            f"{root.label} holder scanner returned malformed PID output"
+        )
+    pids = frozenset(int(line) for line in lines)
+    if len(pids) != len(lines):
+        raise CampaignPlanError(
+            f"{root.label} holder scanner returned duplicate PID output"
+        )
+    return pids
+
+
+def _discovery_lsof_holder_pids(
+    root: BoundMutableRoot, *, cwd_only: bool
+) -> frozenset[int]:
+    """Capture a bounded same-owner PID lower bound before any signal."""
+
+    if _host_directory_identity(root.path, root.label) != root.identity:
+        raise CampaignPlanError(
+            f"{root.label} identity changed before holder discovery"
+        )
+    traversal_before = (
+        None if cwd_only else _mutable_root_traversal_receipt(root)
+    )
+    executable, executable_identity = _authenticated_lsof_executable()
+    selector = (
+        ["-a", "-d", "cwd", "-t", os.fspath(root.path)]
+        if cwd_only
+        else ["-t", "+D", os.fspath(root.path)]
+    )
+    try:
+        observed = subprocess.run(
+            [
+                os.fspath(executable), "-n", "-P", "-w", *selector,
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=OPEN_FILE_HOLDER_SCAN_TIMEOUT_SECONDS,
+            env={
+                "LANG": "C", "LC_ALL": "C",
+                "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            },
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise CampaignPlanError(
+            f"{root.label} holder discovery failed"
+        ) from exc
+    after = executable.stat(follow_symlinks=False)
+    if any((
+        (after.st_dev, after.st_ino) != executable_identity,
+        _host_directory_identity(root.path, root.label) != root.identity,
+        (
+            not cwd_only
+            and _mutable_root_traversal_receipt(root) != traversal_before
+        ),
+    )):
+        raise CampaignPlanError(
+            f"{root.label} holder discovery authority changed"
+        )
+    if (
+        not isinstance(observed.stdout, bytes)
+        or not isinstance(observed.stderr, bytes)
+        or observed.stderr
+        or observed.returncode not in {0, 1}
+        or len(observed.stdout) > MAX_OPEN_FILE_HOLDER_OUTPUT_BYTES
+        or len(observed.stderr) > MAX_OPEN_FILE_HOLDER_OUTPUT_BYTES
+        or (cwd_only and observed.stdout and observed.returncode != 0)
+    ):
+        raise CampaignPlanError(
+            f"{root.label} holder discovery is incomplete"
+        )
+    if not observed.stdout:
+        return frozenset()
+    if not observed.stdout.endswith(b"\n"):
+        raise CampaignPlanError(
+            f"{root.label} holder discovery returned malformed PID output"
+        )
+    try:
+        lines = observed.stdout.decode("ascii").splitlines()
+    except UnicodeError as exc:
+        raise CampaignPlanError(
+            f"{root.label} holder discovery returned non-ASCII output"
+        ) from exc
+    if (
+        len(lines) > MAX_OPEN_FILE_HOLDER_PIDS
+        or any(
+            not line.isdecimal()
+            or int(line) <= 1
+            or int(line) > 2_147_483_647
+            for line in lines
+        )
+    ):
+        raise CampaignPlanError(
+            f"{root.label} holder discovery returned malformed PID output"
+        )
+    pids = frozenset(int(line) for line in lines)
+    if len(pids) != len(lines):
+        raise CampaignPlanError(
+            f"{root.label} holder discovery returned duplicate PIDs"
+        )
+    return pids
+
+
+def _authenticated_holder_process_closure(
+    holder_pids: frozenset[int],
+) -> dict[int, tuple[int, int, int, str, str]]:
+    """Resolve holder descendants/groups with the shipped birth-bound walker."""
+
+    identities: dict[int, tuple[int, int, int, str, str]] = {}
+    for pid in sorted(holder_pids):
+        try:
+            root = Contiguous._process_identity(pid)
+            if root is None or root[3].startswith("Z"):
+                raise CampaignPlanError(
+                    "open-file holder identity disappeared during observation"
+                )
+            related: dict[int, str] = {}
+            Contiguous._accumulate_related_identities(
+                pid, root[4], related
+            )
+        except Contiguous.SupervisorContractError as exc:
+            raise CampaignPlanError(
+                "open-file holder process identity could not be authenticated"
+            ) from exc
+        for related_pid, started in ((pid, root[4]), *related.items()):
+            try:
+                current = Contiguous._process_identity(related_pid)
+            except Contiguous.SupervisorContractError as exc:
+                raise CampaignPlanError(
+                    "open-file holder closure recheck failed"
+                ) from exc
+            if (
+                current is None
+                or current[4] != started
+                or current[3].startswith("Z")
+            ):
+                raise CampaignPlanError(
+                    "open-file holder closure changed during observation"
+                )
+            previous = identities.get(related_pid)
+            if previous is not None and previous != current:
+                raise CampaignPlanError(
+                    "open-file holder closure reused a PID"
+                )
+            identities[related_pid] = current
+    return identities
+
+
+def _detached_holder_inventory(
+    roots: tuple[BoundMutableRoot, ...],
+) -> dict[str, Any]:
+    """Capture a canonical birth-bound holder/lineage inventory."""
+
+    holder_pids: set[int] = set()
+    for root in roots:
+        if root.label == "abandoned workspace":
+            holder_pids.update(
+                _discovery_lsof_holder_pids(root, cwd_only=True)
+            )
+    holder_pids.discard(os.getpid())
+    holders = frozenset(holder_pids)
+    if not holders:
+        return {"holders": [], "processes": [], "groups": {}}
+    holder_identities: dict[int, tuple[int, int, int, str, str]] = {}
+    for pid in sorted(holders):
+        try:
+            identity = Contiguous._process_identity(pid)
+        except Contiguous.SupervisorContractError as exc:
+            raise CampaignPlanError(
+                "detached teardown holder identity failed"
+            ) from exc
+        if identity is None or identity[3].startswith("Z"):
+            raise CampaignPlanError(
+                "detached teardown holder disappeared during discovery"
+            )
+        holder_identities[pid] = identity
+    anchors = {
+        pid: identity for pid, identity in holder_identities.items()
+        if identity[0] == 1 and identity[1] == pid and identity[2] == pid
+    }
+    if not anchors:
+        raise CampaignPlanError(
+            "detached teardown lacks an exact cwd self-grouped PID1 anchor"
+        )
+    identities = dict(anchors)
+    for pid, identity in sorted(anchors.items()):
+        related: dict[int, str] = {}
+        try:
+            Contiguous._accumulate_related_identities(
+                pid, identity[4], related
+            )
+        except Contiguous.SupervisorContractError as exc:
+            raise CampaignPlanError(
+                "detached teardown anchor closure could not be authenticated"
+            ) from exc
+        for related_pid, started in related.items():
+            current = Contiguous._process_identity(related_pid)
+            if current is None or current[4] != started:
+                raise CampaignPlanError(
+                    "detached teardown anchor closure changed"
+                )
+            previous = identities.get(related_pid)
+            if previous is not None and previous != current:
+                raise CampaignPlanError(
+                    "detached teardown anchor closure reused a PID"
+                )
+            identities[related_pid] = current
+    if not holders.issubset(identities):
+        raise CampaignPlanError(
+            "exact workspace cwd holder is outside every sealed anchor"
+        )
+    processes = []
+    for pid, identity in sorted(identities.items()):
+        ppid, pgid, sid, state, started = identity
+        try:
+            start_identity_sha256 = (
+                Contiguous._operator_lease_process_start_identity(pid)
+            )
+        except Contiguous.SupervisorContractError as exc:
+            raise CampaignPlanError(
+                "open-file holder start identity could not be authenticated"
+            ) from exc
+        try:
+            rebound = Contiguous._process_identity(pid)
+        except Contiguous.SupervisorContractError as exc:
+            raise CampaignPlanError(
+                "open-file holder identity recheck failed"
+            ) from exc
+        if rebound != identity:
+            raise CampaignPlanError(
+                "open-file holder identity changed before inventory seal"
+            )
+        processes.append({
+            "pid": pid,
+            "ppid": ppid,
+            "pgid": pgid,
+            "sid": sid,
+            "state": state,
+            "start_identity": started,
+            "start_identity_sha256": start_identity_sha256,
+            "holder": pid in holders,
+            "parent_in_closure": ppid in identities,
+        })
+    groups: dict[str, list[int]] = {}
+    for record in processes:
+        pgid = int(record["pgid"])
+        if pgid > 1:
+            groups.setdefault(str(pgid), []).append(int(record["pid"]))
+    return {
+        "holders": sorted(holders),
+        "processes": processes,
+        "groups": {
+            pgid: sorted(members) for pgid, members in sorted(groups.items())
+        },
+    }
+
+
+def _fixed_point_detached_holder_inventory(
+    roots: tuple[BoundMutableRoot, ...],
+    *,
+    phase: str,
+    require_holders: bool,
+) -> dict[str, Any]:
+    """Stabilize the exact-cwd lower bound plus birth-bound anchor closure."""
+
+    stable: dict[str, Any] | None = None
+    stable_count = 0
+    for index in range(12):
+        observed = _detached_holder_inventory(roots)
+        if observed == stable:
+            stable_count += 1
+        else:
+            stable = observed
+            stable_count = 1
+        if stable_count == OPEN_FILE_HOLDER_ABSENCE_SAMPLES:
+            assert stable is not None
+            if require_holders and not stable["holders"]:
+                raise CampaignPlanError(
+                    f"{phase} found no detached open-file holder to arm"
+                )
+            return stable
+        if index + 1 < 12:
+            time.sleep(OPEN_FILE_HOLDER_ABSENCE_INTERVAL_SECONDS)
+    raise CampaignPlanError(
+        f"{phase} holder/lineage inventory did not reach a fixed point"
+    )
+
+
+def _reject_discovered_mutation_guard_holders(
+    roots: tuple[BoundMutableRoot, ...], *, phase: str
+) -> None:
+    """Guard-only roots can block teardown but can never authorize a signal."""
+
+    # Use the same exact, birth-bound observer exemption as terminal absence
+    # proofs.  These roots remain reject-only: their holder set is never
+    # returned to the signaling inventory.
+    _authenticated_open_file_holder_snapshot(roots, phase=phase)
+
+
+def _authenticated_open_file_holder_snapshot(
+    roots: tuple[BoundMutableRoot, ...],
+    *,
+    phase: str,
+) -> None:
+    """Reject every foreign holder after identity/lineage authentication."""
+
+    try:
+        observer_before = Contiguous._process_identity(os.getpid())
+    except Contiguous.SupervisorContractError as exc:
+        raise CampaignPlanError(
+            f"{phase} holder observer identity is unavailable"
+        ) from exc
+    if observer_before is None or observer_before[3].startswith("Z"):
+        raise CampaignPlanError(
+            f"{phase} holder observer identity is unavailable"
+        )
+    holder_pids: set[int] = set()
+    for root in roots:
+        holder_pids.update(_open_file_holder_pids(root))
+    try:
+        observer_after = Contiguous._process_identity(os.getpid())
+    except Contiguous.SupervisorContractError as exc:
+        raise CampaignPlanError(
+            f"{phase} holder observer identity changed"
+        ) from exc
+    if observer_after != observer_before:
+        raise CampaignPlanError(f"{phase} holder observer identity changed")
+    foreign = frozenset(holder_pids - {os.getpid()})
+    if not foreign:
+        return
+    identities = _authenticated_holder_process_closure(foreign)
+    reparented = any(
+        identities[pid][0] == 1 for pid in foreign if pid in identities
+    )
+    qualifier = "reparented " if reparented else ""
+    raise CampaignPlanError(
+        f"{phase} has a live {qualifier}open-file holder; "
+        "mutable generation remains quarantined"
+    )
+
+
+def _prove_bound_mutable_root_holder_absence(
+    roots: tuple[BoundMutableRoot, ...],
+    *,
+    phase: str,
+) -> None:
+    """Take repeated terminal holder snapshots across every bound root."""
+
+    if not roots:
+        raise CampaignPlanError(f"{phase} has no bound mutable roots")
+    deduplicated: dict[Path, BoundMutableRoot] = {}
+    for root in roots:
+        previous = deduplicated.get(root.path)
+        if previous is not None and previous.identity != root.identity:
+            raise CampaignPlanError(
+                f"{phase} has conflicting mutable-root identities"
+            )
+        deduplicated[root.path] = root
+    selected = tuple(deduplicated.values())
+    for index in range(OPEN_FILE_HOLDER_ABSENCE_SAMPLES):
+        _authenticated_open_file_holder_snapshot(selected, phase=phase)
+        if index + 1 < OPEN_FILE_HOLDER_ABSENCE_SAMPLES:
+            time.sleep(OPEN_FILE_HOLDER_ABSENCE_INTERVAL_SECONDS)
+    for root in selected:
+        if _host_directory_identity(root.path, root.label) != root.identity:
+            raise CampaignPlanError(
+                f"{phase} mutable-root identity changed after holder proof"
+            )
+
+
+def _sandboxed_generation_mutable_roots(
+    *,
+    marker: DispatchQuarantine,
+    parsed: RebootRecovery.ParsedMarker,
+    scratch: Path,
+    scratch_identity: tuple[int, int],
+    workspace: Path,
+    protected: Path,
+    baseline: LedgerPrefixState,
+    canonical: CanonicalRollbackState,
+) -> tuple[BoundMutableRoot, ...]:
+    """Bind every filesystem root mutable by the historical invocation."""
+
+    return (
+        _bound_mutable_root(
+            scratch, scratch_identity, label="abandoned scratch root"
+        ),
+        _bound_mutable_root(
+            workspace,
+            _marker_identity(
+                parsed.unquiesced.get("workspace_identity"), "workspace"
+            ),
+            label="abandoned workspace",
+        ),
+        _bound_mutable_root(
+            protected,
+            _marker_identity(
+                parsed.unquiesced.get("protected_identity"), "protected"
+            ),
+            label="abandoned protected evidence",
+        ),
+        _bound_mutable_root(
+            canonical.root,
+            canonical.root_identity,
+            label="canonical generation root",
+        ),
+        _bound_mutable_root(
+            baseline.path.parent,
+            baseline.parent_identity,
+            label="generation ledger root",
+        ),
+        _bound_mutable_root(
+            marker.root,
+            marker.root_identity,
+            label="dispatch quarantine root",
+        ),
+    )
+
+
+def _sandboxed_generation_teardown_root_sets(
+    *,
+    marker: DispatchQuarantine,
+    parsed: RebootRecovery.ParsedMarker,
+    scratch: Path,
+    scratch_identity: tuple[int, int],
+    workspace: Path,
+    protected: Path,
+    baseline: LedgerPrefixState,
+    canonical: CanonicalRollbackState,
+) -> tuple[tuple[BoundMutableRoot, ...], tuple[BoundMutableRoot, ...]]:
+    """Separate exact kill custody from mutation-only guard roots."""
+
+    all_roots = _sandboxed_generation_mutable_roots(
+        marker=marker,
+        parsed=parsed,
+        scratch=scratch,
+        scratch_identity=scratch_identity,
+        workspace=workspace,
+        protected=protected,
+        baseline=baseline,
+        canonical=canonical,
+    )
+    return all_roots[:3], all_roots[3:]
+
+
 def _observe_named_root_group_absence(
     *, scheduler_pid: int, child_pid: int
 ) -> dict[str, Any]:
@@ -14520,6 +16354,376 @@ def _sandboxed_generation_paths(
     return scratch, scratch_identity, workspace, protected
 
 
+def _detached_teardown_names(
+    marker_name: str, dispatch_id: str
+) -> tuple[str, str, str, str]:
+    _safe_component(marker_name, "detached teardown marker")
+    if RebootRecovery.DISPATCH_ID_RE.fullmatch(dispatch_id) is None:
+        raise CampaignPlanError("detached teardown dispatch ID is malformed")
+    prefix = f".{marker_name}.{dispatch_id}.detached_teardown"
+    return (
+        f"{prefix}_arm",
+        f"{prefix}_completion",
+        f"{prefix}_correction",
+        f"{prefix}_marker_preparing",
+    )
+
+
+def _parse_detached_teardown_marker(
+    raw: bytes, *, require_recovery_arm: bool | None = None
+) -> RebootRecovery.ParsedMarker:
+    """Accept either exact same-boot incident profile, and nothing nearby."""
+
+    failures = []
+    for parser in (
+        RebootRecovery.parse_sandboxed_generation_marker,
+        RebootRecovery.parse_interrupted_generation_marker,
+    ):
+        try:
+            return parser(raw, require_recovery_arm=require_recovery_arm)
+        except RebootRecovery.RecoveryEvidenceError as exc:
+            failures.append(exc)
+    raise RebootRecovery.RecoveryEvidenceError(
+        "detached teardown marker is not an approved same-boot incident"
+    ) from failures[-1]
+
+
+def _mutable_root_records(
+    kill_roots: tuple[BoundMutableRoot, ...],
+    guard_roots: tuple[BoundMutableRoot, ...],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "kind": kind,
+            "label": root.label,
+            "path": os.fspath(root.path),
+            "identity": list(root.identity),
+        }
+        for kind, selected in (
+            ("kill_authority", kill_roots),
+            ("mutation_guard", guard_roots),
+        )
+        for root in selected
+    ]
+
+
+def _validate_detached_holder_inventory(
+    value: object, *, require_holders: bool
+) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != {
+        "holders", "processes", "groups"
+    }:
+        raise CampaignPlanError("detached teardown holder inventory is malformed")
+    holders = value.get("holders")
+    processes = value.get("processes")
+    groups = value.get("groups")
+    if (
+        not isinstance(holders, list)
+        or not isinstance(processes, list)
+        or not isinstance(groups, dict)
+        or len(processes) > MAX_OPEN_FILE_HOLDER_PIDS
+    ):
+        raise CampaignPlanError("detached teardown holder inventory is malformed")
+    process_map: dict[int, dict[str, Any]] = {}
+    expected_process_keys = {
+        "pid", "ppid", "pgid", "sid", "state", "start_identity",
+        "start_identity_sha256", "holder", "parent_in_closure",
+    }
+    for record in processes:
+        if not isinstance(record, dict) or set(record) != expected_process_keys:
+            raise CampaignPlanError(
+                "detached teardown process identity is malformed"
+            )
+        pid = record.get("pid")
+        ppid = record.get("ppid")
+        pgid = record.get("pgid")
+        sid = record.get("sid")
+        started = record.get("start_identity")
+        started_sha = record.get("start_identity_sha256")
+        state = record.get("state")
+        if any((
+            not isinstance(pid, int) or isinstance(pid, bool) or pid <= 1,
+            not isinstance(ppid, int) or isinstance(ppid, bool) or ppid < 0,
+            not isinstance(pgid, int) or isinstance(pgid, bool) or pgid <= 1,
+            not isinstance(sid, int) or isinstance(sid, bool) or sid <= 1,
+            not isinstance(state, str) or len(state) != 1
+            or state.startswith("Z"),
+            not isinstance(started, str)
+            or re.fullmatch(r"(?:darwin:[0-9]+:[0-9]+|linux:[0-9]+)", started)
+            is None,
+            not isinstance(started_sha, str)
+            or SHA256_RE.fullmatch(started_sha) is None,
+            hashlib.sha256(json.dumps(
+                {"os_process_start": started, "pid": pid},
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+                allow_nan=False,
+            ).encode("ascii")).hexdigest() != started_sha,
+            not isinstance(record.get("holder"), bool),
+            not isinstance(record.get("parent_in_closure"), bool),
+        )):
+            raise CampaignPlanError(
+                "detached teardown process identity is malformed"
+            )
+        if pid in process_map:
+            raise CampaignPlanError(
+                "detached teardown process identity is duplicated"
+            )
+        process_map[pid] = dict(record)
+    if holders != sorted(holders) or any(
+        not isinstance(pid, int)
+        or isinstance(pid, bool)
+        or pid not in process_map
+        for pid in holders
+    ):
+        raise CampaignPlanError("detached teardown holder set is malformed")
+    if set(holders) != {
+        pid for pid, record in process_map.items() if record["holder"]
+    } or (require_holders and not holders):
+        raise CampaignPlanError("detached teardown holder set is malformed")
+    expected_groups: dict[str, list[int]] = {}
+    for pid, record in sorted(process_map.items()):
+        if record["pgid"] > 1:
+            expected_groups.setdefault(str(record["pgid"]), []).append(pid)
+        if record["parent_in_closure"] != (record["ppid"] in process_map):
+            raise CampaignPlanError(
+                "detached teardown ancestry relation is malformed"
+            )
+    if groups != expected_groups:
+        raise CampaignPlanError(
+            "detached teardown process-group relation is malformed"
+        )
+    adjacency: dict[int, set[int]] = {pid: set() for pid in process_map}
+    for pid, record in process_map.items():
+        parent = int(record["ppid"])
+        if parent in adjacency:
+            adjacency[pid].add(parent)
+            adjacency[parent].add(pid)
+    for origin in process_map:
+        reached = {origin}
+        pending = [origin]
+        while pending:
+            pending.extend(adjacency[pending.pop()] - reached)
+            reached.update(pending)
+        if not reached.intersection(holders):
+            raise CampaignPlanError(
+                "detached teardown closure has a holder-disconnected process"
+            )
+    return {"holders": holders, "processes": processes, "groups": groups}
+
+
+def _validate_detached_teardown_arm_record(
+    arm: object,
+    *,
+    marker_name: str,
+) -> dict[str, Any]:
+    if (
+        not isinstance(arm, dict)
+        or set(arm) != DETACHED_TEARDOWN_ARM_KEYS
+        or arm.get("schema") != DETACHED_TEARDOWN_ARM_SCHEMA
+        or arm.get("event") != DETACHED_TEARDOWN_ARM_EVENT
+        or arm.get("marker_name") != marker_name
+        or not isinstance(arm.get("dispatch_id"), str)
+        or RebootRecovery.DISPATCH_ID_RE.fullmatch(str(arm.get("dispatch_id")))
+        is None
+        or arm.get("process_claim")
+        != "birth_bound_open_holder_teardown_only_no_quiescence_upgrade"
+        or arm.get("holder_selector")
+        != "lsof_exact_inode_bound_workspace_cwd_pid_only_v1"
+    ):
+        raise CampaignPlanError("detached teardown arm record is malformed")
+    RebootRecovery._validate_boot_identity_fields(
+        arm.get("boot_identity_source"), arm.get("boot_identity")
+    )
+    for field in (
+        "projected_item_sha256", "historical_runner_source_sha256",
+        "sandbox_contract_sha256", "canonical_digest", "marker_sha256",
+        "marker_prefix_sha256", "ledger_prefix_sha256", "wip_state_sha256",
+        "workspace_tree_observation_sha256", "protected_tree_sha256",
+        "holder_inventory_sha256",
+    ):
+        if not isinstance(arm.get(field), str) or SHA256_RE.fullmatch(
+            str(arm[field])
+        ) is None:
+            raise CampaignPlanError(
+                f"detached teardown arm {field} is malformed"
+            )
+    if (
+        not isinstance(arm.get("recovery_nonce"), str)
+        or RebootRecovery.DISPATCH_ID_RE.fullmatch(arm["recovery_nonce"])
+        is None
+    ):
+        raise CampaignPlanError("detached teardown recovery nonce is malformed")
+    if arm.get("exec_record_sha256") is not None and (
+        not isinstance(arm["exec_record_sha256"], str)
+        or SHA256_RE.fullmatch(arm["exec_record_sha256"]) is None
+    ):
+        raise CampaignPlanError("detached teardown exec seal is malformed")
+    if not isinstance(arm.get("stale_recovery_arm_present"), bool):
+        raise CampaignPlanError("detached teardown stale-arm flag is malformed")
+    stale = bool(arm["stale_recovery_arm_present"])
+    stale_nonce = arm.get("stale_recovery_nonce")
+    stale_sha = arm.get("stale_recovery_arm_sha256")
+    if stale != (
+        isinstance(stale_nonce, str)
+        and RebootRecovery.DISPATCH_ID_RE.fullmatch(stale_nonce) is not None
+    ) or stale != (
+        isinstance(stale_sha, str) and SHA256_RE.fullmatch(stale_sha) is not None
+    ):
+        raise CampaignPlanError("detached teardown stale-arm seal is malformed")
+    if (
+        not isinstance(arm.get("historical_runner_head_commit"), str)
+        or GIT_COMMIT_RE.fullmatch(arm["historical_runner_head_commit"])
+        is None
+        or not isinstance(arm.get("frontier_binding"), dict)
+    ):
+        raise CampaignPlanError("detached teardown source binding is malformed")
+    Status.validate_frontier_binding(dict(arm["frontier_binding"]))
+    for field in (
+        "canonical_root", "scratch_root", "marker_root", "lsof_executable"
+    ):
+        _normalized_absolute_path(arm.get(field), field)
+    for field in ("workspace", "protected", "marker_name"):
+        _safe_component(arm.get(field), field)
+    _marker_identity(arm.get("marker_root_identity"), "teardown marker root")
+    _marker_identity(arm.get("marker_identity"), "teardown marker")
+    _marker_identity(arm.get("scratch_root_identity"), "teardown scratch")
+    _marker_identity(arm.get("workspace_identity"), "teardown workspace")
+    _marker_identity(arm.get("protected_identity"), "teardown protected")
+    _marker_identity(arm.get("canonical_root_identity"), "teardown canonical")
+    _marker_identity(
+        arm.get("lsof_executable_identity"), "teardown lsof executable"
+    )
+    for field in ("marker_bytes", "marker_prefix_bytes"):
+        value = arm.get(field)
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            raise CampaignPlanError(
+                f"detached teardown arm {field} is malformed"
+            )
+    ledger_prefix_bytes = arm.get("ledger_prefix_bytes")
+    if (
+        not isinstance(ledger_prefix_bytes, int)
+        or isinstance(ledger_prefix_bytes, bool)
+        or ledger_prefix_bytes < 0
+    ):
+        raise CampaignPlanError(
+            "detached teardown arm ledger_prefix_bytes is malformed"
+        )
+    roots = arm.get("mutable_roots")
+    if not isinstance(roots, list) or not roots:
+        raise CampaignPlanError("detached teardown mutable roots are malformed")
+    if [
+        (root.get("kind"), root.get("label"))
+        for root in roots if isinstance(root, dict)
+    ] != [
+        ("kill_authority", "abandoned scratch root"),
+        ("kill_authority", "abandoned workspace"),
+        ("kill_authority", "abandoned protected evidence"),
+        ("mutation_guard", "canonical generation root"),
+        ("mutation_guard", "generation ledger root"),
+        ("mutation_guard", "dispatch quarantine root"),
+    ]:
+        raise CampaignPlanError(
+            "detached teardown mutable root roles are malformed"
+        )
+    seen: set[tuple[str, str]] = set()
+    seen_paths: set[str] = set()
+    for root in roots:
+        if not isinstance(root, dict) or set(root) != {
+            "kind", "label", "path", "identity"
+        } or root.get("kind") not in {"kill_authority", "mutation_guard"}:
+            raise CampaignPlanError(
+                "detached teardown mutable roots are malformed"
+            )
+        path = _normalized_absolute_path(root.get("path"), "mutable root")
+        _marker_identity(root.get("identity"), "mutable root")
+        key = (str(root["kind"]), os.fspath(path))
+        if key in seen or os.fspath(path) in seen_paths:
+            raise CampaignPlanError(
+                "detached teardown mutable root is duplicated"
+            )
+        seen.add(key)
+        seen_paths.add(os.fspath(path))
+    inventory = _validate_detached_holder_inventory(
+        arm.get("holder_inventory"), require_holders=True
+    )
+    if hashlib.sha256(RebootRecovery.canonical_json_line(
+        inventory
+    )).hexdigest() != arm.get("holder_inventory_sha256"):
+        raise CampaignPlanError(
+            "detached teardown holder inventory seal changed"
+        )
+    process_map = {
+        int(record["pid"]): record for record in inventory["processes"]
+    }
+    anchors = arm.get("anchor_pids")
+    if (
+        not isinstance(anchors, list)
+        or not anchors
+        or anchors != sorted(anchors)
+        or any(
+            not isinstance(pid, int)
+            or isinstance(pid, bool)
+            or pid not in process_map
+            or process_map[pid]["ppid"] != 1
+            or process_map[pid]["holder"] is not True
+            for pid in anchors
+        )
+        or arm.get("delegated_process_class")
+        != (
+            "same_boot_descendant_of_sealed_anchor_with_exact_workspace_"
+            "cwd_and_birth_identity_v1"
+        )
+    ):
+        raise CampaignPlanError(
+            "detached teardown delegated anchor authority is malformed"
+        )
+    closure_roots = {
+        pid for pid, record in process_map.items()
+        if int(record["ppid"]) not in process_map
+    }
+    if closure_roots != set(anchors) or any(
+        process_map[pid]["pgid"] != pid
+        or process_map[pid]["sid"] != pid
+        for pid in anchors
+    ):
+        raise CampaignPlanError(
+            "detached teardown closure is not rooted exactly at its anchors"
+        )
+    directed = set(anchors)
+    while True:
+        added = {
+            pid for pid, record in process_map.items()
+            if pid not in directed and int(record["ppid"]) in directed
+        }
+        if not added:
+            break
+        directed.update(added)
+    if directed != set(process_map):
+        raise CampaignPlanError(
+            "detached teardown closure is not a directed anchor lineage"
+        )
+    _recovery_recorded_at(arm, "detached teardown arm")
+    return dict(arm)
+
+
+def _detached_teardown_root_bindings_from_record(
+    arm: dict[str, Any],
+) -> tuple[tuple[BoundMutableRoot, ...], tuple[BoundMutableRoot, ...]]:
+    selected: dict[str, list[BoundMutableRoot]] = {
+        "kill_authority": [], "mutation_guard": []
+    }
+    for record in arm["mutable_roots"]:
+        path = _normalized_absolute_path(record["path"], "mutable root")
+        selected[str(record["kind"])].append(_bound_mutable_root(
+            path,
+            _marker_identity(record["identity"], "mutable root"),
+            label=str(record["label"]),
+        ))
+    return tuple(selected["kill_authority"]), tuple(selected["mutation_guard"])
+
+
 def _validate_sandboxed_generation_canonical_frontier(
     item: dict[str, Any],
     parsed: RebootRecovery.ParsedMarker,
@@ -14661,6 +16865,2370 @@ def _validate_sandboxed_generation_baseline(
     return baseline, canonical, _capture_wip_rollback(item), execution
 
 
+def _arm_detached_generation_teardown_locked(
+    item: dict[str, Any],
+    *,
+    confirm_dispatch_id: str,
+    confirm_stale_recovery_nonce: str,
+    boot_identity_provider: RebootRecovery.BootIdentityProvider,
+) -> dict[str, Any]:
+    """Durably bind a same-boot detached holder set before any signal."""
+
+    marker, parsed = _read_existing_dispatch_quarantine(
+        item,
+        require_recovery_arm=True,
+        marker_parser=_parse_detached_teardown_marker,
+    )
+    try:
+        arm_name, _completion_name, correction_name, _preparing = (
+            _detached_teardown_names(marker.name, marker.dispatch_id)
+        )
+        try:
+            installed, _installed_identity, _installed_payload = (
+                _read_durable_recovery_record_at(
+                    marker.root_fd,
+                    arm_name,
+                    root_path=marker.root,
+                    root_identity=marker.root_identity,
+                    label="detached teardown arm",
+                )
+            )
+        except FileNotFoundError:
+            installed = None
+        # Durable-stage replay is deliberately first.  Once an arm (or its
+        # complete preparing inode) exists, returning its original nonce must
+        # not depend on a process still holding the workspace or on mutable
+        # generation bytes remaining equal to the pre-arm observation.
+        if installed is not None:
+            installed = _validate_detached_teardown_arm_record(
+                installed, marker_name=marker.name
+            )
+            current_boot = RebootRecovery.validate_boot_identity(
+                boot_identity_provider()
+            )
+            marker_payload = _sealed_recovery_marker_bytes(marker)
+            historical = parsed.armed.get("historical_runner")
+            stale_arm = parsed.recovery_arm
+            if any((
+                marker.dispatch_id != confirm_dispatch_id,
+                installed["dispatch_id"] != marker.dispatch_id,
+                installed["stale_recovery_nonce"]
+                != confirm_stale_recovery_nonce,
+                stale_arm is None,
+                stale_arm is not None and stale_arm.get("recovery_nonce")
+                != installed["stale_recovery_nonce"],
+                installed["stale_recovery_arm_sha256"]
+                != (
+                    _recovery_record_sha256(stale_arm)
+                    if stale_arm is not None else None
+                ),
+                installed["boot_identity_source"] != current_boot.source,
+                installed["boot_identity"] != current_boot.value,
+                list(marker.marker_identity) != installed["marker_identity"],
+                len(marker_payload) != installed["marker_bytes"],
+                hashlib.sha256(marker_payload).hexdigest()
+                != installed["marker_sha256"],
+                parsed.armed.get("projected_item_sha256")
+                != installed["projected_item_sha256"],
+                not isinstance(historical, dict),
+                isinstance(historical, dict)
+                and historical.get("source_sha256")
+                != installed["historical_runner_source_sha256"],
+                isinstance(historical, dict)
+                and historical.get("head_commit")
+                != installed["historical_runner_head_commit"],
+            )):
+                raise CampaignPlanError(
+                    "installed detached teardown arm context changed"
+                )
+            return {
+                "game": item["game"],
+                "target_level": item["target_level"],
+                "result": "detached_generation_teardown_already_armed",
+                "dispatch_id": marker.dispatch_id,
+                "recovery_nonce": installed["recovery_nonce"],
+                "anchor_process_start_sha256s": [
+                    record["start_identity_sha256"]
+                    for record in installed["holder_inventory"]["processes"]
+                    if record["pid"] in installed["anchor_pids"]
+                ],
+            }
+        item = _reconstruct_historical_recovery_item(
+            item, parsed.armed, allow_abandoned_scratch=True
+        )
+        stale_arm = parsed.recovery_arm
+        if stale_arm is None or any((
+            marker.dispatch_id != confirm_dispatch_id,
+            stale_arm.get("recovery_nonce")
+            != confirm_stale_recovery_nonce,
+        )):
+            raise CampaignPlanError(
+                "detached teardown confirmation does not match the stale arm"
+            )
+        current_boot = RebootRecovery.validate_boot_identity(
+            boot_identity_provider()
+        )
+        if any((
+            stale_arm.get("boot_identity_source") != current_boot.source,
+            stale_arm.get("boot_identity") != current_boot.value,
+        )):
+            raise CampaignPlanError(
+                "detached teardown stale arm is not from this boot"
+            )
+        interrupted = _is_interrupted_generation(parsed)
+        baseline, canonical, current_wip, execution = (
+            _validate_sandboxed_generation_baseline(
+                item, marker, parsed, interrupted_exec=interrupted
+            )
+        )
+        scratch, scratch_identity, workspace, protected = (
+            _sandboxed_generation_paths(item, parsed)
+        )
+        kill_roots, guard_roots = _sandboxed_generation_teardown_root_sets(
+            marker=marker,
+            parsed=parsed,
+            scratch=scratch,
+            scratch_identity=scratch_identity,
+            workspace=workspace,
+            protected=protected,
+            baseline=baseline,
+            canonical=canonical,
+        )
+        _reject_discovered_mutation_guard_holders(
+            guard_roots, phase="detached teardown arm"
+        )
+        tree_hashes = _sandboxed_generation_tree_hashes(
+            workspace, protected
+        )
+        inventory = _fixed_point_detached_holder_inventory(
+            kill_roots,
+            phase="detached teardown arm",
+            require_holders=True,
+        )
+        inventory = _validate_detached_holder_inventory(
+            inventory, require_holders=True
+        )
+        anchors = sorted(
+            int(record["pid"])
+            for record in inventory["processes"]
+            if (
+                record["holder"] is True
+                and record["ppid"] == 1
+                and record["pgid"] == record["pid"]
+                and record["sid"] == record["pid"]
+            )
+        )
+        if not anchors:
+            raise CampaignPlanError(
+                "detached teardown has no exact stable workspace anchor"
+            )
+        marker_payload = _sealed_recovery_marker_bytes(marker)
+        try:
+            marker_rows = RebootRecovery.parse_canonical_jsonl(
+                marker_payload, label="detached teardown marker"
+            )
+        except RebootRecovery.RecoveryEvidenceError as exc:
+            raise CampaignPlanError(str(exc)) from exc
+        if len(marker_rows) != 3:
+            raise CampaignPlanError(
+                "detached teardown requires one exact stale third-row arm"
+            )
+        marker_prefix = b"".join(
+            RebootRecovery.canonical_json_line(row) for row in marker_rows[:2]
+        )
+        if any((
+            stale_arm.get("pre_arm_marker_bytes") != len(marker_prefix),
+            stale_arm.get("pre_arm_marker_sha256")
+            != hashlib.sha256(marker_prefix).hexdigest(),
+        )):
+            raise CampaignPlanError(
+                "detached teardown stale arm does not bind its original prefix"
+            )
+        historical = parsed.armed.get("historical_runner")
+        if not isinstance(historical, dict):
+            raise CampaignPlanError(
+                "detached teardown lost its historical runner"
+            )
+        historical_head = historical.get("head_commit")
+        if (
+            not isinstance(historical_head, str)
+            or GIT_COMMIT_RE.fullmatch(historical_head) is None
+        ):
+            raise CampaignPlanError(
+                "detached teardown requires an exact historical head receipt"
+            )
+        lsof_path, lsof_identity = _authenticated_lsof_executable()
+        arm_record = {
+            "schema": DETACHED_TEARDOWN_ARM_SCHEMA,
+            "event": DETACHED_TEARDOWN_ARM_EVENT,
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "dispatch_id": marker.dispatch_id,
+            "recovery_nonce": os.urandom(16).hex(),
+            "boot_identity_source": current_boot.source,
+            "boot_identity": current_boot.value,
+            "projected_item_sha256": parsed.armed["projected_item_sha256"],
+            "historical_runner_source_sha256": historical["source_sha256"],
+            "historical_runner_head_commit": historical_head,
+            "frontier_binding": parsed.armed["frontier_binding"],
+            "sandbox_contract_sha256": SANDBOX_CONTRACTS[
+                str(historical["source_sha256"])
+            ],
+            "exec_record_sha256": _sandbox_exec_record_sha256(parsed),
+            "canonical_root": os.fspath(canonical.root),
+            "canonical_root_identity": list(canonical.root_identity),
+            "canonical_digest": canonical.digest,
+            "scratch_root": os.fspath(scratch),
+            "scratch_root_identity": list(scratch_identity),
+            "workspace": workspace.name,
+            "workspace_identity": parsed.unquiesced["workspace_identity"],
+            "protected": protected.name,
+            "protected_identity": parsed.unquiesced["protected_identity"],
+            "marker_name": marker.name,
+            "marker_root": os.fspath(marker.root),
+            "marker_root_identity": list(marker.root_identity),
+            "marker_identity": list(marker.marker_identity),
+            "marker_bytes": len(marker_payload),
+            "marker_sha256": hashlib.sha256(marker_payload).hexdigest(),
+            "marker_prefix_bytes": len(marker_prefix),
+            "marker_prefix_sha256": hashlib.sha256(marker_prefix).hexdigest(),
+            "stale_recovery_arm_present": True,
+            "stale_recovery_nonce": stale_arm["recovery_nonce"],
+            "stale_recovery_arm_sha256": _recovery_record_sha256(stale_arm),
+            "ledger_prefix_bytes": len(baseline.raw_prefix),
+            "ledger_prefix_sha256": hashlib.sha256(
+                baseline.raw_prefix
+            ).hexdigest(),
+            "wip_state_sha256": _wip_recovery_state_sha256(current_wip),
+            **tree_hashes,
+            "mutable_roots": _mutable_root_records(kill_roots, guard_roots),
+            "lsof_executable": os.fspath(lsof_path),
+            "lsof_executable_identity": list(lsof_identity),
+            "holder_inventory": inventory,
+            "holder_inventory_sha256": hashlib.sha256(
+                RebootRecovery.canonical_json_line(inventory)
+            ).hexdigest(),
+            "anchor_pids": anchors,
+            "holder_selector": (
+                "lsof_exact_inode_bound_workspace_cwd_pid_only_v1"
+            ),
+            "delegated_process_class": (
+                "same_boot_descendant_of_sealed_anchor_with_exact_workspace_"
+                "cwd_and_birth_identity_v1"
+            ),
+            "process_claim": (
+                "birth_bound_open_holder_teardown_only_no_quiescence_upgrade"
+            ),
+        }
+        _validate_detached_teardown_arm_record(
+            arm_record, marker_name=marker.name
+        )
+        try:
+            correction, _correction_identity, _correction_payload = (
+                _read_durable_recovery_record_at(
+                    marker.root_fd,
+                    correction_name,
+                    root_path=marker.root,
+                    root_identity=marker.root_identity,
+                    label="detached teardown correction",
+                )
+            )
+        except FileNotFoundError:
+            correction = None
+        if correction is not None:
+            raise CampaignPlanError(
+                "detached teardown is already completed"
+            )
+        # Rebind the entire immutable authority envelope immediately before
+        # publishing the arm.  The earlier observations establish the holder
+        # set; this second pass makes a marker/canonical/frontier/ledger/WIP
+        # race fail before the durable nonce exists.
+        (
+            rebound_baseline,
+            rebound_canonical,
+            rebound_wip,
+            rebound_execution,
+        ) = _validate_sandboxed_generation_baseline(
+            item, marker, parsed, interrupted_exec=interrupted
+        )
+        (
+            rebound_scratch,
+            rebound_scratch_identity,
+            rebound_workspace,
+            rebound_protected,
+        ) = _sandboxed_generation_paths(item, parsed)
+        rebound_kill_roots, rebound_guard_roots = (
+            _sandboxed_generation_teardown_root_sets(
+                marker=marker,
+                parsed=parsed,
+                scratch=rebound_scratch,
+                scratch_identity=rebound_scratch_identity,
+                workspace=rebound_workspace,
+                protected=rebound_protected,
+                baseline=rebound_baseline,
+                canonical=rebound_canonical,
+            )
+        )
+        rebound_marker_payload = _sealed_recovery_marker_bytes(marker)
+        rebound_lsof_path, rebound_lsof_identity = (
+            _authenticated_lsof_executable()
+        )
+        if any((
+            rebound_baseline.raw_prefix != baseline.raw_prefix,
+            rebound_baseline.file_identity != baseline.file_identity,
+            rebound_baseline.parent_identity != baseline.parent_identity,
+            rebound_canonical.root != canonical.root,
+            rebound_canonical.root_identity != canonical.root_identity,
+            rebound_canonical.digest != canonical.digest,
+            _wip_recovery_state_sha256(rebound_wip)
+            != arm_record["wip_state_sha256"],
+            (
+                _recovery_record_sha256(rebound_execution)
+                if rebound_execution is not None else None
+            ) != arm_record["exec_record_sha256"],
+            rebound_scratch != scratch,
+            rebound_scratch_identity != scratch_identity,
+            rebound_workspace != workspace,
+            rebound_protected != protected,
+            _mutable_root_records(rebound_kill_roots, rebound_guard_roots)
+            != arm_record["mutable_roots"],
+            rebound_lsof_path != lsof_path,
+            rebound_lsof_identity != lsof_identity,
+            list(marker.marker_identity) != arm_record["marker_identity"],
+            len(rebound_marker_payload) != arm_record["marker_bytes"],
+            hashlib.sha256(rebound_marker_payload).hexdigest()
+            != arm_record["marker_sha256"],
+            _canonical_frontier_binding(item)
+            != Status.validate_frontier_binding(
+                dict(arm_record["frontier_binding"])
+            ),
+        )):
+            raise CampaignPlanError(
+                "detached teardown authority changed before arm install"
+            )
+        if _sandboxed_generation_tree_hashes(
+            workspace, protected
+        ) != tree_hashes:
+            raise CampaignPlanError(
+                "detached teardown generation changed before arm persistence"
+            )
+        _reject_discovered_mutation_guard_holders(
+            guard_roots, phase="detached teardown arm persistence"
+        )
+        rebound = _fixed_point_detached_holder_inventory(
+            kill_roots,
+            phase="detached teardown arm persistence",
+            require_holders=True,
+        )
+        if rebound != inventory:
+            raise CampaignPlanError(
+                "detached teardown holder inventory changed before arming"
+            )
+        final_baseline, final_canonical, final_wip, final_execution = (
+            _validate_sandboxed_generation_baseline(
+                item, marker, parsed, interrupted_exec=interrupted
+            )
+        )
+        final_marker_payload = _sealed_recovery_marker_bytes(marker)
+        final_lsof_path, final_lsof_identity = (
+            _authenticated_lsof_executable()
+        )
+        if any((
+            final_baseline.raw_prefix != baseline.raw_prefix,
+            final_baseline.file_identity != baseline.file_identity,
+            final_baseline.parent_identity != baseline.parent_identity,
+            final_canonical.root != canonical.root,
+            final_canonical.root_identity != canonical.root_identity,
+            final_canonical.digest != canonical.digest,
+            _wip_recovery_state_sha256(final_wip)
+            != arm_record["wip_state_sha256"],
+            (
+                _recovery_record_sha256(final_execution)
+                if final_execution is not None else None
+            ) != arm_record["exec_record_sha256"],
+            len(final_marker_payload) != arm_record["marker_bytes"],
+            hashlib.sha256(final_marker_payload).hexdigest()
+            != arm_record["marker_sha256"],
+            list(marker.marker_identity) != arm_record["marker_identity"],
+            final_lsof_path != lsof_path,
+            final_lsof_identity != lsof_identity,
+            _sandboxed_generation_tree_hashes(workspace, protected)
+            != tree_hashes,
+            _canonical_frontier_binding(item)
+            != Status.validate_frontier_binding(
+                dict(arm_record["frontier_binding"])
+            ),
+        )):
+            raise CampaignPlanError(
+                "detached teardown authority changed at arm publication"
+            )
+        _install_durable_recovery_record_at(
+            marker.root_fd,
+            arm_name,
+            arm_record,
+            root_path=marker.root,
+            root_identity=marker.root_identity,
+            label="detached teardown arm",
+        )
+        return {
+            "game": item["game"],
+            "target_level": item["target_level"],
+            "result": "detached_generation_teardown_armed",
+            "dispatch_id": marker.dispatch_id,
+            "recovery_nonce": arm_record["recovery_nonce"],
+            "anchor_process_start_sha256s": [
+                record["start_identity_sha256"]
+                for record in inventory["processes"]
+                if record["pid"] in anchors
+            ],
+        }
+    finally:
+        _close_dispatch_quarantine(marker)
+
+
+def _arm_detached_generation_teardown(
+    item: dict[str, Any],
+    *,
+    confirm_dispatch_id: str,
+    confirm_stale_recovery_nonce: str,
+    boot_identity_provider: RebootRecovery.BootIdentityProvider = (
+        RebootRecovery.authoritative_boot_identity
+    ),
+) -> dict[str, Any]:
+    dispatch_lock = _acquire_scheduler_dispatch_lock(item)
+    try:
+        lineage_lock = _acquire_scheduler_lineage_lock(item)
+        try:
+            return _arm_detached_generation_teardown_locked(
+                item,
+                confirm_dispatch_id=confirm_dispatch_id,
+                confirm_stale_recovery_nonce=confirm_stale_recovery_nonce,
+                boot_identity_provider=boot_identity_provider,
+            )
+        finally:
+            _release_scheduler_artifact_lock(lineage_lock)
+    finally:
+        _release_scheduler_artifact_lock(dispatch_lock)
+
+
+def _detached_teardown_adoption_name(
+    marker_name: str,
+    dispatch_id: str,
+    recovery_nonce: str,
+    inventory_sha256: str,
+    phase: str,
+) -> str:
+    _safe_sha256(inventory_sha256, "detached adoption inventory")
+    if (
+        RebootRecovery.DISPATCH_ID_RE.fullmatch(dispatch_id) is None
+        or RebootRecovery.DISPATCH_ID_RE.fullmatch(recovery_nonce) is None
+        or SAFE_COMPONENT_RE.fullmatch(phase) is None
+    ):
+        raise CampaignPlanError("detached teardown adoption phase is unsafe")
+    coordinate = hashlib.sha256(
+        f"{phase}:{inventory_sha256}".encode("ascii")
+    ).hexdigest()[:32]
+    return (
+        f".{marker_name}.{dispatch_id}.{recovery_nonce}."
+        f"detached_teardown_adoption_{coordinate}"
+    )
+
+
+def _persist_detached_teardown_adoption(
+    marker: DispatchQuarantine,
+    arm: dict[str, Any],
+    arm_identity: tuple[int, int],
+    inventory: dict[str, Any],
+    *,
+    phase: str,
+) -> tuple[str, str]:
+    """Fsync each dynamic birth-bound adoption before its first signal."""
+
+    inventory = _validate_detached_holder_inventory(
+        inventory, require_holders=True
+    )
+    inventory_sha = hashlib.sha256(
+        RebootRecovery.canonical_json_line(inventory)
+    ).hexdigest()
+    name = _detached_teardown_adoption_name(
+        marker.name,
+        marker.dispatch_id,
+        str(arm["recovery_nonce"]),
+        inventory_sha,
+        phase,
+    )
+    existing_adoptions = _read_detached_teardown_adoptions(
+        marker, arm, arm_identity
+    )
+    existing_names = {
+        existing_name
+        for existing_name, _record, _sha256 in existing_adoptions
+    }
+    if (
+        name not in existing_names
+        and len(existing_names) >= MAX_DETACHED_TEARDOWN_ADOPTIONS
+    ):
+        raise CampaignPlanError(
+            "detached teardown adoption record bound was exhausted"
+        )
+    try:
+        existing, _existing_identity, _existing_payload = (
+            _read_durable_recovery_record_at(
+                marker.root_fd,
+                name,
+                root_path=marker.root,
+                root_identity=marker.root_identity,
+                label="detached teardown adoption",
+            )
+        )
+    except FileNotFoundError:
+        existing = None
+    if existing is not None:
+        existing = _validate_detached_teardown_adoption_record(
+            existing,
+            marker=marker,
+            arm=arm,
+            arm_identity=arm_identity,
+            expected_name=name,
+        )
+        if existing.get("inventory") != inventory:
+            raise CampaignPlanError(
+                "detached teardown adoption replay changed"
+            )
+        return name, _recovery_record_sha256(existing)
+    record = {
+        "schema": DETACHED_TEARDOWN_ADOPTION_SCHEMA,
+        "event": DETACHED_TEARDOWN_ADOPTION_EVENT,
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "dispatch_id": marker.dispatch_id,
+        "recovery_nonce": arm["recovery_nonce"],
+        "arm_record_sha256": _recovery_record_sha256(arm),
+        "arm_identity": list(arm_identity),
+        "inventory": inventory,
+        "inventory_sha256": inventory_sha,
+        "phase": phase,
+        "effect_authority": (
+            "exact_adopted_birth_pid_signal_after_group_membership_audit_v1"
+        ),
+    }
+    expected_keys = {
+        "schema", "event", "recorded_at", "dispatch_id", "recovery_nonce",
+        "arm_record_sha256", "arm_identity", "inventory",
+        "inventory_sha256", "phase", "effect_authority",
+    }
+    if set(record) != expected_keys:
+        raise CampaignPlanError("detached teardown adoption is malformed")
+    _install_durable_recovery_record_at(
+        marker.root_fd,
+        name,
+        record,
+        root_path=marker.root,
+        root_identity=marker.root_identity,
+        label="detached teardown adoption",
+    )
+    return name, _recovery_record_sha256(record)
+
+
+def _detached_inventory_process_map(
+    inventory: dict[str, Any],
+) -> dict[int, tuple[int, int, int, str, str]]:
+    _validate_detached_holder_inventory(inventory, require_holders=False)
+    return {
+        int(record["pid"]): (
+            int(record["ppid"]), int(record["pgid"]), int(record["sid"]),
+            str(record["state"]), str(record["start_identity"]),
+        )
+        for record in inventory["processes"]
+    }
+
+
+def _validate_detached_teardown_adoption_record(
+    record: object,
+    *,
+    marker: DispatchQuarantine,
+    arm: dict[str, Any],
+    arm_identity: tuple[int, int],
+    expected_name: str,
+) -> dict[str, Any]:
+    expected_keys = {
+        "schema", "event", "recorded_at", "dispatch_id", "recovery_nonce",
+        "arm_record_sha256", "arm_identity", "inventory",
+        "inventory_sha256", "phase", "effect_authority",
+    }
+    if not isinstance(record, dict) or set(record) != expected_keys:
+        raise CampaignPlanError("detached teardown adoption is malformed")
+    inventory = _validate_detached_holder_inventory(
+        record.get("inventory"), require_holders=True
+    )
+    _validate_delegated_detached_inventory(arm, inventory)
+    inventory_sha = hashlib.sha256(
+        RebootRecovery.canonical_json_line(inventory)
+    ).hexdigest()
+    phase = record.get("phase")
+    if any((
+        record.get("schema") != DETACHED_TEARDOWN_ADOPTION_SCHEMA,
+        record.get("event") != DETACHED_TEARDOWN_ADOPTION_EVENT,
+        record.get("dispatch_id") != marker.dispatch_id,
+        record.get("recovery_nonce") != arm["recovery_nonce"],
+        record.get("arm_record_sha256") != _recovery_record_sha256(arm),
+        record.get("arm_identity") != list(arm_identity),
+        record.get("inventory_sha256") != inventory_sha,
+        not isinstance(phase, str),
+        isinstance(phase, str) and SAFE_COMPONENT_RE.fullmatch(phase) is None,
+        isinstance(phase, str) and _detached_teardown_adoption_name(
+            marker.name,
+            marker.dispatch_id,
+            str(arm["recovery_nonce"]),
+            inventory_sha,
+            phase,
+        ) != expected_name,
+        record.get("effect_authority")
+        != (
+            "exact_adopted_birth_pid_signal_after_group_membership_audit_v1"
+        ),
+    )):
+        raise CampaignPlanError("detached teardown adoption binding changed")
+    _recovery_recorded_at(record, "detached teardown adoption")
+    return dict(record)
+
+
+def _read_detached_teardown_adoptions(
+    marker: DispatchQuarantine,
+    arm: dict[str, Any],
+    arm_identity: tuple[int, int],
+) -> list[tuple[str, dict[str, Any], str]]:
+    """Promote and authenticate the complete bounded adoption namespace."""
+
+    prefix = (
+        f".{marker.name}.{marker.dispatch_id}.{arm['recovery_nonce']}."
+        "detached_teardown_adoption_"
+    )
+    try:
+        entries = os.listdir(marker.root_fd)
+    except OSError as exc:
+        raise CampaignPlanError(
+            "detached teardown adoption namespace is unreadable"
+        ) from exc
+    names: set[str] = set()
+    for entry in entries:
+        if not entry.startswith(prefix):
+            continue
+        candidate = (
+            entry[:-len(".preparing")]
+            if entry.endswith(".preparing") else entry
+        )
+        coordinate = candidate[len(prefix):]
+        if re.fullmatch(r"[0-9a-f]{32}", coordinate) is None:
+            raise CampaignPlanError(
+                "detached teardown adoption namespace is ambiguous"
+            )
+        names.add(candidate)
+    if len(names) > MAX_DETACHED_TEARDOWN_ADOPTIONS:
+        raise CampaignPlanError(
+            "detached teardown adoption namespace exceeded its bound"
+        )
+    records: list[tuple[str, dict[str, Any], str]] = []
+    for name in sorted(names):
+        record, _identity, _payload = _read_durable_recovery_record_at(
+            marker.root_fd,
+            name,
+            root_path=marker.root,
+            root_identity=marker.root_identity,
+            label="detached teardown adoption",
+        )
+        validated = _validate_detached_teardown_adoption_record(
+            record,
+            marker=marker,
+            arm=arm,
+            arm_identity=arm_identity,
+            expected_name=name,
+        )
+        records.append((name, validated, _recovery_record_sha256(validated)))
+    return records
+
+
+def _validate_delegated_detached_inventory(
+    arm: dict[str, Any], inventory: dict[str, Any]
+) -> None:
+    """Allow churn only below the exact sealed PID1 workspace anchors."""
+
+    inventory = _validate_detached_holder_inventory(
+        inventory, require_holders=True
+    )
+    armed = {
+        int(record["pid"]): record
+        for record in arm["holder_inventory"]["processes"]
+    }
+    current = {
+        int(record["pid"]): record for record in inventory["processes"]
+    }
+    if set(arm["anchor_pids"]) != {
+        pid for pid, record in current.items()
+        if record["ppid"] == 1
+    }:
+        raise CampaignPlanError(
+            "detached teardown holder churn escaped its sealed anchors"
+        )
+    for pid in arm["anchor_pids"]:
+        if current.get(pid) is None or any(
+            current[pid].get(field) != armed[pid].get(field)
+            for field in (
+                "pid", "ppid", "pgid", "sid", "start_identity",
+                "start_identity_sha256",
+            )
+        ):
+            raise CampaignPlanError(
+                "detached teardown anchor identity changed"
+            )
+    for pid in set(current).intersection(armed):
+        if any(
+            current[pid].get(field) != armed[pid].get(field)
+            for field in (
+                "pid", "ppid", "pgid", "sid", "start_identity",
+                "start_identity_sha256",
+            )
+        ):
+            raise CampaignPlanError(
+                "detached teardown reused an armed process PID"
+            )
+    directed = set(int(pid) for pid in arm["anchor_pids"])
+    while True:
+        added = {
+            pid for pid, record in current.items()
+            if pid not in directed and int(record["ppid"]) in directed
+        }
+        if not added:
+            break
+        directed.update(added)
+    if directed != set(current):
+        raise CampaignPlanError(
+            "detached teardown adoption escaped directed anchor lineage"
+        )
+
+
+def _signal_authenticated_detached_groups(
+    identities: dict[int, tuple[int, int, int, str, str]],
+    groups: set[int],
+    signum: int,
+    *,
+    delegated_stop_race: bool = False,
+) -> None:
+    """Audit complete groups, then signal only exact adopted birth PIDs."""
+
+    if os.uname().sysname != "Darwin":
+        raise CampaignPlanError(
+            "detached generation teardown is restricted to Darwin"
+        )
+    if delegated_stop_race:
+        raise CampaignPlanError(
+            "detached teardown does not authorize group-signal races"
+        )
+    all_live: dict[int, tuple[int, int, int, str, str]] = {}
+    for pgid in sorted(groups):
+        if pgid <= 1:
+            raise CampaignPlanError(
+                "detached teardown process group is malformed"
+            )
+        try:
+            member_pids = Contiguous._scoped_group_pids(pgid)
+        except Contiguous.SupervisorContractError as exc:
+            raise CampaignPlanError(
+                "detached teardown group membership scan failed"
+            ) from exc
+        live: dict[int, tuple[int, int, int, str, str]] = {}
+        for pid in member_pids:
+            try:
+                current = Contiguous._process_identity(pid)
+            except Contiguous.SupervisorContractError as exc:
+                raise CampaignPlanError(
+                    "detached teardown group identity scan failed"
+                ) from exc
+            if current is None or current[3].startswith("Z"):
+                continue
+            expected = identities.get(pid)
+            if (
+                current[1] != pgid
+                or expected is None
+                or current[4] != expected[4]
+            ):
+                raise CampaignPlanError(
+                    "detached teardown group gained an unauthorised identity"
+                )
+            live[pid] = current
+        for pid, current in live.items():
+            previous = all_live.get(pid)
+            if previous is not None and previous != current:
+                raise CampaignPlanError(
+                    "detached teardown group audit duplicated an identity"
+                )
+            all_live[pid] = current
+    depths: dict[int, int] = {}
+
+    def depth(pid: int, visiting: frozenset[int] = frozenset()) -> int:
+        if pid in depths:
+            return depths[pid]
+        if pid in visiting:
+            raise CampaignPlanError(
+                "detached teardown adopted ancestry contains a cycle"
+            )
+        parent = identities[pid][0]
+        value = 0 if parent not in identities else 1 + depth(
+            parent, visiting | {pid}
+        )
+        depths[pid] = value
+        return value
+
+    for pid in sorted(all_live, key=lambda value: (-depth(value), value)):
+        expected = identities[pid]
+        try:
+            rebound = Contiguous._process_identity(pid)
+        except Contiguous.SupervisorContractError as exc:
+            raise CampaignPlanError(
+                "detached teardown member recheck failed"
+            ) from exc
+        if (
+            rebound is None
+            or rebound[3].startswith("Z")
+            or rebound[4] != expected[4]
+            or rebound[1] not in groups
+        ):
+            raise CampaignPlanError(
+                "detached teardown member changed before signal"
+            )
+        try:
+            os.kill(pid, signum)
+        except ProcessLookupError:
+            continue
+        except OSError as exc:
+            raise CampaignPlanError(
+                "detached teardown member signal failed"
+            ) from exc
+
+
+def _detached_identities_absent(
+    identities: dict[int, tuple[int, int, int, str, str]],
+) -> bool:
+    for pid, expected in identities.items():
+        try:
+            current = Contiguous._process_identity(pid)
+        except Contiguous.SupervisorContractError as exc:
+            raise CampaignPlanError(
+                "detached teardown terminal identity scan failed"
+            ) from exc
+        if current is not None and current[4] == expected[4] and not (
+            current[3].startswith("Z")
+        ):
+            return False
+    return True
+
+
+def _prove_detached_identities_stopped(
+    identities: dict[int, tuple[int, int, int, str, str]],
+) -> None:
+    """Authenticate repeated kernel stopped-state observations without argv."""
+
+    ps = Path("/bin/ps")
+    try:
+        metadata = ps.stat(follow_symlinks=False)
+    except OSError as exc:
+        raise CampaignPlanError(
+            "detached teardown stopped-state scanner is unavailable"
+        ) from exc
+    if any((
+        ps.is_symlink(),
+        not stat.S_ISREG(metadata.st_mode),
+        metadata.st_nlink != 1,
+        metadata.st_uid != 0,
+        not metadata.st_mode & stat.S_IXUSR,
+        bool(metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH)),
+    )):
+        raise CampaignPlanError(
+            "detached teardown stopped-state scanner is not host authority"
+        )
+    scanner_identity = (metadata.st_dev, metadata.st_ino)
+    for sample in range(OPEN_FILE_HOLDER_ABSENCE_SAMPLES):
+        for pid, expected in sorted(identities.items()):
+            try:
+                current = Contiguous._process_identity(pid)
+            except Contiguous.SupervisorContractError as exc:
+                raise CampaignPlanError(
+                    "detached teardown stopped PID recheck failed"
+                ) from exc
+            if current is None or current[3].startswith("Z"):
+                continue
+            if current[4] != expected[4]:
+                raise CampaignPlanError(
+                    "detached teardown stopped PID reused its birth identity"
+                )
+            try:
+                observed = subprocess.run(
+                    [os.fspath(ps), "-o", "state=", "-p", str(pid)],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                    timeout=OPEN_FILE_HOLDER_SCAN_TIMEOUT_SECONDS,
+                    env={
+                        "LANG": "C", "LC_ALL": "C",
+                        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+                    },
+                )
+            except (OSError, subprocess.SubprocessError) as exc:
+                raise CampaignPlanError(
+                    "detached teardown stopped-state scan failed"
+                ) from exc
+            try:
+                rebound = Contiguous._process_identity(pid)
+            except Contiguous.SupervisorContractError as exc:
+                raise CampaignPlanError(
+                    "detached teardown stopped PID rebound failed"
+                ) from exc
+            try:
+                after = ps.stat(follow_symlinks=False)
+            except OSError as exc:
+                raise CampaignPlanError(
+                    "detached teardown stopped-state scanner disappeared"
+                ) from exc
+            if not isinstance(observed.stdout, bytes) or not isinstance(
+                observed.stderr, bytes
+            ):
+                raise CampaignPlanError(
+                    "detached teardown stopped-state output is malformed"
+                )
+            if len(observed.stdout) > 4096 or len(observed.stderr) > 4096:
+                raise CampaignPlanError(
+                    "detached teardown stopped-state output is malformed"
+                )
+            try:
+                state = observed.stdout.decode("ascii").strip()
+            except (AttributeError, UnicodeError) as exc:
+                raise CampaignPlanError(
+                    "detached teardown stopped-state output is malformed"
+                ) from exc
+            if any((
+                observed.returncode != 0,
+                bool(observed.stderr),
+                not state.startswith("T"),
+                rebound is None,
+                rebound is not None and rebound[4] != expected[4],
+                (after.st_dev, after.st_ino) != scanner_identity,
+                not stat.S_ISREG(after.st_mode),
+                after.st_nlink != 1,
+                after.st_uid != 0,
+                not after.st_mode & stat.S_IXUSR,
+                bool(after.st_mode & (stat.S_IWGRP | stat.S_IWOTH)),
+            )):
+                raise CampaignPlanError(
+                    "detached teardown process is not proven stopped"
+                )
+        if sample + 1 < OPEN_FILE_HOLDER_ABSENCE_SAMPLES:
+            time.sleep(OPEN_FILE_HOLDER_ABSENCE_INTERVAL_SECONDS)
+
+
+def _wait_detached_identities_absent(
+    identities: dict[int, tuple[int, int, int, str, str]],
+    *,
+    timeout_seconds: float,
+) -> bool:
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        if _detached_identities_absent(identities):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(OPEN_FILE_HOLDER_ABSENCE_INTERVAL_SECONDS)
+
+
+def _detached_groups_absent(groups: set[int]) -> bool:
+    for pgid in sorted(groups):
+        if pgid <= 1:
+            raise CampaignPlanError(
+                "detached teardown terminal group set is malformed"
+            )
+        try:
+            if Contiguous._process_group_has_live_members(pgid):
+                return False
+        except Contiguous.SupervisorContractError as exc:
+            raise CampaignPlanError(
+                "detached teardown terminal group scan failed"
+            ) from exc
+    return True
+
+
+def _prove_detached_process_and_group_absence(
+    identities: dict[int, tuple[int, int, int, str, str]],
+    groups: set[int],
+) -> dict[str, Any]:
+    """Require a repeated terminal window for every adopted birth/group."""
+
+    first_at = datetime.now(timezone.utc)
+    started_ns = time.monotonic_ns()
+    for index in range(OPEN_FILE_HOLDER_ABSENCE_SAMPLES):
+        if not _detached_identities_absent(identities):
+            raise CampaignPlanError(
+                "detached teardown captured process identity remains live"
+            )
+        if not _detached_groups_absent(groups):
+            raise CampaignPlanError(
+                "detached teardown captured process group remains live"
+            )
+        if index + 1 < OPEN_FILE_HOLDER_ABSENCE_SAMPLES:
+            time.sleep(OPEN_FILE_HOLDER_ABSENCE_INTERVAL_SECONDS)
+    last_at = datetime.now(timezone.utc)
+    return {
+        "absence_sample_count": OPEN_FILE_HOLDER_ABSENCE_SAMPLES,
+        "absence_window_ns": max(1, time.monotonic_ns() - started_ns),
+        "absence_first_at": first_at.isoformat(),
+        "absence_last_at": last_at.isoformat(),
+    }
+
+
+def _detached_terminal_boundary_counts(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    workspace: Path,
+    protected: Path,
+    execution: dict[str, Any] | None,
+) -> dict[str, int]:
+    """Run the full sealed-generation gate when available, then aggregate."""
+
+    historical = isinstance(item.get("historical_runner"), dict)
+    allow_legacy_banner = (
+        _evidence_schema(item) == "sealed_transcript_only_v1"
+    )
+    module_root = (
+        Path(item["historical_runner"]["worktree"]) / "arc" / "crack_lab"
+        if historical else HERE
+    )
+    try:
+        if execution is not None:
+            # This authenticates workspace, protected inventory, transcript,
+            # diagnostics (when present), hashes, and both boundary scanners.
+            sealed_counts = parsed.unquiesced.get(
+                "boundary_finding_counts"
+            )
+            expected_counts = (
+                RebootRecovery.validate_boundary_finding_counts(sealed_counts)
+                if sealed_counts is not None
+                else {"dynamic_execution": 1}
+                if _is_interrupted_generation(parsed)
+                else None
+            )
+            _exact_tainted_generation(
+                item,
+                execution,
+                require_taint=False,
+                expected_boundary_finding_counts=expected_counts,
+            )
+        trusted = _historical_tester_scaffolds(item, workspace)
+        transcript_name = _safe_component(
+            (
+                execution.get("transcript")
+                if execution is not None
+                else parsed.unquiesced.get("transcript")
+            ),
+            "detached teardown transcript",
+        )
+        findings = (
+            *Boundary.scan_workspace(
+                workspace,
+                arena_module_root=module_root,
+                trusted_host_scaffolds=trusted,
+            ),
+            *Boundary.scan_codex_transcript(
+                protected / transcript_name,
+                workspace_root=workspace,
+                arena_module_root=module_root,
+                accepted_workspace_root=os.fspath(workspace),
+                allow_historical_transport_banner=allow_legacy_banner,
+            ),
+        )
+        findings = Legs._filter_trusted_scaffold_root_literal(
+            workspace, findings, trusted=trusted
+        )
+    except Exception as exc:
+        raise CampaignPlanError(
+            "detached teardown terminal taint scan failed"
+        ) from exc
+    return dict(sorted(Counter(finding.code for finding in findings).items()))
+
+
+def _validate_detached_teardown_execution_envelope(
+    item: dict[str, Any],
+    marker: DispatchQuarantine,
+    parsed: RebootRecovery.ParsedMarker,
+    arm: dict[str, Any],
+    *,
+    require_arm_tree: bool,
+) -> tuple[
+    dict[str, Any], LedgerPrefixState, CanonicalRollbackState,
+    WipRollbackState, dict[str, Any] | None,
+    tuple[BoundMutableRoot, ...], tuple[BoundMutableRoot, ...], Path, Path,
+]:
+    """Reconstruct and rebind every non-process arm dependency."""
+
+    reconstructed = _reconstruct_historical_recovery_item(
+        item, parsed.armed, allow_abandoned_scratch=True
+    )
+    interrupted = _is_interrupted_generation(parsed)
+    baseline, canonical, current_wip, execution = (
+        _validate_sandboxed_generation_baseline(
+            reconstructed, marker, parsed, interrupted_exec=interrupted
+        )
+    )
+    scratch, scratch_identity, workspace, protected = (
+        _sandboxed_generation_paths(reconstructed, parsed)
+    )
+    kill_roots, guard_roots = _sandboxed_generation_teardown_root_sets(
+        marker=marker,
+        parsed=parsed,
+        scratch=scratch,
+        scratch_identity=scratch_identity,
+        workspace=workspace,
+        protected=protected,
+        baseline=baseline,
+        canonical=canonical,
+    )
+    marker_payload = _sealed_recovery_marker_bytes(marker)
+    historical = parsed.armed.get("historical_runner")
+    lsof_path, lsof_identity = _authenticated_lsof_executable()
+    expected_tree = {
+        "workspace_tree_observation_sha256": (
+            arm["workspace_tree_observation_sha256"]
+        ),
+        "protected_tree_sha256": arm["protected_tree_sha256"],
+    }
+    if any((
+        arm["dispatch_id"] != marker.dispatch_id,
+        arm["projected_item_sha256"]
+        != parsed.armed.get("projected_item_sha256"),
+        not isinstance(historical, dict),
+        isinstance(historical, dict)
+        and historical.get("source_sha256")
+        != arm["historical_runner_source_sha256"],
+        isinstance(historical, dict)
+        and historical.get("head_commit")
+        != arm["historical_runner_head_commit"],
+        parsed.armed.get("frontier_binding") != arm["frontier_binding"],
+        arm["sandbox_contract_sha256"]
+        != SANDBOX_CONTRACTS.get(arm["historical_runner_source_sha256"]),
+        arm["exec_record_sha256"] != _sandbox_exec_record_sha256(parsed),
+        os.fspath(canonical.root) != arm["canonical_root"],
+        list(canonical.root_identity) != arm["canonical_root_identity"],
+        canonical.digest != arm["canonical_digest"],
+        os.fspath(scratch) != arm["scratch_root"],
+        list(scratch_identity) != arm["scratch_root_identity"],
+        workspace.name != arm["workspace"],
+        protected.name != arm["protected"],
+        os.fspath(marker.root) != arm["marker_root"],
+        list(marker.root_identity) != arm["marker_root_identity"],
+        list(marker.marker_identity) != arm["marker_identity"],
+        len(marker_payload) != arm["marker_bytes"],
+        hashlib.sha256(marker_payload).hexdigest() != arm["marker_sha256"],
+        len(baseline.raw_prefix) != arm["ledger_prefix_bytes"],
+        hashlib.sha256(baseline.raw_prefix).hexdigest()
+        != arm["ledger_prefix_sha256"],
+        _wip_recovery_state_sha256(current_wip) != arm["wip_state_sha256"],
+        _mutable_root_records(kill_roots, guard_roots)
+        != arm["mutable_roots"],
+        os.fspath(lsof_path) != arm["lsof_executable"],
+        list(lsof_identity) != arm["lsof_executable_identity"],
+        require_arm_tree and _sandboxed_generation_tree_hashes(
+            workspace, protected
+        ) != expected_tree,
+        _canonical_frontier_binding(reconstructed)
+        != Status.validate_frontier_binding(dict(arm["frontier_binding"])),
+    )):
+        raise CampaignPlanError(
+            "detached teardown immutable execution envelope changed"
+        )
+    _reject_discovered_mutation_guard_holders(
+        guard_roots, phase="detached teardown execution"
+    )
+    return (
+        reconstructed, baseline, canonical, current_wip, execution,
+        kill_roots, guard_roots, workspace, protected,
+    )
+
+
+def _validate_detached_teardown_completion_record(
+    completion: object,
+    *,
+    marker: DispatchQuarantine,
+    arm: dict[str, Any],
+    arm_identity: tuple[int, int],
+) -> dict[str, Any]:
+    if not isinstance(completion, dict) or set(
+        completion
+    ) != DETACHED_TEARDOWN_COMPLETION_KEYS:
+        raise CampaignPlanError(
+            "detached teardown completion record is malformed"
+        )
+    names = completion.get("adoption_record_names")
+    hashes = completion.get("adoption_record_sha256s")
+    counts = completion.get("boundary_finding_counts")
+    if any((
+        completion.get("schema") != DETACHED_TEARDOWN_COMPLETION_SCHEMA,
+        completion.get("event") != DETACHED_TEARDOWN_COMPLETION_EVENT,
+        completion.get("dispatch_id") != marker.dispatch_id,
+        completion.get("recovery_nonce") != arm["recovery_nonce"],
+        completion.get("arm_record_sha256") != _recovery_record_sha256(arm),
+        completion.get("arm_identity") != list(arm_identity),
+        completion.get("holder_inventory_sha256")
+        != arm["holder_inventory_sha256"],
+        not isinstance(
+            completion.get("workspace_tree_observation_sha256"), str
+        ),
+        isinstance(
+            completion.get("workspace_tree_observation_sha256"), str
+        ) and SHA256_RE.fullmatch(
+            completion["workspace_tree_observation_sha256"]
+        ) is None,
+        not isinstance(completion.get("protected_tree_sha256"), str),
+        isinstance(completion.get("protected_tree_sha256"), str)
+        and SHA256_RE.fullmatch(completion["protected_tree_sha256"]) is None,
+        not isinstance(names, list),
+        isinstance(names, list) and names != sorted(set(names)),
+        not isinstance(hashes, list),
+        isinstance(names, list) and isinstance(hashes, list)
+        and len(names) != len(hashes),
+        isinstance(names, list) and any(
+            not isinstance(name, str)
+            or SAFE_COMPONENT_RE.fullmatch(name) is None for name in names
+        ),
+        isinstance(hashes, list) and any(
+            not isinstance(value, str) or SHA256_RE.fullmatch(value) is None
+            for value in hashes
+        ),
+        not isinstance(counts, dict),
+        isinstance(counts, dict)
+        and not set(counts).issubset(
+            RebootRecovery.BOUNDARY_FINDING_COUNT_CODES
+        ),
+        isinstance(counts, dict) and any(
+            not isinstance(code, str)
+            or not code
+            or not isinstance(value, int)
+            or isinstance(value, bool)
+            or value <= 0
+            for code, value in counts.items()
+        ),
+        any(
+            completion.get(field) is not True
+            for field in (
+                "terminal_taint_scan_passed",
+                "captured_process_identities_absent",
+                "captured_groups_absent",
+                "open_file_holders_absent",
+                "stale_recovery_arm_retirement_authorized",
+            )
+        ),
+        completion.get("absence_sample_count")
+        != OPEN_FILE_HOLDER_ABSENCE_SAMPLES,
+        not isinstance(completion.get("absence_window_ns"), int),
+        isinstance(completion.get("absence_window_ns"), bool),
+        isinstance(completion.get("absence_window_ns"), int)
+        and completion["absence_window_ns"] <= 0,
+    )):
+        raise CampaignPlanError(
+            "detached teardown completion binding changed"
+        )
+    recorded = _recovery_recorded_at(
+        completion, "detached teardown completion"
+    )
+    first = _recovery_recorded_at(
+        {"recorded_at": completion.get("absence_first_at")},
+        "detached teardown absence start",
+    )
+    last = _recovery_recorded_at(
+        {"recorded_at": completion.get("absence_last_at")},
+        "detached teardown absence end",
+    )
+    if first > last or recorded < last or recorded < _recovery_recorded_at(
+        arm, "detached teardown arm"
+    ):
+        raise CampaignPlanError(
+            "detached teardown completion timestamps are reversed"
+        )
+    return dict(completion)
+
+
+def _merge_detached_teardown_inventories(
+    arm: dict[str, Any],
+    adoptions: list[tuple[str, dict[str, Any], str]],
+) -> tuple[
+    dict[int, tuple[int, int, int, str, str]], set[int]
+]:
+    """Recover the cumulative birth authority without treating state as identity."""
+
+    inventories = [arm["holder_inventory"], *[
+        record["inventory"]
+        for _name, record, _sha256 in sorted(
+            adoptions, key=lambda selected: selected[1]["recorded_at"]
+        )
+    ]]
+    cumulative: dict[int, tuple[int, int, int, str, str]] = {}
+    groups: set[int] = set()
+    for inventory in inventories:
+        current = _detached_inventory_process_map(inventory)
+        for pid, identity in current.items():
+            previous = cumulative.get(pid)
+            if previous is not None and previous[4] != identity[4]:
+                raise CampaignPlanError(
+                    "detached teardown adoption reused a captured PID"
+                )
+            cumulative[pid] = identity
+            if identity[1] > 1:
+                groups.add(identity[1])
+    return cumulative, groups
+
+
+def _detached_anchor_births_live(
+    arm: dict[str, Any],
+) -> bool:
+    records = {
+        int(record["pid"]): record
+        for record in arm["holder_inventory"]["processes"]
+    }
+    live = 0
+    for pid in arm["anchor_pids"]:
+        try:
+            current = Contiguous._process_identity(pid)
+        except Contiguous.SupervisorContractError as exc:
+            raise CampaignPlanError(
+                "detached teardown anchor recheck failed"
+            ) from exc
+        if current is None or current[3].startswith("Z"):
+            continue
+        expected = records[pid]
+        if any((
+            current[4] != expected["start_identity"],
+            current[0] != 1,
+            current[1] != pid,
+            current[2] != pid,
+        )):
+            raise CampaignPlanError(
+                "detached teardown anchor birth authority changed"
+            )
+        live += 1
+    return live == len(arm["anchor_pids"])
+
+
+def _prove_current_workspace_holders_are_adopted(
+    kill_roots: tuple[BoundMutableRoot, ...],
+    identities: dict[int, tuple[int, int, int, str, str]],
+) -> None:
+    """Crash replay may continue only for already durable exact-cwd births."""
+
+    workspace_roots = tuple(
+        root for root in kill_roots if root.label == "abandoned workspace"
+    )
+    if len(workspace_roots) != 1:
+        raise CampaignPlanError(
+            "detached teardown workspace holder selector is ambiguous"
+        )
+    stable: frozenset[int] | None = None
+    for sample in range(OPEN_FILE_HOLDER_ABSENCE_SAMPLES):
+        observed = _discovery_lsof_holder_pids(
+            workspace_roots[0], cwd_only=True
+        ) - {os.getpid()}
+        if stable is not None and observed != stable:
+            raise CampaignPlanError(
+                "detached teardown replay holder set is not stable"
+            )
+        stable = observed
+        for pid in observed:
+            try:
+                current = Contiguous._process_identity(pid)
+            except Contiguous.SupervisorContractError as exc:
+                raise CampaignPlanError(
+                    "detached teardown replay holder recheck failed"
+                ) from exc
+            expected = identities.get(pid)
+            if (
+                current is None
+                or current[3].startswith("Z")
+                or expected is None
+                or current[4] != expected[4]
+            ):
+                raise CampaignPlanError(
+                    "detached teardown replay found an unadopted holder"
+                )
+        if sample + 1 < OPEN_FILE_HOLDER_ABSENCE_SAMPLES:
+            time.sleep(OPEN_FILE_HOLDER_ABSENCE_INTERVAL_SECONDS)
+
+
+def _execute_detached_generation_teardown_locked(
+    item: dict[str, Any],
+    *,
+    confirm_dispatch_id: str,
+    confirm_recovery_nonce: str,
+    boot_identity_provider: RebootRecovery.BootIdentityProvider,
+) -> dict[str, Any]:
+    """Execute only the durable birth-bound teardown authority."""
+
+    marker, parsed = _read_existing_dispatch_quarantine(
+        item,
+        require_recovery_arm=None,
+        marker_parser=_parse_detached_teardown_marker,
+    )
+    try:
+        arm_name, completion_name, _correction_name, _preparing_name = (
+            _detached_teardown_names(marker.name, marker.dispatch_id)
+        )
+        try:
+            arm, arm_identity, _arm_payload = (
+                _read_durable_recovery_record_at(
+                    marker.root_fd,
+                    arm_name,
+                    root_path=marker.root,
+                    root_identity=marker.root_identity,
+                    label="detached teardown arm",
+                )
+            )
+        except FileNotFoundError as exc:
+            raise CampaignPlanError(
+                "detached generation teardown is not armed"
+            ) from exc
+        arm = _validate_detached_teardown_arm_record(
+            arm, marker_name=marker.name
+        )
+        if any((
+            arm["dispatch_id"] != marker.dispatch_id,
+            arm["marker_root"] != os.fspath(marker.root),
+            arm["marker_root_identity"] != list(marker.root_identity),
+        )):
+            raise CampaignPlanError(
+                "detached teardown arm root binding changed"
+            )
+        current_boot = RebootRecovery.validate_boot_identity(
+            boot_identity_provider()
+        )
+        if any((
+            confirm_dispatch_id != marker.dispatch_id,
+            confirm_recovery_nonce != arm["recovery_nonce"],
+            arm["dispatch_id"] != marker.dispatch_id,
+            arm["boot_identity_source"] != current_boot.source,
+            arm["boot_identity"] != current_boot.value,
+        )):
+            raise CampaignPlanError(
+                "operator confirmation does not match the detached teardown arm"
+            )
+
+        try:
+            completion, _completion_identity, _completion_payload = (
+                _read_durable_recovery_record_at(
+                    marker.root_fd,
+                    completion_name,
+                    root_path=marker.root,
+                    root_identity=marker.root_identity,
+                    label="detached teardown completion",
+                )
+            )
+        except FileNotFoundError:
+            completion = None
+        adoptions = _read_detached_teardown_adoptions(
+            marker, arm, arm_identity
+        )
+        if completion is not None:
+            completion = _validate_detached_teardown_completion_record(
+                completion,
+                marker=marker,
+                arm=arm,
+                arm_identity=arm_identity,
+            )
+            if any((
+                completion["adoption_record_names"]
+                != [name for name, _record, _sha in adoptions],
+                completion["adoption_record_sha256s"]
+                != [sha for _name, _record, sha in adoptions],
+            )):
+                raise CampaignPlanError(
+                    "detached teardown completion adoption chain changed"
+                )
+            identities, groups = _merge_detached_teardown_inventories(
+                arm, adoptions
+            )
+            _prove_detached_process_and_group_absence(identities, groups)
+            replay_kill_roots, replay_guard_roots = (
+                _detached_teardown_root_bindings_from_record(arm)
+            )
+            _prove_bound_mutable_root_holder_absence(
+                (*replay_kill_roots, *replay_guard_roots),
+                phase="detached teardown completion replay",
+            )
+            replay_workspace = next(
+                root.path for root in replay_kill_roots
+                if root.label == "abandoned workspace"
+            )
+            replay_protected = next(
+                root.path for root in replay_kill_roots
+                if root.label == "abandoned protected evidence"
+            )
+            if _sandboxed_generation_tree_hashes(
+                replay_workspace, replay_protected
+            ) != {
+                "workspace_tree_observation_sha256": completion[
+                    "workspace_tree_observation_sha256"
+                ],
+                "protected_tree_sha256": completion[
+                    "protected_tree_sha256"
+                ],
+            }:
+                raise CampaignPlanError(
+                    "detached teardown completion tree changed on replay"
+                )
+            reconstructed = _reconstruct_historical_recovery_item(
+                item, parsed.armed, allow_abandoned_scratch=True
+            )
+            replay_execution: dict[str, Any] | None = None
+            if parsed.recovery_arm is not None:
+                (
+                    reconstructed, _baseline, _canonical, _wip,
+                    replay_execution, _kill, _guard, _workspace, _protected,
+                ) = _validate_detached_teardown_execution_envelope(
+                    reconstructed,
+                    marker,
+                    parsed,
+                    arm,
+                    require_arm_tree=False,
+                )
+            replay_counts = _detached_terminal_boundary_counts(
+                reconstructed,
+                parsed,
+                replay_workspace,
+                replay_protected,
+                replay_execution,
+            )
+            if replay_counts != completion["boundary_finding_counts"]:
+                raise CampaignPlanError(
+                    "detached teardown completion taint counts changed"
+                )
+            _taint_gate()
+            final_replay_adoptions = _read_detached_teardown_adoptions(
+                marker, arm, arm_identity
+            )
+            if final_replay_adoptions != adoptions:
+                raise CampaignPlanError(
+                    "detached teardown replay adoption chain changed"
+                )
+            final_replay_identities, final_replay_groups = (
+                _merge_detached_teardown_inventories(
+                    arm, final_replay_adoptions
+                )
+            )
+            if parsed.recovery_arm is not None:
+                _validate_detached_teardown_execution_envelope(
+                    reconstructed,
+                    marker,
+                    parsed,
+                    arm,
+                    require_arm_tree=False,
+                )
+            _prove_detached_process_and_group_absence(
+                final_replay_identities, final_replay_groups
+            )
+            _prove_bound_mutable_root_holder_absence(
+                (*replay_kill_roots, *replay_guard_roots),
+                phase="detached teardown final completion replay",
+            )
+            if _sandboxed_generation_tree_hashes(
+                replay_workspace, replay_protected
+            ) != {
+                "workspace_tree_observation_sha256": completion[
+                    "workspace_tree_observation_sha256"
+                ],
+                "protected_tree_sha256": completion[
+                    "protected_tree_sha256"
+                ],
+            }:
+                raise CampaignPlanError(
+                    "detached teardown completion tree changed before retirement"
+                )
+            _retire_detached_teardown_stale_arm(marker, arm, completion)
+            return {
+                "game": item["game"],
+                "target_level": item["target_level"],
+                "result": "detached_generation_teardown_already_completed",
+                "dispatch_id": marker.dispatch_id,
+                "recovery_nonce": arm["recovery_nonce"],
+                "scratch_root": arm["scratch_root"],
+                "scratch_root_disposition": "abandoned_in_place",
+                "process_tree_quiesced": False,
+                "detached_processes_proven_absent": False,
+                "next_action": "arm_sandboxed_generation_release_fresh_nonce",
+            }
+
+        if parsed.recovery_arm is None or any((
+            parsed.recovery_arm.get("recovery_nonce")
+            != arm["stale_recovery_nonce"],
+            _recovery_record_sha256(parsed.recovery_arm)
+            != arm["stale_recovery_arm_sha256"],
+        )):
+            raise CampaignPlanError(
+                "detached teardown lost its exact stale marker arm"
+            )
+        (
+            reconstructed, _baseline, _canonical, _current_wip, execution,
+            kill_roots, guard_roots, workspace, protected,
+        ) = _validate_detached_teardown_execution_envelope(
+            item,
+            marker,
+            parsed,
+            arm,
+            require_arm_tree=False,
+        )
+
+        def freeze_and_adopt() -> tuple[
+            list[tuple[str, dict[str, Any], str]],
+            dict[int, tuple[int, int, int, str, str]],
+            set[int],
+        ]:
+            nonlocal adoptions
+            stable_sha: str | None = None
+            stable_count = 0
+            for _round in range(12):
+                inventory: dict[str, Any] | None = None
+                identities, groups = _merge_detached_teardown_inventories(
+                    arm, adoptions
+                )
+                if _detached_anchor_births_live(arm):
+                    inventory = _fixed_point_detached_holder_inventory(
+                        kill_roots,
+                        phase="detached teardown freeze",
+                        require_holders=False,
+                    )
+                    if inventory["holders"]:
+                        _validate_delegated_detached_inventory(arm, inventory)
+                        _persist_detached_teardown_adoption(
+                            marker,
+                            arm,
+                            arm_identity,
+                            inventory,
+                            phase="freeze",
+                        )
+                        adoptions = _read_detached_teardown_adoptions(
+                            marker, arm, arm_identity
+                        )
+                        identities, groups = (
+                            _merge_detached_teardown_inventories(
+                                arm, adoptions
+                            )
+                        )
+                        inventory_sha = hashlib.sha256(
+                            RebootRecovery.canonical_json_line(inventory)
+                        ).hexdigest()
+                    else:
+                        inventory_sha = "0" * 64
+                else:
+                    _prove_current_workspace_holders_are_adopted(
+                        kill_roots, identities
+                    )
+                    inventory_sha = "0" * 64
+                _validate_detached_teardown_execution_envelope(
+                    reconstructed,
+                    marker,
+                    parsed,
+                    arm,
+                    require_arm_tree=False,
+                )
+                _signal_authenticated_detached_groups(
+                    identities, groups, signal.SIGSTOP
+                )
+                time.sleep(OPEN_FILE_HOLDER_ABSENCE_INTERVAL_SECONDS)
+                if inventory_sha == stable_sha:
+                    stable_count += 1
+                else:
+                    stable_sha = inventory_sha
+                    stable_count = 1
+                if stable_count >= OPEN_FILE_HOLDER_ABSENCE_SAMPLES:
+                    if _detached_anchor_births_live(arm):
+                        post_stop = _fixed_point_detached_holder_inventory(
+                            kill_roots,
+                            phase="detached teardown post-STOP freeze",
+                            require_holders=False,
+                        )
+                        if post_stop != inventory:
+                            continue
+                    else:
+                        _prove_current_workspace_holders_are_adopted(
+                            kill_roots, identities
+                        )
+                    _prove_detached_identities_stopped(identities)
+                    return adoptions, identities, groups
+            raise CampaignPlanError(
+                "detached teardown STOP/adoption did not reach a fixed point"
+            )
+
+        adoptions, identities, groups = freeze_and_adopt()
+        # A CONT/TERM grace period would reopen the just-closed fork/adoption
+        # race.  After repeated stopped-state proof, terminate only the exact
+        # adopted birth PIDs, deepest descendants first.
+        _validate_detached_teardown_execution_envelope(
+            reconstructed,
+            marker,
+            parsed,
+            arm,
+            require_arm_tree=False,
+        )
+        _prove_detached_identities_stopped(identities)
+        _signal_authenticated_detached_groups(
+            identities, groups, signal.SIGKILL
+        )
+        if not _wait_detached_identities_absent(
+            identities, timeout_seconds=DETACHED_TEARDOWN_KILL_SECONDS
+        ):
+            raise CampaignPlanError(
+                "detached teardown captured process survived SIGKILL"
+            )
+
+        adoptions = _read_detached_teardown_adoptions(
+            marker, arm, arm_identity
+        )
+        identities, groups = _merge_detached_teardown_inventories(
+            arm, adoptions
+        )
+        absence = _prove_detached_process_and_group_absence(
+            identities, groups
+        )
+        _prove_bound_mutable_root_holder_absence(
+            (*kill_roots, *guard_roots),
+            phase="detached teardown terminal",
+        )
+        (
+            reconstructed, _baseline, _canonical, _current_wip, execution,
+            rebound_kill_roots, rebound_guard_roots, workspace, protected,
+        ) = _validate_detached_teardown_execution_envelope(
+            reconstructed,
+            marker,
+            parsed,
+            arm,
+            require_arm_tree=False,
+        )
+        if _mutable_root_records(
+            rebound_kill_roots, rebound_guard_roots
+        ) != arm["mutable_roots"]:
+            raise CampaignPlanError(
+                "detached teardown terminal root authority changed"
+            )
+        boundary_counts = _detached_terminal_boundary_counts(
+            reconstructed, parsed, workspace, protected, execution
+        )
+        _taint_gate()
+        terminal_tree = _sandboxed_generation_tree_hashes(
+            workspace, protected
+        )
+        _prove_bound_mutable_root_holder_absence(
+            (*rebound_kill_roots, *rebound_guard_roots),
+            phase="detached teardown completion persistence",
+        )
+        if _sandboxed_generation_tree_hashes(
+            workspace, protected
+        ) != terminal_tree:
+            raise CampaignPlanError(
+                "detached teardown terminal generation changed"
+            )
+        completion = {
+            "schema": DETACHED_TEARDOWN_COMPLETION_SCHEMA,
+            "event": DETACHED_TEARDOWN_COMPLETION_EVENT,
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "dispatch_id": marker.dispatch_id,
+            "recovery_nonce": arm["recovery_nonce"],
+            "arm_record_sha256": _recovery_record_sha256(arm),
+            "arm_identity": list(arm_identity),
+            "holder_inventory_sha256": arm["holder_inventory_sha256"],
+            "adoption_record_names": [
+                name for name, _record, _sha in adoptions
+            ],
+            "adoption_record_sha256s": [
+                sha for _name, _record, sha in adoptions
+            ],
+            **terminal_tree,
+            "boundary_finding_counts": boundary_counts,
+            "terminal_taint_scan_passed": True,
+            "captured_process_identities_absent": True,
+            "captured_groups_absent": True,
+            "open_file_holders_absent": True,
+            "stale_recovery_arm_retirement_authorized": True,
+            **absence,
+        }
+        completion = _validate_detached_teardown_completion_record(
+            completion,
+            marker=marker,
+            arm=arm,
+            arm_identity=arm_identity,
+        )
+        _taint_gate()
+        final_adoptions = _read_detached_teardown_adoptions(
+            marker, arm, arm_identity
+        )
+        if final_adoptions != adoptions:
+            raise CampaignPlanError(
+                "detached teardown adoption chain changed before completion"
+            )
+        final_identities, final_groups = (
+            _merge_detached_teardown_inventories(arm, final_adoptions)
+        )
+        _prove_detached_process_and_group_absence(
+            final_identities, final_groups
+        )
+        _prove_bound_mutable_root_holder_absence(
+            (*rebound_kill_roots, *rebound_guard_roots),
+            phase="detached teardown final completion gate",
+        )
+        if _sandboxed_generation_tree_hashes(
+            workspace, protected
+        ) != terminal_tree:
+            raise CampaignPlanError(
+                "detached teardown terminal tree changed before completion"
+            )
+        _install_durable_recovery_record_at(
+            marker.root_fd,
+            completion_name,
+            completion,
+            root_path=marker.root,
+            root_identity=marker.root_identity,
+            label="detached teardown completion",
+        )
+        _prove_detached_process_and_group_absence(
+            final_identities, final_groups
+        )
+        _prove_bound_mutable_root_holder_absence(
+            (*rebound_kill_roots, *rebound_guard_roots),
+            phase="detached teardown stale-arm retirement",
+        )
+        if _sandboxed_generation_tree_hashes(
+            workspace, protected
+        ) != terminal_tree:
+            raise CampaignPlanError(
+                "detached teardown terminal tree changed before retirement"
+            )
+        _retire_detached_teardown_stale_arm(marker, arm, completion)
+        return {
+            "game": reconstructed["game"],
+            "target_level": reconstructed["target_level"],
+            "result": "detached_generation_teardown_completed",
+            "dispatch_id": marker.dispatch_id,
+            "recovery_nonce": arm["recovery_nonce"],
+            "scratch_root": arm["scratch_root"],
+            "scratch_root_disposition": "abandoned_in_place",
+            "process_tree_quiesced": False,
+            "detached_processes_proven_absent": False,
+            "next_action": "arm_sandboxed_generation_release_fresh_nonce",
+        }
+    finally:
+        _close_dispatch_quarantine(marker)
+
+
+def _execute_detached_generation_teardown(
+    item: dict[str, Any],
+    *,
+    confirm_dispatch_id: str,
+    confirm_recovery_nonce: str,
+    boot_identity_provider: RebootRecovery.BootIdentityProvider = (
+        RebootRecovery.authoritative_boot_identity
+    ),
+) -> dict[str, Any]:
+    dispatch_lock = _acquire_scheduler_dispatch_lock(item)
+    try:
+        lineage_lock = _acquire_scheduler_lineage_lock(item)
+        try:
+            return _execute_detached_generation_teardown_locked(
+                item,
+                confirm_dispatch_id=confirm_dispatch_id,
+                confirm_recovery_nonce=confirm_recovery_nonce,
+                boot_identity_provider=boot_identity_provider,
+            )
+        finally:
+            _release_scheduler_artifact_lock(lineage_lock)
+    finally:
+        _release_scheduler_artifact_lock(dispatch_lock)
+
+
+def _retire_detached_teardown_stale_arm(
+    marker: DispatchQuarantine,
+    arm: dict[str, Any],
+    completion: dict[str, Any],
+) -> dict[str, Any]:
+    """Replace only the stale third-row marker after durable completion."""
+
+    _arm_name, _completion_name, correction_name, preparing_name = (
+        _detached_teardown_names(marker.name, marker.dispatch_id)
+    )
+    try:
+        existing, _identity, _payload = _read_durable_recovery_record_at(
+            marker.root_fd,
+            correction_name,
+            root_path=marker.root,
+            root_identity=marker.root_identity,
+            label="detached teardown correction",
+        )
+    except FileNotFoundError:
+        existing = None
+    if existing is not None:
+        correction = existing
+        old_identity = _marker_identity(
+            correction.get("old_marker_identity"),
+            "detached correction old marker",
+        )
+        new_identity = _marker_identity(
+            correction.get("new_marker_identity"),
+            "detached correction new marker",
+        )
+        if (
+            set(correction) != DETACHED_TEARDOWN_CORRECTION_KEYS
+            or correction.get("schema")
+            != DETACHED_TEARDOWN_CORRECTION_SCHEMA
+            or correction.get("event")
+            != DETACHED_TEARDOWN_CORRECTION_EVENT
+            or correction.get("dispatch_id") != marker.dispatch_id
+            or correction.get("recovery_nonce") != arm["recovery_nonce"]
+            or correction.get("arm_record_sha256")
+            != _recovery_record_sha256(arm)
+            or correction.get("completion_record_sha256")
+            != _recovery_record_sha256(completion)
+            or correction.get("marker_prefix_bytes")
+            != arm["marker_prefix_bytes"]
+            or correction.get("marker_prefix_sha256")
+            != arm["marker_prefix_sha256"]
+            or correction.get("stale_recovery_nonce")
+            != arm["stale_recovery_nonce"]
+            or correction.get("stale_recovery_arm_invalidated") is not True
+            or old_identity != _marker_identity(
+                arm["marker_identity"], "detached arm marker"
+            )
+            or new_identity == old_identity
+        ):
+            raise CampaignPlanError(
+                "detached teardown correction replay changed"
+            )
+        installed_fd, installed_payload, installed_identity = (
+            _read_unaliased_small_file_at(
+                marker.root_fd,
+                marker.name,
+                label="detached teardown corrected marker",
+            )
+        )
+        try:
+            current = os.fstat(installed_fd)
+        finally:
+            os.close(installed_fd)
+        try:
+            installed_rows = RebootRecovery.parse_canonical_jsonl(
+                installed_payload,
+                label="detached teardown corrected marker",
+            )
+        except RebootRecovery.RecoveryEvidenceError as exc:
+            raise CampaignPlanError(str(exc)) from exc
+        canonical_prefix = b"".join(
+            RebootRecovery.canonical_json_line(row)
+            for row in installed_rows
+        )
+        if any((
+            installed_identity != new_identity,
+            len(installed_rows) != 2,
+            installed_payload != canonical_prefix,
+            len(installed_payload) != correction["marker_prefix_bytes"],
+            hashlib.sha256(installed_payload).hexdigest()
+            != correction["marker_prefix_sha256"],
+            current.st_nlink != 1,
+            current.st_uid != os.geteuid(),
+            stat.S_IMODE(current.st_mode) != 0o600,
+        )):
+            raise CampaignPlanError(
+                "detached teardown corrected marker authority changed"
+            )
+        _recovery_recorded_at(correction, "detached teardown correction")
+        return dict(correction)
+    current_payload = _sealed_recovery_marker_bytes(marker)
+    rows = RebootRecovery.parse_canonical_jsonl(
+        current_payload, label="detached teardown marker retirement"
+    )
+    prefix = b"".join(
+        RebootRecovery.canonical_json_line(row) for row in rows[:2]
+    )
+    if (
+        len(prefix) != arm["marker_prefix_bytes"]
+        or hashlib.sha256(prefix).hexdigest() != arm["marker_prefix_sha256"]
+    ):
+        raise CampaignPlanError(
+            "detached teardown marker prefix changed before retirement"
+        )
+    current_hash = hashlib.sha256(current_payload).hexdigest()
+    if current_hash == arm["marker_sha256"]:
+        if (
+            len(current_payload) != arm["marker_bytes"]
+            or list(marker.marker_identity) != arm["marker_identity"]
+        ):
+            raise CampaignPlanError(
+                "detached teardown stale marker identity changed"
+            )
+        try:
+            descriptor = os.open(
+                preparing_name,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+                dir_fd=marker.root_fd,
+            )
+        except FileExistsError:
+            descriptor = None
+            staged_fd, staged, staged_identity = (
+                _read_unaliased_small_file_at(
+                    marker.root_fd,
+                    preparing_name,
+                    label="detached teardown marker preparing",
+                )
+            )
+            os.close(staged_fd)
+            if staged != prefix:
+                _retire_malformed_durable_recovery_preparing_at(
+                    marker.root_fd,
+                    preparing_name,
+                    staged_identity,
+                    root_path=marker.root,
+                    root_identity=marker.root_identity,
+                    label="detached teardown marker preparing",
+                )
+                return _retire_detached_teardown_stale_arm(
+                    marker, arm, completion
+                )
+            _durably_reseal_staged_file_at(
+                marker.root_fd,
+                preparing_name,
+                expected_payload=prefix,
+                expected_identity=staged_identity,
+                label="detached teardown marker preparing",
+            )
+        else:
+            try:
+                os.fchmod(descriptor, 0o600)
+                offset = 0
+                while offset < len(prefix):
+                    written = os.write(descriptor, prefix[offset:])
+                    if written <= 0:
+                        raise OSError(errno.EIO, "short marker prefix write")
+                    offset += written
+                os.fsync(descriptor)
+                staged_metadata = os.fstat(descriptor)
+                staged_identity = (
+                    staged_metadata.st_dev, staged_metadata.st_ino
+                )
+            finally:
+                os.close(descriptor)
+        _validate_recovery_marker_seal(marker)
+        staged_fd, staged, rebound_identity = _read_unaliased_small_file_at(
+            marker.root_fd,
+            preparing_name,
+            label="detached teardown marker preparing",
+        )
+        os.close(staged_fd)
+        if staged != prefix or rebound_identity != staged_identity:
+            raise CampaignPlanError(
+                "detached teardown marker preparing identity changed"
+            )
+        os.replace(
+            preparing_name,
+            marker.name,
+            src_dir_fd=marker.root_fd,
+            dst_dir_fd=marker.root_fd,
+        )
+        os.fsync(marker.root_fd)
+    elif current_hash != arm["marker_prefix_sha256"] or len(
+        current_payload
+    ) != arm["marker_prefix_bytes"]:
+        raise CampaignPlanError(
+            "detached teardown marker changed during stale-arm retirement"
+        )
+    current = os.stat(
+        marker.name, dir_fd=marker.root_fd, follow_symlinks=False
+    )
+    new_identity = (current.st_dev, current.st_ino)
+    installed_fd, installed_payload, installed_identity = (
+        _read_unaliased_small_file_at(
+            marker.root_fd,
+            marker.name,
+            label="detached teardown corrected marker",
+        )
+    )
+    os.close(installed_fd)
+    if (
+        installed_payload != prefix
+        or installed_identity != new_identity
+        or new_identity == _marker_identity(
+            arm["marker_identity"], "detached arm marker"
+        )
+        or current.st_nlink != 1
+        or current.st_uid != os.geteuid()
+        or stat.S_IMODE(current.st_mode) != 0o600
+    ):
+        raise CampaignPlanError(
+            "detached teardown corrected marker is not durable"
+        )
+    correction = {
+        "schema": DETACHED_TEARDOWN_CORRECTION_SCHEMA,
+        "event": DETACHED_TEARDOWN_CORRECTION_EVENT,
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "dispatch_id": marker.dispatch_id,
+        "recovery_nonce": arm["recovery_nonce"],
+        "arm_record_sha256": _recovery_record_sha256(arm),
+        "completion_record_sha256": _recovery_record_sha256(completion),
+        "old_marker_identity": arm["marker_identity"],
+        "new_marker_identity": list(new_identity),
+        "marker_prefix_bytes": arm["marker_prefix_bytes"],
+        "marker_prefix_sha256": arm["marker_prefix_sha256"],
+        "stale_recovery_nonce": arm["stale_recovery_nonce"],
+        "stale_recovery_arm_invalidated": True,
+    }
+    if set(correction) != DETACHED_TEARDOWN_CORRECTION_KEYS:
+        raise CampaignPlanError(
+            "detached teardown correction schema changed"
+        )
+    _install_durable_recovery_record_at(
+        marker.root_fd,
+        correction_name,
+        correction,
+        root_path=marker.root,
+        root_identity=marker.root_identity,
+        label="detached teardown correction",
+    )
+    return correction
+
+
+def _assert_no_active_detached_teardown(item: dict[str, Any]) -> None:
+    """A durable teardown arm immediately supersedes the stale release arm."""
+
+    def coordinate_parser(
+        raw: bytes, *, require_recovery_arm: bool | None = None
+    ) -> RebootRecovery.ParsedMarker:
+        del require_recovery_arm
+        try:
+            rows = RebootRecovery.parse_canonical_jsonl(
+                raw, label="detached teardown coordinate"
+            )
+        except RebootRecovery.RecoveryEvidenceError:
+            raise
+        if len(rows) not in {2, 3}:
+            raise RebootRecovery.RecoveryEvidenceError(
+                "detached teardown coordinate row count is malformed"
+            )
+        prefix = b"".join(
+            RebootRecovery.canonical_json_line(row) for row in rows[:2]
+        )
+        return _parse_detached_teardown_marker(
+            prefix, require_recovery_arm=False
+        )
+
+    try:
+        marker, _parsed = _read_existing_dispatch_quarantine(
+            item,
+            require_recovery_arm=None,
+            allow_missing_capsule=True,
+            marker_parser=coordinate_parser,
+        )
+    except NoDispatchQuarantine:
+        return
+    root = marker.root
+    root_fd = marker.root_fd
+    root_identity = marker.root_identity
+    marker_name = marker.name
+    arm_name, completion_name, correction_name, marker_preparing = (
+        _detached_teardown_names(marker_name, marker.dispatch_id)
+    )
+    try:
+        present = set()
+        for name in (
+            arm_name,
+            _durable_recovery_record_preparing_name(arm_name),
+            completion_name,
+            _durable_recovery_record_preparing_name(completion_name),
+            correction_name,
+            _durable_recovery_record_preparing_name(correction_name),
+            marker_preparing,
+        ):
+            try:
+                os.stat(name, dir_fd=root_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                continue
+            present.add(name)
+        adoption_namespace = f".{marker.name}.{marker.dispatch_id}."
+        try:
+            entries = os.listdir(root_fd)
+        except OSError as exc:
+            raise CampaignPlanError(
+                "detached teardown sidecar namespace is unreadable"
+            ) from exc
+        present.update(
+            entry for entry in entries
+            if entry.startswith(adoption_namespace)
+            and ".detached_teardown_adoption_" in entry
+        )
+        if not present:
+            return
+        if correction_name not in present:
+            raise CampaignPlanError(
+                "detached teardown is active; stale sandbox nonce is invalid"
+            )
+        arm, arm_identity, _arm_payload = _read_durable_recovery_record_at(
+            root_fd,
+            arm_name,
+            root_path=root,
+            root_identity=root_identity,
+            label="detached teardown arm",
+        )
+        arm = _validate_detached_teardown_arm_record(
+            arm, marker_name=marker.name
+        )
+        if any((
+            arm["dispatch_id"] != marker.dispatch_id,
+            arm["marker_root"] != os.fspath(marker.root),
+            arm["marker_root_identity"] != list(marker.root_identity),
+        )):
+            raise CampaignPlanError(
+                "detached teardown arm root binding changed"
+            )
+        completion, _completion_identity, _completion_payload = (
+            _read_durable_recovery_record_at(
+                root_fd,
+                completion_name,
+                root_path=root,
+                root_identity=root_identity,
+                label="detached teardown completion",
+            )
+        )
+        completion = _validate_detached_teardown_completion_record(
+            completion,
+            marker=marker,
+            arm=arm,
+            arm_identity=arm_identity,
+        )
+        adoptions = _read_detached_teardown_adoptions(
+            marker, arm, arm_identity
+        )
+        if any((
+            completion["adoption_record_names"]
+            != [name for name, _record, _sha in adoptions],
+            completion["adoption_record_sha256s"]
+            != [sha for _name, _record, sha in adoptions],
+        )):
+            raise CampaignPlanError(
+                "detached teardown completion adoption chain changed"
+            )
+        correction, _identity, _payload = _read_durable_recovery_record_at(
+            root_fd,
+            correction_name,
+            root_path=root,
+            root_identity=root_identity,
+            label="detached teardown correction",
+        )
+        if (
+            set(correction) != DETACHED_TEARDOWN_CORRECTION_KEYS
+            or correction.get("schema")
+            != DETACHED_TEARDOWN_CORRECTION_SCHEMA
+            or correction.get("event")
+            != DETACHED_TEARDOWN_CORRECTION_EVENT
+            or correction.get("dispatch_id") != marker.dispatch_id
+            or correction.get("recovery_nonce") != arm["recovery_nonce"]
+            or correction.get("arm_record_sha256")
+            != _recovery_record_sha256(arm)
+            or correction.get("completion_record_sha256")
+            != _recovery_record_sha256(completion)
+            or correction.get("marker_prefix_bytes")
+            != arm["marker_prefix_bytes"]
+            or correction.get("marker_prefix_sha256")
+            != arm["marker_prefix_sha256"]
+            or correction.get("stale_recovery_nonce")
+            != arm["stale_recovery_nonce"]
+            or correction.get("stale_recovery_arm_invalidated") is not True
+        ):
+            raise CampaignPlanError(
+                "detached teardown correction authority is malformed"
+            )
+        old_identity = _marker_identity(
+            correction.get("old_marker_identity"),
+            "detached correction old marker",
+        )
+        new_identity = _marker_identity(
+            correction.get("new_marker_identity"),
+            "detached correction new marker",
+        )
+        if old_identity != _marker_identity(
+            arm["marker_identity"], "detached arm marker"
+        ) or new_identity == old_identity:
+            raise CampaignPlanError(
+                "detached teardown correction marker binding changed"
+            )
+        payload = _sealed_recovery_marker_bytes(marker)
+        try:
+            rows = RebootRecovery.parse_canonical_jsonl(
+                payload, label="detached teardown corrected marker"
+            )
+        except RebootRecovery.RecoveryEvidenceError as exc:
+            raise CampaignPlanError(str(exc)) from exc
+        prefix = b"".join(
+            RebootRecovery.canonical_json_line(row) for row in rows[:2]
+        )
+        if any((
+            len(rows) not in {2, 3},
+            len(prefix) != correction["marker_prefix_bytes"],
+            hashlib.sha256(prefix).hexdigest()
+            != correction["marker_prefix_sha256"],
+        )):
+            raise CampaignPlanError(
+                "detached teardown corrected marker prefix changed"
+            )
+        if len(rows) == 2:
+            if (
+                payload != prefix
+                or marker.marker_identity != new_identity
+                or marker_preparing in present
+            ):
+                raise CampaignPlanError(
+                    "detached teardown two-row correction changed"
+                )
+        else:
+            try:
+                fresh = _parse_detached_teardown_marker(
+                    payload, require_recovery_arm=True
+                ).recovery_arm
+            except RebootRecovery.RecoveryEvidenceError as exc:
+                raise CampaignPlanError(str(exc)) from exc
+            if fresh is None or any((
+                fresh.get("recovery_nonce")
+                == correction["stale_recovery_nonce"],
+                fresh.get("armed_marker_identity")
+                != list(marker.marker_identity),
+                fresh.get("pre_arm_marker_identity") != list(new_identity),
+                fresh.get("pre_arm_marker_bytes")
+                != correction["marker_prefix_bytes"],
+                fresh.get("pre_arm_marker_sha256")
+                != correction["marker_prefix_sha256"],
+                marker.marker_identity == old_identity,
+                marker_preparing in present,
+            )):
+                raise CampaignPlanError(
+                    "fresh sandbox arm does not bind detached correction"
+                )
+            if _recovery_recorded_at(
+                fresh, "fresh sandbox recovery arm"
+            ) < _recovery_recorded_at(
+                correction, "detached teardown correction"
+            ):
+                raise CampaignPlanError(
+                    "fresh sandbox arm predates detached correction"
+                )
+        correction_at = _recovery_recorded_at(
+            correction, "detached teardown correction"
+        )
+        if correction_at < _recovery_recorded_at(
+            completion, "detached teardown completion"
+        ):
+            raise CampaignPlanError(
+                "detached teardown correction predates completion"
+            )
+    finally:
+        _close_dispatch_quarantine(marker)
+
+
 def _arm_sandboxed_generation_release_locked(
     item: dict[str, Any],
     *,
@@ -14669,6 +19237,7 @@ def _arm_sandboxed_generation_release_locked(
     marker_parser: Any = RebootRecovery.parse_sandboxed_generation_marker,
     interrupted_exec: bool = False,
 ) -> dict[str, Any]:
+    _assert_no_active_detached_teardown(item)
     marker, parsed = _read_existing_dispatch_quarantine(
         item,
         require_recovery_arm=None,
@@ -15040,9 +19609,11 @@ def _recover_sandboxed_generation_release_locked(
     confirm_dispatch_id: str,
     confirm_recovery_nonce: str,
     boot_identity_provider: RebootRecovery.BootIdentityProvider,
+    scratch_admission_lock: ScratchAdmissionLock,
     marker_parser: Any = RebootRecovery.parse_sandboxed_generation_marker,
     interrupted_exec: bool = False,
 ) -> dict[str, Any]:
+    _assert_no_active_detached_teardown(item)
     marker, parsed = _read_existing_dispatch_quarantine(
         item,
         require_recovery_arm=True,
@@ -15053,6 +19624,9 @@ def _recover_sandboxed_generation_release_locked(
     try:
         item = _reconstruct_historical_recovery_item(
             item, parsed.armed, allow_abandoned_scratch=True
+        )
+        _validate_scheduler_scratch_admission_lock(
+            scratch_admission_lock, item
         )
         if interrupted_exec is not _is_interrupted_generation(parsed):
             raise CampaignPlanError(
@@ -15094,6 +19668,14 @@ def _recover_sandboxed_generation_release_locked(
         )):
             raise CampaignPlanError(
                 "sandboxed-generation lock binding changed before recovery"
+            )
+        active_workspace = _active_scratch_workspace_lock(
+            scratch, exclude_workspace=workspace
+        )
+        if active_workspace is not None:
+            raise CampaignPlanError(
+                "sandbox recovery cannot abandon a scratch root with another "
+                "active workspace"
             )
         if interrupted_exec:
             if lock_schema != "in_workspace_v1":
@@ -15250,6 +19832,16 @@ def _recover_sandboxed_generation_release_locked(
                 item, execution, classification, parsed=parsed
             )
         if event is None:
+            _validate_scheduler_scratch_admission_lock(
+                scratch_admission_lock, item
+            )
+            if _active_scratch_workspace_lock(
+                scratch, exclude_workspace=workspace
+            ) is not None:
+                raise CampaignPlanError(
+                    "sandbox recovery cannot append an abandonment while "
+                    "another scratch workspace is active"
+                )
             if interrupted_exec:
                 _taint_gate()
             _revalidate_sandboxed_generation_tree_hashes(
@@ -15856,9 +20448,42 @@ def _recover_sandboxed_generation_release(
     interrupted_exec: bool = False,
 ) -> dict[str, Any]:
     dispatch_lock = _acquire_scheduler_dispatch_lock(item)
+    scratch_admission_lock: ScratchAdmissionLock | None = None
     try:
+        try:
+            scratch_marker, scratch_parsed = (
+                _read_existing_dispatch_quarantine(
+                    item,
+                    require_recovery_arm=True,
+                    allow_missing_capsule=True,
+                    marker_parser=marker_parser,
+                )
+            )
+        except NoDispatchQuarantine:
+            scratch_root = None
+        else:
+            try:
+                scratch_item = _reconstruct_historical_recovery_item(
+                    item,
+                    scratch_parsed.armed,
+                    allow_abandoned_scratch=True,
+                )
+                scratch_root, _identity, _workspace, _protected = (
+                    _sandboxed_generation_paths(
+                        scratch_item, scratch_parsed
+                    )
+                )
+            finally:
+                _close_dispatch_quarantine(scratch_marker)
+        if scratch_root is not None:
+            scratch_admission_lock = (
+                _acquire_scheduler_scratch_admission_lock(
+                    item, scratch_root=scratch_root
+                )
+            )
         lineage_lock = _acquire_scheduler_lineage_lock(item)
         try:
+            _assert_no_active_detached_teardown(item)
             before_authorized_finish = None
             if interrupted_exec:
                 def before_authorized_finish(
@@ -15890,11 +20515,24 @@ def _recover_sandboxed_generation_release(
                     )
                 return completed
             try:
+                if scratch_admission_lock is None:
+                    completed = _completed_sandbox_isolation_result(
+                        item,
+                        confirm_dispatch_id=confirm_dispatch_id,
+                        confirm_recovery_nonce=confirm_recovery_nonce,
+                        interrupted_exec=interrupted_exec,
+                    )
+                    if completed is None:
+                        raise NoDispatchQuarantine(
+                            "sandbox recovery quarantine is unavailable"
+                        )
+                    return completed
                 return _recover_sandboxed_generation_release_locked(
                     item,
                     confirm_dispatch_id=confirm_dispatch_id,
                     confirm_recovery_nonce=confirm_recovery_nonce,
                     boot_identity_provider=boot_identity_provider,
+                    scratch_admission_lock=scratch_admission_lock,
                     marker_parser=marker_parser,
                     interrupted_exec=interrupted_exec,
                 )
@@ -15911,7 +20549,15 @@ def _recover_sandboxed_generation_release(
         finally:
             _release_scheduler_artifact_lock(lineage_lock)
     finally:
-        _release_scheduler_artifact_lock(dispatch_lock)
+        try:
+            if scratch_admission_lock is not None:
+                _release_scheduler_scratch_admission_lock(
+                    scratch_admission_lock,
+                    item,
+                    scratch_root=scratch_admission_lock.scratch_root,
+                )
+        finally:
+            _release_scheduler_artifact_lock(dispatch_lock)
 
 
 def _recover_interrupted_generation_release(
@@ -20532,6 +25178,98 @@ def _scan_live_transcript(
     return findings
 
 
+def _exact_child_soft_allocation_seconds(item: dict[str, Any]) -> float:
+    minutes = item.get("minutes")
+    if (
+        not isinstance(minutes, int)
+        or isinstance(minutes, bool)
+        or minutes <= 0
+    ):
+        raise CampaignPlanError(
+            "exact child lifecycle requires positive integer minutes"
+        )
+    return float(minutes * 60)
+
+
+def _exact_child_lifecycle_telemetry(
+    item: dict[str, Any],
+    *,
+    started_at: float,
+    direct_exit_observed_at: float | None,
+    stop_requested_at: float | None,
+    sealed_at: float,
+) -> ExactChildLifecycleTelemetry:
+    soft_seconds = _exact_child_soft_allocation_seconds(item)
+    soft_deadline_at = started_at + soft_seconds
+    hard_deadline_at = soft_deadline_at + EXACT_CHILD_MAX_DRAIN_SECONDS
+    if stop_requested_at is not None and direct_exit_observed_at is not None:
+        raise CampaignPlanError(
+            "exact child lifecycle has two terminal phase boundaries"
+        )
+    phase_ended_at = (
+        stop_requested_at
+        if stop_requested_at is not None
+        else direct_exit_observed_at
+    )
+    if phase_ended_at is None:
+        raise CampaignPlanError(
+            "exact child lifecycle lacks a terminal phase boundary"
+        )
+    if phase_ended_at < started_at or sealed_at < phase_ended_at:
+        raise CampaignPlanError(
+            "exact child lifecycle timestamps are not monotonic"
+        )
+    proposer_active_seconds = max(
+        0.0, min(phase_ended_at, soft_deadline_at) - started_at
+    )
+    drain_seconds = max(
+        0.0,
+        min(phase_ended_at, hard_deadline_at) - soft_deadline_at,
+    )
+    deadline_overshoot_seconds = max(
+        0.0, phase_ended_at - hard_deadline_at
+    )
+    settlement_seconds = (
+        sealed_at - direct_exit_observed_at
+        if direct_exit_observed_at is not None
+        else 0.0
+    )
+    shutdown_seconds = (
+        sealed_at - stop_requested_at
+        if stop_requested_at is not None
+        else 0.0
+    )
+    return ExactChildLifecycleTelemetry(
+        soft_allocation_seconds=soft_seconds,
+        drain_limit_seconds=EXACT_CHILD_MAX_DRAIN_SECONDS,
+        shutdown_limit_seconds=EXACT_CHILD_TERMINATE_SECONDS,
+        proposer_active_seconds=proposer_active_seconds,
+        drain_seconds=drain_seconds,
+        deadline_overshoot_seconds=deadline_overshoot_seconds,
+        settlement_seconds=settlement_seconds,
+        shutdown_seconds=shutdown_seconds,
+        elapsed_seconds=sealed_at - started_at,
+        hard_deadline_exceeded=phase_ended_at >= hard_deadline_at,
+    )
+
+
+def _reject_untainted_hard_lifecycle_expiry(
+    child: GuardedChildResult,
+) -> None:
+    lifecycle = child.lifecycle
+    if (
+        lifecycle is None
+        or not lifecycle.hard_deadline_exceeded
+        or child.taint_reason is not None
+    ):
+        return
+    raise ExactChildHardDeadlineExceeded(
+        "exact child exceeded its soft proposer allocation plus the bounded "
+        "outer drain window",
+        telemetry=lifecycle,
+    )
+
+
 def _launch_exact_child(
     argv: list[str],
     *,
@@ -20572,17 +25310,24 @@ def _run_guarded_child(
     protected_root = scratch / ".proposer_transcripts"
     workspaces_before = _physical_directory_names(scratch, prefix)
     protected_before = _physical_directory_names(protected_root, prefix)
-    historical = _evidence_schema(item) == "sealed_transcript_only_v1"
+    historical = isinstance(item.get("historical_runner"), dict)
+    allow_legacy_banner = (
+        _evidence_schema(item) == "sealed_transcript_only_v1"
+    )
     _revalidate_historical_control(item)
     process_tree_owner: list[Contiguous.ScopedProcessTree | None] = [None]
     process_tree: Contiguous.ScopedProcessTree | None = None
     terminal_returncode: int | None = None
     detached_processes_proven_absent = False
     normal_exit_left_captured_descendants = False
+    direct_exit_observed_at: float | None = None
+    stop_requested_at: float | None = None
+    sealed_at: float | None = None
 
     def stop_for_quarantine() -> int:
         nonlocal terminal_returncode, detached_processes_proven_absent
         nonlocal normal_exit_left_captured_descendants
+        nonlocal stop_requested_at, sealed_at
         if process_tree is None:
             raise CampaignPlanError(
                 "exact child custody handoff was lost before quarantine"
@@ -20594,6 +25339,7 @@ def _run_guarded_child(
                 )
             return terminal_returncode
         try:
+            stop_requested_at = time.monotonic()
             terminal = process_tree.seal(
                 stop_requested=True,
                 grace_seconds=EXACT_CHILD_TERMINATE_SECONDS,
@@ -20610,6 +25356,14 @@ def _run_guarded_child(
             raise CampaignPlanError(
                 f"exact child process-tree stop failed: {exc}"
             ) from exc
+        sealed_at = time.monotonic()
+        if (
+            sealed_at - stop_requested_at
+            > EXACT_CHILD_TERMINATE_SECONDS + 1e-6
+        ):
+            raise UnquiescedChildError(
+                "exact child stop exceeded its bounded shutdown window"
+            )
         terminal_returncode = terminal.returncode
         detached_processes_proven_absent = bool(
             getattr(
@@ -20624,6 +25378,7 @@ def _run_guarded_child(
     def finish_normal_exit() -> int:
         nonlocal terminal_returncode, detached_processes_proven_absent
         nonlocal normal_exit_left_captured_descendants
+        nonlocal sealed_at
         if process_tree is None:
             raise CampaignPlanError(
                 "exact child custody handoff was lost before finalization"
@@ -20651,6 +25406,18 @@ def _run_guarded_child(
             raise CampaignPlanError(
                 f"exact child process-tree finalization failed: {exc}"
             ) from exc
+        sealed_at = time.monotonic()
+        if direct_exit_observed_at is None:
+            raise CampaignPlanError(
+                "exact child finalization lacks its observed-exit timestamp"
+            )
+        if (
+            sealed_at - direct_exit_observed_at
+            > EXACT_CHILD_TERMINATE_SECONDS + 1e-6
+        ):
+            raise UnquiescedChildError(
+                "exact child finalization exceeded its bounded settlement window"
+            )
         terminal_returncode = terminal.returncode
         detached_processes_proven_absent = bool(
             getattr(
@@ -20685,6 +25452,204 @@ def _run_guarded_child(
         )
         return tuple(sorted(counts.items()))
 
+    class HardDeadlineDue(Exception):
+        pass
+
+    def deadline_checkpoint(*, final: bool) -> None:
+        if (
+            not final
+            and taint_reason is None
+            and time.monotonic() >= hard_deadline_at
+        ):
+            raise HardDeadlineDue
+
+    def observe_generation(*, final: bool) -> None:
+        nonlocal workspace, protected, monitor, transcript, transcript_seen
+        nonlocal workspace_identity, protected_identity, taint_reason
+        nonlocal descendant_quiescence_unproven
+        nonlocal workspace_boundary_findings, transcript_boundary_findings
+
+        deadline_checkpoint(final=final)
+        current_workspaces = _physical_directory_names(scratch, prefix)
+        deadline_checkpoint(final=final)
+        new_workspaces = set(current_workspaces) - set(workspaces_before)
+        if len(new_workspaces) > 1:
+            if not final:
+                stop_for_quarantine()
+            raise CampaignPlanError(
+                "one dispatch created multiple candidate workspaces"
+            )
+        current_protected = _physical_directory_names(protected_root, prefix)
+        deadline_checkpoint(final=final)
+        new_protected = set(current_protected) - set(protected_before)
+        if len(new_protected) > 1:
+            if not final:
+                stop_for_quarantine()
+            raise CampaignPlanError(
+                "one dispatch created multiple protected evidence roots"
+            )
+        if new_workspaces:
+            name = next(iter(new_workspaces))
+            if new_protected and new_protected != {name}:
+                if not final:
+                    stop_for_quarantine()
+                raise CampaignPlanError(
+                    "live workspace and protected evidence identities diverged"
+                )
+            candidate = scratch / name
+            if workspace is not None and candidate != workspace:
+                if not final:
+                    stop_for_quarantine()
+                raise CampaignPlanError("live workspace identity changed")
+            workspace = candidate
+            protected = protected_root / name
+            observed_workspace_identity = current_workspaces[name]
+            if (
+                workspace_identity is not None
+                and observed_workspace_identity != workspace_identity
+            ):
+                if not final:
+                    stop_for_quarantine()
+                raise CampaignPlanError(
+                    "live workspace directory identity changed"
+                )
+            workspace_identity = observed_workspace_identity
+            if name in current_protected:
+                observed_protected_identity = current_protected[name]
+                if (
+                    protected_identity is not None
+                    and observed_protected_identity != protected_identity
+                ):
+                    if not final:
+                        stop_for_quarantine()
+                    raise CampaignPlanError(
+                        "live protected directory identity changed"
+                    )
+                protected_identity = observed_protected_identity
+            # Workspace creation precedes the legacy lock and host scaffold
+            # writes.  Do not scan a partially written host template; model
+            # authority begins only after the exact runner lock is active.
+            lock_active = _workspace_lock_is_active(workspace)
+            deadline_checkpoint(final=final)
+            if monitor is None and (lock_active or final):
+                trusted = _historical_tester_scaffolds(item, workspace)
+                deadline_checkpoint(final=final)
+                module_root = (
+                    Path(item["historical_runner"]["worktree"])
+                    / "arc"
+                    / "crack_lab"
+                    if isinstance(item.get("historical_runner"), dict)
+                    else HERE
+                )
+                monitor = Boundary.LiveBoundaryMonitor(
+                    workspace,
+                    arena_module_root=module_root,
+                    trusted_host_scaffolds=trusted,
+                    allow_historical_transport_banner=allow_legacy_banner,
+                )
+                deadline_checkpoint(final=final)
+            if monitor is not None:
+                findings = monitor.scan_workspace()
+                findings = Legs._filter_trusted_scaffold_root_literal(
+                    workspace,
+                    findings,
+                    trusted=monitor.trusted_host_scaffolds,
+                )
+                workspace_boundary_findings = tuple(findings)
+                if any(
+                    finding.code in UNQUIESCED_BOUNDARY_CODES
+                    for finding in findings
+                ):
+                    descendant_quiescence_unproven = True
+                if findings and taint_reason is None:
+                    taint_reason = findings[0].describe()
+                deadline_checkpoint(final=final)
+                assert protected is not None
+                selected, inventory_reason = _live_transcript_inventory(
+                    item, protected
+                )
+                if inventory_reason is not None and taint_reason is None:
+                    taint_reason = inventory_reason
+                deadline_checkpoint(final=final)
+                if selected is not None:
+                    if transcript is not None and selected != transcript:
+                        taint_reason = taint_reason or (
+                            "live transcript identity changed"
+                        )
+                    transcript = selected
+                    transcript_seen = True
+                    transcript_findings = _scan_live_transcript(
+                        monitor,
+                        selected, final=final
+                    )
+                    transcript_boundary_findings = tuple(
+                        transcript_findings
+                    )
+                    if any(
+                        finding.code in UNQUIESCED_BOUNDARY_CODES
+                        for finding in transcript_findings
+                    ):
+                        descendant_quiescence_unproven = True
+                    if transcript_findings and taint_reason is None:
+                        taint_reason = transcript_findings[0].describe()
+                    deadline_checkpoint(final=final)
+                elif final and transcript_seen and taint_reason is None:
+                    taint_reason = "live transcript disappeared before sealing"
+        elif new_protected:
+            if not final:
+                stop_for_quarantine()
+            raise CampaignPlanError(
+                "protected evidence appeared without its exact workspace"
+            )
+        if workspace is not None and workspace.name not in current_workspaces:
+            if not final:
+                stop_for_quarantine()
+            raise CampaignPlanError("live workspace directory disappeared")
+        if (
+            protected_identity is not None
+            and protected is not None
+            and protected.name not in current_protected
+        ):
+            if not final:
+                stop_for_quarantine()
+            raise CampaignPlanError("live protected directory disappeared")
+        deadline_checkpoint(final=final)
+
+    def guarded_result(returncode: int) -> GuardedChildResult:
+        if sealed_at is None:
+            raise CampaignPlanError(
+                "exact child result lacks its sealed lifecycle timestamp"
+            )
+        return GuardedChildResult(
+            int(returncode),
+            taint_reason,
+            workspace.name if workspace is not None else None,
+            transcript.name if transcript is not None else None,
+            workspace_identity,
+            protected_identity,
+            (
+                descendant_quiescence_unproven
+                and not detached_processes_proven_absent
+            ),
+            True,
+            detached_processes_proven_absent,
+            normal_exit_left_captured_descendants,
+            boundary_finding_counts(),
+            lifecycle=_exact_child_lifecycle_telemetry(
+                item,
+                started_at=lifecycle_started_at,
+                direct_exit_observed_at=direct_exit_observed_at,
+                stop_requested_at=stop_requested_at,
+                sealed_at=sealed_at,
+            ),
+        )
+
+    lifecycle_started_at = time.monotonic()
+    hard_deadline_at = (
+        lifecycle_started_at
+        + _exact_child_soft_allocation_seconds(item)
+        + EXACT_CHILD_MAX_DRAIN_SECONDS
+    )
     try:
         process_tree = _launch_exact_child(
             argv,
@@ -20698,194 +25663,38 @@ def _run_guarded_child(
             process_tree_owner[0] = process_tree
         while True:
             try:
-                final = process_tree.observe_exit()
-            except Contiguous.ScopedProcessContainmentError as exc:
-                raise UnquiescedChildError(
-                    "live exact child observation lost process containment"
-                ) from exc
-            except Contiguous.SupervisorContractError as exc:
-                raise CampaignPlanError(
-                    f"live exact child observation failed: {exc}"
-                ) from exc
-            if final:
-                # Direct-child exit is not transcript finality: a captured
-                # descendant may still hold and append to the JSONL stream.
-                # Seal the complete process tree before any terminal boundary
-                # scan so ``final=True`` means that no writer can remain.
-                finish_normal_exit()
-            current_workspaces = _physical_directory_names(scratch, prefix)
-            new_workspaces = set(current_workspaces) - set(workspaces_before)
-            if len(new_workspaces) > 1:
-                if not final:
-                    stop_for_quarantine()
-                raise CampaignPlanError(
-                    "one dispatch created multiple candidate workspaces"
-                )
-            current_protected = _physical_directory_names(protected_root, prefix)
-            new_protected = set(current_protected) - set(protected_before)
-            if len(new_protected) > 1:
-                if not final:
-                    stop_for_quarantine()
-                raise CampaignPlanError(
-                    "one dispatch created multiple protected evidence roots"
-                )
-            if new_workspaces:
-                name = next(iter(new_workspaces))
-                if new_protected and new_protected != {name}:
-                    if not final:
-                        stop_for_quarantine()
+                deadline_checkpoint(final=False)
+                try:
+                    final = process_tree.observe_exit()
+                except Contiguous.ScopedProcessContainmentError as exc:
+                    raise UnquiescedChildError(
+                        "live exact child observation lost process containment"
+                    ) from exc
+                except Contiguous.SupervisorContractError as exc:
                     raise CampaignPlanError(
-                        "live workspace and protected evidence identities diverged"
-                    )
-                candidate = scratch / name
-                if workspace is not None and candidate != workspace:
-                    if not final:
-                        stop_for_quarantine()
-                    raise CampaignPlanError("live workspace identity changed")
-                workspace = candidate
-                protected = protected_root / name
-                observed_workspace_identity = current_workspaces[name]
-                if (
-                    workspace_identity is not None
-                    and observed_workspace_identity != workspace_identity
-                ):
-                    if not final:
-                        stop_for_quarantine()
-                    raise CampaignPlanError(
-                        "live workspace directory identity changed"
-                    )
-                workspace_identity = observed_workspace_identity
-                if name in current_protected:
-                    observed_protected_identity = current_protected[name]
-                    if (
-                        protected_identity is not None
-                        and observed_protected_identity != protected_identity
-                    ):
-                        if not final:
-                            stop_for_quarantine()
-                        raise CampaignPlanError(
-                            "live protected directory identity changed"
-                        )
-                    protected_identity = observed_protected_identity
-                # Workspace creation precedes the legacy lock and host scaffold
-                # writes.  Do not scan a partially written host template; model
-                # authority begins only after the exact runner lock is active.
-                if monitor is None and (
-                    _workspace_lock_is_active(workspace) or final
-                ):
-                    trusted = _historical_tester_scaffolds(item, workspace)
-                    module_root = (
-                        Path(item["historical_runner"]["worktree"])
-                        / "arc"
-                        / "crack_lab"
-                        if isinstance(item.get("historical_runner"), dict)
-                        else HERE
-                    )
-                    monitor = Boundary.LiveBoundaryMonitor(
-                        workspace,
-                        arena_module_root=module_root,
-                        trusted_host_scaffolds=trusted,
-                        allow_historical_transport_banner=historical,
-                    )
-                if monitor is not None:
-                    findings = monitor.scan_workspace()
-                    findings = Legs._filter_trusted_scaffold_root_literal(
-                        workspace,
-                        findings,
-                        trusted=monitor.trusted_host_scaffolds,
-                    )
-                    workspace_boundary_findings = tuple(findings)
-                    if any(
-                        finding.code in UNQUIESCED_BOUNDARY_CODES
-                        for finding in findings
-                    ):
-                        descendant_quiescence_unproven = True
-                    if findings and taint_reason is None:
-                        taint_reason = findings[0].describe()
-                    assert protected is not None
-                    selected, inventory_reason = _live_transcript_inventory(
-                        item, protected
-                    )
-                    if inventory_reason is not None and taint_reason is None:
-                        taint_reason = inventory_reason
-                    if selected is not None:
-                        if transcript is not None and selected != transcript:
-                            taint_reason = taint_reason or (
-                                "live transcript identity changed"
-                            )
-                        transcript = selected
-                        transcript_seen = True
-                        transcript_findings = _scan_live_transcript(
-                            monitor,
-                            selected, final=final
-                        )
-                        transcript_boundary_findings = tuple(
-                            transcript_findings
-                        )
-                        if any(
-                            finding.code in UNQUIESCED_BOUNDARY_CODES
-                            for finding in transcript_findings
-                        ):
-                            descendant_quiescence_unproven = True
-                        if transcript_findings and taint_reason is None:
-                            taint_reason = transcript_findings[0].describe()
-                    elif final and transcript_seen and taint_reason is None:
-                        taint_reason = "live transcript disappeared before sealing"
-            elif new_protected:
-                if not final:
-                    stop_for_quarantine()
-                raise CampaignPlanError(
-                    "protected evidence appeared without its exact workspace"
-                )
-            if (
-                workspace is not None
-                and workspace.name not in current_workspaces
-            ):
-                if not final:
-                    stop_for_quarantine()
-                raise CampaignPlanError("live workspace directory disappeared")
-            if (
-                protected_identity is not None
-                and protected is not None
-                and protected.name not in current_protected
-            ):
-                if not final:
-                    stop_for_quarantine()
-                raise CampaignPlanError(
-                    "live protected directory disappeared"
-                )
+                        f"live exact child observation failed: {exc}"
+                    ) from exc
+                observed_at = time.monotonic()
+                if final:
+                    if direct_exit_observed_at is None:
+                        direct_exit_observed_at = observed_at
+                    # Direct-child exit is not transcript finality: seal the
+                    # complete process tree before the terminal boundary scan.
+                    finish_normal_exit()
+                else:
+                    deadline_checkpoint(final=False)
+                observe_generation(final=final)
+            except HardDeadlineDue:
+                returncode = stop_for_quarantine()
+                observe_generation(final=True)
+                _revalidate_historical_control(item)
+                return guarded_result(returncode)
             if taint_reason is not None:
                 returncode = stop_for_quarantine()
-                # The legacy runner seals its ledger/WIP receipt while handling
-                # SIGTERM.  Re-poll the final append-only state after it exits.
-                if monitor is not None and transcript is not None:
-                    terminal_findings = monitor.scan_transcript(
-                        transcript, final=True
-                    )
-                    transcript_boundary_findings = tuple(terminal_findings)
-                    if any(
-                        finding.code in UNQUIESCED_BOUNDARY_CODES
-                        for finding in terminal_findings
-                    ):
-                        descendant_quiescence_unproven = True
-                    if terminal_findings and taint_reason is None:
-                        taint_reason = terminal_findings[0].describe()
-                return GuardedChildResult(
-                    int(returncode),
-                    taint_reason,
-                    workspace.name if workspace is not None else None,
-                    transcript.name if transcript is not None else None,
-                    workspace_identity,
-                    protected_identity,
-                    (
-                        descendant_quiescence_unproven
-                        and not detached_processes_proven_absent
-                    ),
-                    True,
-                    detached_processes_proven_absent,
-                    normal_exit_left_captured_descendants,
-                    boundary_finding_counts(),
-                )
+                # SIGTERM may create or mutate any generation boundary.  Repeat
+                # the complete inventory and both terminal scans after sealing.
+                observe_generation(final=True)
+                return guarded_result(returncode)
             if final:
                 returncode = finish_normal_exit()
                 _revalidate_historical_control(item)
@@ -20904,23 +25713,11 @@ def _run_guarded_child(
                         "successful dispatch lacks one complete live generation "
                         "and sealed transcript inventory"
                     )
-                return GuardedChildResult(
-                    int(returncode),
-                    None,
-                    workspace.name if workspace is not None else None,
-                    transcript.name if transcript is not None else None,
-                    workspace_identity,
-                    protected_identity,
-                    (
-                        descendant_quiescence_unproven
-                        and not detached_processes_proven_absent
-                    ),
-                    True,
-                    detached_processes_proven_absent,
-                    normal_exit_left_captured_descendants,
-                    boundary_finding_counts(),
-                )
-            time.sleep(LIVE_BOUNDARY_POLL_SECONDS)
+                return guarded_result(returncode)
+            remaining = hard_deadline_at - time.monotonic()
+            if remaining <= 0:
+                continue
+            time.sleep(min(LIVE_BOUNDARY_POLL_SECONDS, remaining))
     except BaseException as failure:
         process_tree = process_tree_owner[0] or process_tree
         details = {
@@ -21026,9 +25823,18 @@ def validate_live_policy_item(item: dict[str, Any]) -> None:
         )
     policy = Status.retry_policy(n)
     effective_wip, effective_dispatch = _effective_retry_inputs(item, policy)
+    failure_revision_rounds = _failure_revision_item_rounds(item)
     comparisons = {
-        "effort": policy["effort"],
-        "minutes": policy["minutes"],
+        "effort": (
+            Policy.FAILURE_REVISION_TREATMENT_EFFORT
+            if failure_revision_rounds > Policy.DEFAULT_FAILURE_REVISION_ROUNDS
+            else policy["effort"]
+        ),
+        "minutes": (
+            Policy.FAILURE_REVISION_TREATMENT_MINUTES
+            if failure_revision_rounds > Policy.DEFAULT_FAILURE_REVISION_ROUNDS
+            else policy["minutes"]
+        ),
         "wip_mode": effective_wip,
         "dispatch_mode": effective_dispatch,
         "recommended_auxiliary_parallelism": policy[
@@ -21066,6 +25872,7 @@ def validate_live_policy_item(item: dict[str, Any]) -> None:
             raise CampaignPlanError(
                 f"plan item {key} is stale at the live frontier"
             )
+    _revalidate_historical_control(item)
 
 
 def _taint_gate() -> None:
@@ -22334,11 +27141,32 @@ def _resume_existing_contained_residual_classification(
 
 
 def _run_item_locked(
-    plan: dict[str, Any], item: dict[str, Any], *, allowance: Guard.WeeklyAllowance
+    plan: dict[str, Any],
+    item: dict[str, Any],
+    *,
+    allowance: Guard.WeeklyAllowance,
+    scratch_admission_lock: ScratchAdmissionLock | None = None,
 ) -> dict[str, Any]:
     selected_item = item
-    item = _project_runner_receipt(plan, item)
-    argv = validate_item(item, plan)
+    pre_admission = scratch_admission_lock is None
+    item = _project_runner_receipt(
+        plan,
+        item,
+        allow_abandoned_scratch=pre_admission,
+    )
+    if scratch_admission_lock is not None:
+        _validate_scheduler_scratch_admission_lock(
+            scratch_admission_lock, item
+        )
+    argv = validate_item(
+        item,
+        plan,
+        allow_abandoned_scratch=pre_admission,
+    )
+    if scratch_admission_lock is not None:
+        _validate_scheduler_scratch_admission_lock(
+            scratch_admission_lock, item
+        )
     game = item.get("game")
     target = item.get("target_level")
     if not isinstance(game, str) or not isinstance(target, int):
@@ -22381,6 +27209,39 @@ def _run_item_locked(
             "seed_mode": item["seed_mode"], "wip_mode": item["wip_mode"],
             "lineage_input_mode": item["lineage_input_mode"],
         }
+    if scratch_admission_lock is None:
+        scratch_admission_lock = (
+            _acquire_scheduler_scratch_admission_lock(item)
+        )
+        try:
+            # Admission decisions above are deliberately scratch-independent.
+            # Once a real dispatch remains, repeat the complete runner
+            # projection and tombstone proof while holding its exact physical
+            # namespace hierarchy, then retain custody through terminal work.
+            try:
+                return _run_item_locked(
+                    plan,
+                    selected_item,
+                    allowance=allowance,
+                    scratch_admission_lock=scratch_admission_lock,
+                )
+            except ContainedNormalExitResidualError:
+                resumed = _resume_existing_contained_residual_classification(
+                    item, selected_item=selected_item
+                )
+                if resumed is None:
+                    raise CampaignPlanError(
+                        "contained residual disappeared before automatic "
+                        "release"
+                    )
+                return resumed
+        finally:
+            _release_scheduler_scratch_admission_lock(
+                scratch_admission_lock, item
+            )
+    _validate_scheduler_scratch_admission_lock(
+        scratch_admission_lock, item
+    )
     lineage_probe = _acquire_scheduler_lineage_lock(item)
     try:
         _ensure_durable_wip_context_parent(item)
@@ -22399,6 +27260,10 @@ def _run_item_locked(
     safe_terminal = False
     quarantine_failure_recorded = False
     try:
+        if scratch_admission_lock is not None:
+            _validate_scheduler_scratch_admission_lock(
+                scratch_admission_lock, item
+            )
         _arm_dispatch_quarantine(
             item,
             ledger_before=ledger_before,
@@ -22410,6 +27275,10 @@ def _run_item_locked(
         if quarantine is None:
             raise CampaignPlanError(
                 "dispatch quarantine ownership handoff was lost"
+            )
+        if scratch_admission_lock is not None:
+            _validate_scheduler_scratch_admission_lock(
+                scratch_admission_lock, item
             )
         child = _run_guarded_child(
             item,
@@ -22433,6 +27302,7 @@ def _run_item_locked(
                     "protected_identity": child.protected_identity,
                 },
             )
+        _reject_untainted_hard_lifecycle_expiry(child)
         if _zero_ledger_suffix_is_exact(ledger_before):
             if (
                 child.normal_exit_left_captured_descendants
@@ -22607,6 +27477,35 @@ def _run_item_locked(
                 "contained normal-exit residual is quarantined as an "
                 "infrastructure-noncounting generation"
             )
+        if (
+            child.returncode != 0
+            and _failure_revision_item_rounds(item)
+            > Policy.DEFAULT_FAILURE_REVISION_ROUNDS
+        ):
+            try:
+                _preserve_failure_revision_terminal(
+                    item,
+                    ledger=ledger,
+                    ledger_before=ledger_before,
+                    observed=child,
+                )
+            except UnquiescedChildError:
+                raise
+            except BaseException as exc:
+                raise UnquiescedChildError(
+                    "nonzero failure-revision treatment could not be fully "
+                    "authenticated and remains quarantined; no rollback, "
+                    "cleanup, or release is authorized",
+                    details={
+                        "child_returncode": child.returncode,
+                        "workspace": child.workspace,
+                        "protected": child.workspace,
+                        "transcript": child.transcript,
+                        "workspace_identity": child.workspace_identity,
+                        "protected_identity": child.protected_identity,
+                    },
+                ) from exc
+            raise AssertionError("terminal preservation unexpectedly returned")
         if child.returncode != 0 or child.taint_reason is not None:
             result = _recover_confirmed_taint(
                 item,
@@ -22628,7 +27527,7 @@ def _run_item_locked(
             safe_terminal = True
             return result
         try:
-            _authenticate_clean_generation(
+            execution = _authenticate_clean_generation(
                 item,
                 ledger=ledger,
                 ledger_before=ledger_before,
@@ -22657,6 +27556,9 @@ def _run_item_locked(
         _taint_gate()
         reached = _checkpoint_reached(game)
         if reached >= target:
+            _authenticate_failure_revision_promotion(
+                item, execution, reached
+            )
             _refresh_solver_audits()
         result = {
             "game": game,
@@ -22838,25 +27740,23 @@ def _run_item(
 ) -> dict[str, Any]:
     """Run one item while holding the current scheduler's baseline lock."""
 
-    projected = _project_runner_receipt(plan, item)
-    validate_item(projected, plan)
+    projected = _project_runner_receipt(
+        plan, item, allow_abandoned_scratch=True
+    )
+    validate_item(
+        projected, plan, allow_abandoned_scratch=True
+    )
     dispatch_lock = _acquire_scheduler_dispatch_lock(projected)
     try:
         # Preserve the unprojected policy item for recovery.  A marker may
         # seal an older runner/scratch receipt than the one in the regenerated
         # plan; `_run_item_locked` projects normally for a new dispatch while
         # its classification-only resumer reconstructs the sealed receipt.
-        try:
-            return _run_item_locked(plan, item, allowance=allowance)
-        except ContainedNormalExitResidualError:
-            resumed = _resume_existing_contained_residual_classification(
-                projected, selected_item=item
-            )
-            if resumed is None:
-                raise CampaignPlanError(
-                    "contained residual disappeared before automatic release"
-                )
-            return resumed
+        return _run_item_locked(
+            plan,
+            item,
+            allowance=allowance,
+        )
     finally:
         _release_scheduler_artifact_lock(dispatch_lock)
 
@@ -22899,6 +27799,22 @@ def main() -> int:
         ),
     )
     actions.add_argument(
+        "--arm-detached-generation-teardown",
+        metavar="GAME",
+        help=(
+            "seal one same-boot birth-bound detached-holder teardown arm "
+            "without signaling any process"
+        ),
+    )
+    actions.add_argument(
+        "--execute-detached-generation-teardown",
+        metavar="GAME",
+        help=(
+            "execute one previously armed detached-holder teardown and "
+            "retire only the stale sandbox recovery row"
+        ),
+    )
+    actions.add_argument(
         "--arm-interrupted-generation-release",
         metavar="GAME",
         help=(
@@ -22935,6 +27851,14 @@ def main() -> int:
         help="exact 128-bit nonce printed by --arm-post-reboot-recovery",
     )
     parser.add_argument(
+        "--confirm-stale-recovery-nonce",
+        metavar="HEX",
+        help=(
+            "exact stale sandbox recovery nonce required only while arming "
+            "a detached-generation teardown"
+        ),
+    )
+    parser.add_argument(
         "--confirm-current-wip-state-sha256",
         metavar="HEX",
         help=(
@@ -22944,6 +27868,7 @@ def main() -> int:
     )
     args = parser.parse_args()
     plan = json.loads(args.plan.read_text(encoding="utf-8"))
+    failure_revision_rounds = _plan_failure_revision_rounds(plan)
     targets = _authoritative_targets()
     items = plan.get("initial_queue")
     if items is None:
@@ -22954,22 +27879,39 @@ def main() -> int:
         raise CampaignPlanError("plan has no initial_queue list")
     if not all(isinstance(item, dict) for item in items):
         raise CampaignPlanError("plan initial_queue contains a non-object item")
+    failure_revision_treatment = (
+        failure_revision_rounds > Policy.DEFAULT_FAILURE_REVISION_ROUNDS
+    )
+    if failure_revision_treatment and len(items) != 1:
+        raise CampaignPlanError(
+            "failure-revision treatment authorizes exactly one frozen "
+            "initial dispatch"
+        )
     selected_items = list(items)
     sandbox_arm_game = args.arm_sandboxed_generation_release
     sandbox_recovery_game = args.recover_sandboxed_generation_release
+    detached_arm_game = args.arm_detached_generation_teardown
+    detached_execute_game = args.execute_detached_generation_teardown
     interrupted_arm_game = args.arm_interrupted_generation_release
     interrupted_recovery_game = args.recover_interrupted_generation_release
     incomplete_evidence_game = args.recover_quiesced_incomplete_evidence
     sandbox_operator = (
         sandbox_arm_game is not None
         or sandbox_recovery_game is not None
+        or detached_arm_game is not None
+        or detached_execute_game is not None
         or interrupted_arm_game is not None
         or interrupted_recovery_game is not None
         or incomplete_evidence_game is not None
     )
+    deferred_execute_preflight = bool(args.execute)
     items = [
         _project_runner_receipt(
-            plan, item, allow_abandoned_scratch=sandbox_operator
+            plan,
+            item,
+            allow_abandoned_scratch=(
+                sandbox_operator or deferred_execute_preflight
+            ),
         )
         for item in items
     ]
@@ -22981,6 +27923,8 @@ def main() -> int:
             recovery_game,
             sandbox_arm_game,
             sandbox_recovery_game,
+            detached_arm_game,
+            detached_execute_game,
             interrupted_arm_game,
             interrupted_recovery_game,
             incomplete_evidence_game,
@@ -22991,12 +27935,26 @@ def main() -> int:
         operator_game is not None
         or args.confirm_dispatch_id is not None
         or args.confirm_recovery_nonce is not None
+        or args.confirm_stale_recovery_nonce is not None
         or args.confirm_current_wip_state_sha256 is not None
     ):
         if operator_game is None or args.confirm_dispatch_id is None:
             raise CampaignPlanError(
                 "operator recovery action requires one game and "
                 "--confirm-dispatch-id"
+            )
+        if detached_arm_game is not None:
+            if (
+                args.confirm_stale_recovery_nonce is None
+                or args.confirm_recovery_nonce is not None
+            ):
+                raise CampaignPlanError(
+                    "detached teardown arm requires only "
+                    "--confirm-stale-recovery-nonce"
+                )
+        elif args.confirm_stale_recovery_nonce is not None:
+            raise CampaignPlanError(
+                "stale recovery nonce is accepted only by detached teardown arm"
             )
         if (
             arm_game is not None
@@ -23013,6 +27971,8 @@ def main() -> int:
                 or sandbox_recovery_game is not None
                 or interrupted_recovery_game is not None
                 or incomplete_evidence_game is not None
+                or detached_arm_game is not None
+                or detached_execute_game is not None
             )
             and args.confirm_current_wip_state_sha256 is not None
         ):
@@ -23032,6 +27992,7 @@ def main() -> int:
             recovery_game is not None
             or sandbox_recovery_game is not None
             or interrupted_recovery_game is not None
+            or detached_execute_game is not None
         ) and args.confirm_recovery_nonce is None:
             raise CampaignPlanError(
                 "recovery requires --confirm-recovery-nonce"
@@ -23053,7 +28014,23 @@ def main() -> int:
         )
         reached = _checkpoint_reached(operator_game)
         validate_inventory_item(item, targets, reached)
-        if interrupted_arm_game is not None:
+        if detached_arm_game is not None:
+            assert args.confirm_stale_recovery_nonce is not None
+            outcome = _arm_detached_generation_teardown(
+                item,
+                confirm_dispatch_id=args.confirm_dispatch_id,
+                confirm_stale_recovery_nonce=(
+                    args.confirm_stale_recovery_nonce
+                ),
+            )
+        elif detached_execute_game is not None:
+            assert args.confirm_recovery_nonce is not None
+            outcome = _execute_detached_generation_teardown(
+                item,
+                confirm_dispatch_id=args.confirm_dispatch_id,
+                confirm_recovery_nonce=args.confirm_recovery_nonce,
+            )
+        elif interrupted_arm_game is not None:
             outcome = _arm_interrupted_generation_release(
                 item,
                 confirm_dispatch_id=args.confirm_dispatch_id,
@@ -23100,7 +28077,11 @@ def main() -> int:
         print(json.dumps({"outcomes": [outcome]}, indent=2, sort_keys=True))
         return 0
     for item in items:
-        argv = validate_item(item, plan)
+        argv = validate_item(
+            item,
+            plan,
+            allow_abandoned_scratch=deferred_execute_preflight,
+        )
         game = item.get("game")
         reached = _checkpoint_reached(game) if isinstance(game, str) else 0
         validate_inventory_item(item, targets, reached)
@@ -23129,7 +28110,11 @@ def main() -> int:
             print(json.dumps({"outcomes": outcomes}, indent=2, sort_keys=True))
             return 0
 
-    while not args.calibration_only and len(outcomes) < args.max_items:
+    while (
+        not failure_revision_treatment
+        and not args.calibration_only
+        and len(outcomes) < args.max_items
+    ):
         snapshot = Guard.query_rate_limits()
         allowance = Guard.weekly_allowance(snapshot)
         report = Status.campaign_report(
@@ -23147,7 +28132,9 @@ def main() -> int:
             })
             break
         selected_item = Policy.adaptive_campaign_item(
-            report, reserve=int(plan["reserve_percent"])
+            report,
+            reserve=int(plan["reserve_percent"]),
+            failure_revision_rounds=failure_revision_rounds,
         )
         if selected_item is None:
             outcomes.append({
@@ -23155,8 +28142,12 @@ def main() -> int:
                 "reason": "matched evidence or remaining frontier unavailable",
             })
             break
-        item = _project_runner_receipt(plan, selected_item)
-        print("ADAPT", item["game"], " ".join(validate_item(item, plan)))
+        item = _project_runner_receipt(
+            plan, selected_item, allow_abandoned_scratch=True
+        )
+        print("ADAPT", item["game"], " ".join(validate_item(
+            item, plan, allow_abandoned_scratch=True
+        )))
         outcome = _run_item(plan, selected_item, allowance=allowance)
         outcomes.append(outcome)
         if outcome["result"] == "reserve_stop":

@@ -1,10 +1,10 @@
-72a7591e354dc73fc84ba673757d019ea7256fc1908844e2e4e7d84d7f1bfb92  ../../.github/workflows/pages.yml
-6512fa75da853f7575d4f831d85ff392e28769eafadcf0398f5c14bea37155ba  ../../README.md
+63377f58256fa987ef046b01f7b11aad65debef3b4086112d4e54dddb6ce0316  ../../.github/workflows/pages.yml
+1c9a86f5f558151d6edb89e2e4e234ed8dcd68f9d773393e05619d64ee3e97fe  ../../README.md
 fecf508feffd471b5f51ea859c6d1fce9b0031f6d2d818ffdf4ed79865be59de  ../../REPRODUCE_ARC.md
 8c1acb9c8d1a437b4a03fad69bd8e689043d41c412172d0d185902ce976dc80f  ../../docs/generated/arc_artifacts.rst
 ab3bcdeb2179462acf39274947cc72a61e803ed57a05fe1cc046176f9d4aa786  ../../docs/generated/marginal_complexity_by_level.rst
 527b9673bfa2cef01554965863b0d3604611657304ad0fdd1cff812d60efc550  ../../docs/self_improving_agent.rst
-501d0a1ba761780bf19a35543be5b45c055392737b159e38b97b6be2cd5d4fa2  ../ARC.md
+7b73e439ae876200459e2d45844360855df458b26a03457c9a15647694a2c5d0  ../ARC.md
 dbf5701c70de9dab05996ddf4d8e6bd95574a150008a88d81d4a50ceb05d80a1  ../README.md
 dfb9d2002f3fcdd24356141b6ebbb62fb52cf127f905e3b301d2aee4f2e03834  ../audit_results/README.md
 d6181d932e1d22b5609634c130944f1f6837c8e799ce478fd63779eee9b76d10  ../audit_results/marginal-literal-reuse.json

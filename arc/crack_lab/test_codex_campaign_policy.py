@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import codex_campaign_policy as P
 
 
@@ -212,6 +214,56 @@ def test_adaptive_campaign_item_uses_retry_policy_not_historical_cost_arm():
     assert item["effort"] == "medium"
     assert "--codex-weekly-reserve=20" in item["argv"]
     assert item["experiment_role"] == "retry_n0_fresh_frontier"
+    assert "failure_revision_rounds" not in item
+    assert "failure_revision_protocol_sha256" not in item
+    assert not any(
+        arg.startswith("--failure-revision-rounds=")
+        for arg in item["argv"]
+    )
+
+
+def test_failure_revision_treatment_overrides_only_generation_intensity():
+    report = {
+        "allowance": {"remaining_percent": 100},
+        "local_window": {"runs": 0},
+        "turns": [],
+        "frontiers": [{
+            **_binding("cold", 0),
+            "game": "cold", "next_level": 1,
+            "current_level": 0, "authoritative_level_count": 8,
+            "incumbent_kind": "cold_start", "retry_complexity_n": 0,
+            "recommended_effort": "medium", "recommended_minutes": 15,
+            "recommended_wip_mode": "exclude",
+            "recommended_auxiliary_parallelism": 0,
+            "dispatch_mode": "fresh_frontier",
+            "warm_wip_available": False, "external_evidence": {},
+        }],
+    }
+    omitted = P.policy_report(report)
+    explicit_default = P.policy_report(report, failure_revision_rounds=1)
+    assert json.dumps(omitted, sort_keys=True) == json.dumps(
+        explicit_default, sort_keys=True
+    )
+
+    plan = P.policy_report(report, failure_revision_rounds=4)
+    item = plan["initial_queue"][0]
+
+    assert plan["phase"] == "run_one_frozen_failure_revision_item"
+    assert plan["failure_revision_rounds"] == 4
+    assert item["retry_complexity_n"] == 0
+    assert item["seed_mode"] == "zero_seed"
+    assert item["wip_mode"] == "exclude"
+    assert item["dispatch_mode"] == "fresh_frontier"
+    assert item["effort"] == "max"
+    assert item["minutes"] == 300
+    assert item["failure_revision_rounds"] == 4
+    assert item["failure_revision_protocol_sha256"] == (
+        P.FAILURE_REVISION_PROTOCOL_SHA256
+    )
+    assert "--codex-effort=max" in item["argv"]
+    assert "--minutes=300" in item["argv"]
+    assert "--codex-allocation-policy=hard" in item["argv"]
+    assert item["argv"].count("--failure-revision-rounds=4") == 1
 
 
 def test_adaptive_campaign_item_ranks_by_retry_coordinate_not_paid_attempts():

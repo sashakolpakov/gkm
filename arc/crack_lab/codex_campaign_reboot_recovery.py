@@ -67,20 +67,29 @@ APPROVED_SANDBOXED_GENERATION_SOURCES = frozenset({
     "7455d304c96f5b070ecb4e62a45bcca21e4d5faf52027b8c3434dc094f7e7b0b",
     "18b5a3f1da18d10e9f7dba2c73b5d097abe691bd1b2cdfad3f3dcdf99d6a9fc0",
     "3bbd7ca93c9d74eef0b532ca8159283ce6d7fa81b6be316f0792a72ccd054398",
+    "eefa34dcef63adb4d99deb07de9fa1920d8ef792080427557d5460201ff32f94",
 })
-QUIESCED_INCOMPLETE_RUNNER_HEADS = {
-    "bb3474290d3411f980d53ffcee75be8234e634d478b1136677b9c6a93fe9ec64": (
-        "c1f8168f230732f2d745c234555b3e3dfcb8aefa"
-    ),
-    "7455d304c96f5b070ecb4e62a45bcca21e4d5faf52027b8c3434dc094f7e7b0b": (
-        "246405c1cd903e1dcde9d3a4c6eed1ec93cf2c1f"
-    ),
-    "18b5a3f1da18d10e9f7dba2c73b5d097abe691bd1b2cdfad3f3dcdf99d6a9fc0": (
-        "aa666cc3ff4c2167e12ce32b317bc3fe6c45a867"
-    ),
-    "3bbd7ca93c9d74eef0b532ca8159283ce6d7fa81b6be316f0792a72ccd054398": (
-        "b37d0a0bece4c18da5cdc37f88f829e3a491fee9"
-    ),
+QUIESCED_INCOMPLETE_RUNNERS = {
+    "bb3474290d3411f980d53ffcee75be8234e634d478b1136677b9c6a93fe9ec64": {
+        "head_commit": "c1f8168f230732f2d745c234555b3e3dfcb8aefa",
+        "evidence_schema": "sealed_transcript_only_v1",
+        "lock_schema": "in_workspace_v1",
+    },
+    "7455d304c96f5b070ecb4e62a45bcca21e4d5faf52027b8c3434dc094f7e7b0b": {
+        "head_commit": "246405c1cd903e1dcde9d3a4c6eed1ec93cf2c1f",
+        "evidence_schema": "sealed_transcript_only_v1",
+        "lock_schema": "in_workspace_v1",
+    },
+    "18b5a3f1da18d10e9f7dba2c73b5d097abe691bd1b2cdfad3f3dcdf99d6a9fc0": {
+        "head_commit": "aa666cc3ff4c2167e12ce32b317bc3fe6c45a867",
+        "evidence_schema": "sealed_transcript_only_v1",
+        "lock_schema": "in_workspace_v1",
+    },
+    "3bbd7ca93c9d74eef0b532ca8159283ce6d7fa81b6be316f0792a72ccd054398": {
+        "head_commit": "b37d0a0bece4c18da5cdc37f88f829e3a491fee9",
+        "evidence_schema": "sealed_transcript_only_v1",
+        "lock_schema": "in_workspace_v1",
+    },
 }
 QUIESCED_INCOMPLETE_RUNNER_KEYS = frozenset({
     "schema",
@@ -1046,15 +1055,17 @@ def parse_quiesced_incomplete_evidence_marker(
         if isinstance(historical, dict)
         else None
     )
+    approved_runner = QUIESCED_INCOMPLETE_RUNNERS.get(source_sha256)
     if (
         not isinstance(historical, dict)
         or set(historical) != QUIESCED_INCOMPLETE_RUNNER_KEYS
-        or source_sha256 not in QUIESCED_INCOMPLETE_RUNNER_HEADS
+        or approved_runner is None
         or historical.get("schema") != 1
         or historical.get("head_commit")
-        != QUIESCED_INCOMPLETE_RUNNER_HEADS.get(source_sha256)
-        or historical.get("evidence_schema") != "sealed_transcript_only_v1"
-        or historical.get("lock_schema") != "in_workspace_v1"
+        != approved_runner["head_commit"]
+        or historical.get("evidence_schema")
+        != approved_runner["evidence_schema"]
+        or historical.get("lock_schema") != approved_runner["lock_schema"]
     ):
         raise RecoveryEvidenceError(
             "quiesced incomplete-evidence runner receipt is not approved"

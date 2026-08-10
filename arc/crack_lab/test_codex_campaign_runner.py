@@ -16,6 +16,7 @@ import fcntl
 import pytest
 
 import codex_campaign_runner as R
+import test_codex_failure_revision_contract as RevisionFixture
 
 
 def _item():
@@ -76,10 +77,387 @@ def _item():
     }
 
 
+def _treatment_generation(*, timeout=False):
+    item = copy.deepcopy(_item())
+    item.update({
+        "effort": "max",
+        "minutes": 300,
+        "failure_revision_rounds": 4,
+        "failure_revision_protocol_sha256": R.Revision.PROTOCOL_SHA256,
+        "historical_runner": {
+            "source_sha256": next(iter(
+                R.PINNED_FAILURE_REVISION_CONTRACTS
+            )),
+        },
+    })
+    for old, new in (
+        ("--minutes=15", "--minutes=300"),
+        ("--codex-effort=medium", "--codex-effort=max"),
+        ("--codex-allocation-policy=drain", "--codex-allocation-policy=hard"),
+    ):
+        item["argv"][item["argv"].index(old)] = new
+    item["argv"].append("--failure-revision-rounds=4")
+
+    record, transcript, diagnostics = RevisionFixture._aggregate(
+        timeout=timeout
+    )
+    for row in record["rounds"]:
+        row["target_level"] = 1
+        if row["reached_before"] is not None:
+            row["reached_before"] = 0
+            row["reached_after"] = 0
+    record.update({
+        "game": "ar25",
+        "target_level": 1,
+        "run_label": "ar25:L1:propose",
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "max",
+        "reached": 0,
+        "parent_action_count": 0,
+        **{field: item[field] for field in R.Status.FRONTIER_BINDING_FIELDS},
+        **{
+            field: record["rounds"][-1][field]
+            for field in R.Revision.VERIFIER_FIELDS
+        },
+    })
+    metadata = [{
+        "target_level": 1,
+        **{field: row[field] for field in (
+            "round_index", "turn_kind", "termination_kind",
+            *R.Revision.VERIFIER_FIELDS,
+        )},
+    } for row in record["rounds"] if row["reached_before"] is not None]
+    outcome = {
+        "event": "codex_level_outcome",
+        "thread_id": record["thread_id"],
+        "codex_exec_transcript": record["transcript"],
+        "run_label": record["run_label"],
+        "model": record["model"],
+        "reasoning_effort": record["reasoning_effort"],
+        "game": "ar25",
+        "target_level": 1,
+        "reached": 0,
+        "parent_action_count": 0,
+        **{field: item[field] for field in R.Status.FRONTIER_BINDING_FIELDS},
+        "reached_before": 0,
+        "reached_after": 0,
+        "solved_target": False,
+        "winning_path_present": False,
+        "winning_marginal_C": None,
+        "taint_verdict": "clean",
+        "failure_revision_rounds": metadata,
+    }
+    return item, record, outcome, transcript, diagnostics
+
+
 def test_validate_item_rejects_arbitrary_commands():
     with pytest.raises(R.CampaignPlanError, match="non-GKM"):
         R.validate_item({"argv": ["sh", "-c", "anything"]})
     assert R.validate_item(_item())[0] == "python3"
+
+
+def test_failure_revision_item_and_plan_configuration_is_all_or_none():
+    item = _item()
+    assert R._failure_revision_item_rounds(item) == 1
+    item.update({
+        "failure_revision_rounds": 4,
+        "failure_revision_protocol_sha256": (
+            R.Policy.FAILURE_REVISION_PROTOCOL_SHA256
+        ),
+    })
+    item["argv"].append("--failure-revision-rounds=4")
+    assert R._failure_revision_item_rounds(item) == 4
+    assert R._failure_revision_item_rounds(item, plan={
+        "failure_revision_rounds": 4,
+        "failure_revision_protocol_sha256": (
+            R.Policy.FAILURE_REVISION_PROTOCOL_SHA256
+        ),
+    }) == 4
+
+    for mutation in ("missing_field", "missing_argv", "explicit_one"):
+        changed = copy.deepcopy(item)
+        if mutation == "missing_field":
+            changed.pop("failure_revision_protocol_sha256")
+        elif mutation == "missing_argv":
+            changed["argv"].pop()
+        else:
+            changed["failure_revision_rounds"] = 1
+            changed["argv"][-1] = "--failure-revision-rounds=1"
+        with pytest.raises(R.CampaignPlanError):
+            R._failure_revision_item_rounds(changed)
+
+    with pytest.raises(R.CampaignPlanError, match="all-or-none"):
+        R._plan_failure_revision_rounds({"failure_revision_rounds": 4})
+
+    for field in ("rounds_used", "round_shadow"):
+        with pytest.raises(
+            R.CampaignPlanError, match="unknown failure-revision"
+        ):
+            R._plan_failure_revision_rounds({field: 4})
+        changed = _item()
+        changed[field] = 4
+        with pytest.raises(
+            R.CampaignPlanError,
+            match="ambiguous failure-revision configuration",
+        ):
+            R._failure_revision_item_rounds(changed)
+
+
+def test_expected_record_centrally_authenticates_treatment_pair_and_slices():
+    item, record, outcome, transcript, diagnostics = _treatment_generation()
+    selected = R._expected_exec_record(
+        item, [], [record, outcome], clean_terminal=True
+    )
+    assert selected is record
+    R._authenticate_failure_revision_slices(
+        item, record, transcript, diagnostics
+    )
+
+    changed = copy.deepcopy(record)
+    changed["rounds"][1]["round_transcript_sha256"] = "0" * 64
+    with pytest.raises(R.CampaignPlanError, match="slice changed"):
+        R._authenticate_failure_revision_slices(
+            item, changed, transcript, diagnostics
+        )
+
+
+def test_treatment_hard_timeout_is_exec_only_and_default_rejects_aggregate():
+    item, record, outcome, transcript, diagnostics = _treatment_generation(
+        timeout=True
+    )
+    assert R._expected_exec_record(
+        item, [], [record], clean_terminal=False
+    ) is record
+    R._authenticate_failure_revision_slices(
+        item, record, transcript, diagnostics
+    )
+    with pytest.raises(R.CampaignPlanError, match="cannot append"):
+        R._expected_exec_record(
+            item, [], [record, outcome], clean_terminal=True
+        )
+
+    default_item = _item()
+    default_shaped_record = copy.deepcopy(record)
+    default_shaped_record.update({
+        "reasoning_effort": "medium",
+        "minutes_limit": 15,
+        "allocation_policy": "drain",
+    })
+    with pytest.raises(R.CampaignPlanError, match="default-one"):
+        R._expected_exec_record(
+            default_item, [], [default_shaped_record], clean_terminal=False
+        )
+
+
+def test_authenticated_non_taint_terminal_is_preserved_without_release(
+    tmp_path, monkeypatch
+):
+    item, record, _outcome, _transcript, _diagnostics = (
+        _treatment_generation(timeout=True)
+    )
+    workspace = tmp_path / "workspace"
+    protected = tmp_path / "protected"
+    workspace.mkdir()
+    protected.mkdir()
+    record["workspace"] = workspace.name
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(json.dumps(record) + "\n")
+    observed = R.GuardedChildResult(
+        returncode=1,
+        workspace=workspace.name,
+        transcript=record["transcript"],
+        workspace_identity=(workspace.stat().st_dev, workspace.stat().st_ino),
+        protected_identity=(protected.stat().st_dev, protected.stat().st_ino),
+        process_tree_quiesced=True,
+        detached_processes_proven_absent=False,
+    )
+    monkeypatch.setattr(
+        R,
+        "_exact_tainted_generation",
+        lambda *args, **kwargs: (
+            workspace, protected, "", "a" * 64, "b" * 64, False,
+        ),
+    )
+
+    with pytest.raises(R.UnquiescedChildError, match="remains quarantined"):
+        R._preserve_failure_revision_terminal(
+            item, ledger=ledger, ledger_before=[], observed=observed
+        )
+
+
+def test_nonzero_taint_treatment_retains_quarantine_and_exact_scratch(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    treatment, record, _outcome, transcript, diagnostics = (
+        _treatment_generation(timeout=True)
+    )
+    source_sha = next(iter(R.PINNED_FAILURE_REVISION_CONTRACTS))
+    receipt = {
+        "schema": R.RUNNER_RECEIPT_SCHEMA,
+        "worktree": str(tmp_path),
+        "cwd": str(tmp_path),
+        "interpreter": str(Path(sys.executable).absolute()),
+        "head_commit": R.PINNED_HISTORICAL_RUNNERS[source_sha][
+            "head_commit"
+        ],
+        "source_sha256": source_sha,
+        "artifacts_root": str(tmp_path / "agent_solutions"),
+        "scratch_root": str(fixture["workspace"].parent),
+        "ledger": str(fixture["ledger"]),
+        "evidence_schema": "sealed_transcript_diagnostics_v1",
+        "lock_schema": "hashed_external_v1",
+    }
+    item = fixture["item"]
+    item.update({
+        "effort": "max",
+        "minutes": 300,
+        "failure_revision_rounds": 4,
+        "failure_revision_protocol_sha256": R.Revision.PROTOCOL_SHA256,
+        "historical_runner": receipt,
+    })
+    for old, new in (
+        ("--minutes=15", "--minutes=300"),
+        ("--codex-effort=medium", "--codex-effort=max"),
+        ("--codex-allocation-policy=drain", "--codex-allocation-policy=hard"),
+    ):
+        item["argv"][item["argv"].index(old)] = new
+    item["argv"].append("--failure-revision-rounds=4")
+
+    terminal = record["rounds"][-1]
+    boundary_reason = "host process introspection: synthetic terminal taint"
+    terminal.update({
+        "allocation_expired": False,
+        "timed_out": False,
+        "returncode": -15,
+        "failure_class": "taint",
+        "failure_detail_class": "host_process_introspection",
+        "public_action_protocol_violation": False,
+        "filesystem_boundary_violation": True,
+        "filesystem_boundary_violation_reason": boundary_reason,
+        "taint_verdict": "tainted",
+    })
+    record.update({
+        "workspace": fixture["workspace"].name,
+        "transcript": fixture["record"]["transcript"],
+        "diagnostics": fixture["record"]["diagnostics"],
+        "allocation_expired": False,
+        "timed_out": False,
+        "timeout_round_count": 0,
+        "timeout_round_indices": [],
+        "failure_class": "taint",
+        "failure_detail_class": "terminal_taint",
+        "public_action_protocol_violation": False,
+        "filesystem_boundary_violation": True,
+        "filesystem_boundary_violation_reason": boundary_reason,
+        "taint_verdict": "tainted",
+    })
+    (fixture["protected"] / record["transcript"]).write_bytes(transcript)
+    (fixture["protected"] / record["diagnostics"]).write_bytes(diagnostics)
+    codex_tmp = fixture["workspace"] / "codex_tmp"
+    codex_tmp.mkdir()
+    (codex_tmp / "retain.txt").write_text("quarantined\n")
+
+    plan = dict(fixture["plan"])
+    plan.update({
+        "runner_receipt": receipt,
+        "failure_revision_rounds": 4,
+        "failure_revision_protocol_sha256": R.Revision.PROTOCOL_SHA256,
+    })
+
+    def nonzero_child(*_args, **_kwargs):
+        R.Guard.append_ledger(record, fixture["ledger"])
+        return R.GuardedChildResult(
+            returncode=1,
+            workspace=fixture["workspace"].name,
+            transcript=record["transcript"],
+            workspace_identity=(
+                fixture["workspace"].stat().st_dev,
+                fixture["workspace"].stat().st_ino,
+            ),
+            protected_identity=(
+                fixture["protected"].stat().st_dev,
+                fixture["protected"].stat().st_ino,
+            ),
+            process_tree_quiesced=True,
+            detached_processes_proven_absent=False,
+        )
+
+    monkeypatch.setattr(R, "_project_runner_receipt", lambda _p, selected, **_k: selected)
+    monkeypatch.setattr(R, "validate_item", lambda selected, *_a, **_k: selected["argv"])
+    monkeypatch.setattr(R, "_revalidate_historical_control", lambda *_a, **_k: None)
+    monkeypatch.setattr(R, "_run_guarded_child", nonzero_child)
+    monkeypatch.setattr(
+        R,
+        "_exact_tainted_generation",
+        lambda *_a, **_k: (
+            fixture["workspace"], fixture["protected"], boundary_reason,
+            record["protected_transcript_sha256"],
+            record["protected_diagnostics_sha256"], True,
+        ),
+    )
+    monkeypatch.setattr(
+        R,
+        "_recover_confirmed_taint",
+        lambda *_a, **_k: pytest.fail(
+            "nonzero treatment entered cleanup/release recovery"
+        ),
+    )
+
+    with pytest.raises(R.UnquiescedChildError, match="remains quarantined"):
+        R._run_item(plan, item, allowance=fixture["allowance"])
+
+    marker = (
+        tmp_path / "agent_solutions" / ".campaign_quarantine" / "ar25.jsonl"
+    )
+    assert marker.is_file()
+    assert fixture["workspace"].is_dir()
+    assert fixture["protected"].is_dir()
+    assert (codex_tmp / "retain.txt").read_text() == "quarantined\n"
+    assert fixture["exact_lock"].exists()
+    assert [row["event"] for row in R.Guard.read_ledger(
+        fixture["ledger"]
+    )] == ["codex_exec"]
+
+
+def test_solved_treatment_manifest_carries_exact_aggregate_authority(
+    tmp_path, monkeypatch
+):
+    item, record, _outcome, _transcript, _diagnostics = (
+        _treatment_generation()
+    )
+    record["rounds"][-1].update({
+        "verifier_classification": "target_reached",
+        "reached_after": 1,
+        "solved_target": True,
+    })
+    record.update({
+        "verifier_classification": "target_reached",
+        "reached_after": 1,
+        "solved_target": True,
+    })
+    aggregate = R._validate_failure_revision_exec_record(item, record)
+    assert aggregate is not None
+    manifest_path = (
+        tmp_path / "agent_solutions" / "ar25_legs"
+        / "promotion_evidence" / "level_01" / "manifest.json"
+    )
+    manifest_path.parent.mkdir(parents=True)
+    manifest = {
+        "game": "ar25",
+        "level": 1,
+        "failure_revision_authority": R.Revision.promotion_authority(
+            record, aggregate
+        ),
+    }
+    manifest_path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(R, "HERE", tmp_path)
+    R._authenticate_failure_revision_promotion(item, record, 1)
+
+    manifest["failure_revision_authority"]["rounds_used"] = 3
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(R.CampaignPlanError, match="authority changed"):
+        R._authenticate_failure_revision_promotion(item, record, 1)
 
 
 def test_validate_item_requires_budget_arguments_to_match_plan():
@@ -474,12 +852,25 @@ def test_dry_run_rejects_stale_live_retry_coordinate(tmp_path, monkeypatch):
         R.main()
 
 
-def test_run_item_turns_expected_headroom_failure_into_reserve_stop(monkeypatch):
+def test_run_item_turns_expected_headroom_failure_into_reserve_stop(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(R, "HERE", tmp_path)
+    (tmp_path / "agent_solutions").mkdir()
+    missing_scratch = tmp_path / "missing_scratch"
+    monkeypatch.setattr(R.Legs, "SCRATCH", os.fspath(missing_scratch))
     monkeypatch.setattr(R, "_checkpoint_reached", lambda game: 0)
     monkeypatch.setattr(
         R, "_authoritative_targets", lambda: {"ar25": 8}
     )
     monkeypatch.setattr(R, "validate_live_policy_item", lambda item: None)
+    monkeypatch.setattr(
+        R,
+        "_acquire_scheduler_scratch_admission_lock",
+        lambda _item: pytest.fail(
+            "reserve-stop must not acquire scratch admission custody"
+        ),
+    )
     plan = {
         "not_before_epoch": 100,
         "reserve_percent": 25,
@@ -489,6 +880,282 @@ def test_run_item_turns_expected_headroom_failure_into_reserve_stop(monkeypatch)
     result = R._run_item(plan, _item(), allowance=allowance)
     assert result["result"] == "reserve_stop"
     assert "requires 6%" in result["reason"]
+    assert not missing_scratch.exists()
+
+
+@pytest.mark.parametrize(
+    ("outcome", "reached"),
+    (("reserve_stop", 0), ("already_solved", 1)),
+)
+def test_historical_no_dispatch_exit_allows_absent_planned_scratch(
+    tmp_path, monkeypatch, outcome, reached
+):
+    worktree = tmp_path / "sealed_runner"
+    worktree.mkdir()
+    artifacts = tmp_path / "agent_solutions"
+    artifacts.mkdir()
+    missing_scratch = tmp_path / "retired_scratch"
+    ledger = tmp_path / "usage.jsonl"
+    source_sha256 = "1" * 64
+    head_commit = "2" * 40
+    monkeypatch.setattr(R, "HERE", tmp_path)
+    monkeypatch.setattr(R.Legs, "SCRATCH", os.fspath(missing_scratch))
+    monkeypatch.setattr(R.Guard, "DEFAULT_LEDGER", ledger)
+    monkeypatch.setattr(R, "PINNED_HISTORICAL_RUNNERS", {
+        source_sha256: {
+            "head_commit": head_commit,
+            "evidence_schema": "sealed_transcript_only_v1",
+            "lock_schema": "in_workspace_v1",
+        }
+    })
+    receipt = {
+        "schema": R.RUNNER_RECEIPT_SCHEMA,
+        "worktree": os.fspath(worktree),
+        "cwd": os.fspath(worktree),
+        "interpreter": os.fspath(Path(sys.executable).absolute()),
+        "head_commit": head_commit,
+        "source_sha256": source_sha256,
+        "artifacts_root": os.fspath(artifacts),
+        "scratch_root": os.fspath(missing_scratch),
+        "ledger": os.fspath(ledger),
+        "evidence_schema": "sealed_transcript_only_v1",
+        "lock_schema": "in_workspace_v1",
+    }
+    plan = {
+        "runner_receipt": receipt,
+        "not_before_epoch": 100,
+        "reserve_percent": 25,
+        "cost_control_enabled": True,
+    }
+    monkeypatch.setattr(R, "validate_item", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(R, "_checkpoint_reached", lambda _game: reached)
+    monkeypatch.setattr(R, "validate_inventory_item", lambda *_args: None)
+    monkeypatch.setattr(
+        R,
+        "_resume_existing_contained_residual_classification",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        R, "_resume_existing_zero_ledger_quarantine", lambda _item: None
+    )
+    monkeypatch.setattr(R, "_assert_no_dispatch_quarantine", lambda _item: None)
+    monkeypatch.setattr(R, "validate_live_policy_item", lambda _item: None)
+    monkeypatch.setattr(R, "active_workspace_lock", lambda _game: None)
+    monkeypatch.setattr(
+        R,
+        "_acquire_scheduler_scratch_admission_lock",
+        lambda _item: pytest.fail(
+            "historical no-dispatch exit acquired scratch custody"
+        ),
+    )
+
+    result = R._run_item(
+        plan,
+        _item(),
+        allowance=SimpleNamespace(remaining_percent=30),
+    )
+
+    assert result["result"] == outcome
+    assert not missing_scratch.exists()
+
+
+@pytest.mark.parametrize(
+    ("execute", "reached", "expected"),
+    (
+        (True, 0, "reserve_stop"),
+        (True, 1, "already_solved"),
+        (False, 0, "strict_rejection"),
+    ),
+)
+def test_main_historical_absent_scratch_defers_only_execute_no_dispatch(
+    tmp_path, monkeypatch, capsys, execute, reached, expected
+):
+    worktree = tmp_path / "sealed_runner"
+    worktree.mkdir()
+    artifacts = tmp_path / "agent_solutions"
+    artifacts.mkdir()
+    missing_scratch = tmp_path / "retired_scratch"
+    ledger = tmp_path / "usage.jsonl"
+    ledger.write_bytes(b"")
+    source_sha256 = "1" * 64
+    head_commit = "2" * 40
+    monkeypatch.setattr(R, "HERE", tmp_path)
+    monkeypatch.setattr(R.Legs, "SCRATCH", os.fspath(missing_scratch))
+    monkeypatch.setattr(R.Guard, "DEFAULT_LEDGER", ledger)
+    monkeypatch.setattr(R, "PINNED_HISTORICAL_RUNNERS", {
+        source_sha256: {
+            "head_commit": head_commit,
+            "evidence_schema": "sealed_transcript_only_v1",
+            "lock_schema": "in_workspace_v1",
+        }
+    })
+    receipt = {
+        "schema": R.RUNNER_RECEIPT_SCHEMA,
+        "worktree": os.fspath(worktree),
+        "cwd": os.fspath(worktree),
+        "interpreter": os.fspath(Path(sys.executable).absolute()),
+        "head_commit": head_commit,
+        "source_sha256": source_sha256,
+        "artifacts_root": os.fspath(artifacts),
+        "scratch_root": os.fspath(missing_scratch),
+        "ledger": os.fspath(ledger),
+        "evidence_schema": "sealed_transcript_only_v1",
+        "lock_schema": "in_workspace_v1",
+    }
+    plan = {
+        "runner_receipt": receipt,
+        "initial_queue": [_item()],
+        "not_before_epoch": 100,
+        "reserve_percent": 25,
+        "cost_control_enabled": True,
+    }
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(json.dumps(plan), encoding="utf-8")
+    monkeypatch.setattr(R, "_authoritative_targets", lambda: {"ar25": 8})
+    monkeypatch.setattr(R, "_checkpoint_reached", lambda _game: reached)
+    monkeypatch.setattr(R, "validate_item", lambda item, *_args, **_kwargs: item["argv"])
+    monkeypatch.setattr(R, "validate_inventory_item", lambda *_args: None)
+    monkeypatch.setattr(R, "validate_live_policy_item", lambda _item: None)
+    monkeypatch.setattr(
+        R,
+        "_resume_existing_contained_residual_classification",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        R, "_resume_existing_zero_ledger_quarantine", lambda _item: None
+    )
+    monkeypatch.setattr(R, "_assert_no_dispatch_quarantine", lambda _item: None)
+    monkeypatch.setattr(
+        R,
+        "_acquire_scheduler_scratch_admission_lock",
+        lambda _item: pytest.fail(
+            "main no-dispatch path acquired scratch custody"
+        ),
+    )
+    monkeypatch.setattr(R.Guard, "query_rate_limits", lambda: {})
+    monkeypatch.setattr(
+        R.Guard,
+        "weekly_allowance",
+        lambda _snapshot: SimpleNamespace(remaining_percent=30),
+    )
+    argv = ["codex_campaign_runner.py", "--plan", os.fspath(plan_path)]
+    if execute:
+        argv.extend(("--execute", "--max-items=1"))
+    monkeypatch.setattr(sys, "argv", argv)
+
+    if not execute:
+        with pytest.raises(R.CampaignPlanError, match="scratch root is unavailable"):
+            R.main()
+    else:
+        assert R.main() == 0
+        assert f'"result": "{expected}"' in capsys.readouterr().out
+        assert not missing_scratch.exists()
+
+
+def test_run_item_reprojects_under_scratch_custody_before_dispatch(
+    monkeypatch
+):
+    item = _item()
+    projected_with_scratch = []
+    validated_with_scratch = []
+    dispatch_held = False
+    scratch_held = False
+    dispatch_lock = object()
+    scratch_lock = object()
+
+    class DispatchBoundaryObserved(RuntimeError):
+        pass
+
+    def project(_plan, selected, **_kwargs):
+        projected_with_scratch.append((
+            scratch_held,
+            _kwargs.get("allow_abandoned_scratch", False),
+        ))
+        return selected
+
+    def validate(*_args, **kwargs):
+        validated_with_scratch.append((
+            scratch_held,
+            kwargs.get("allow_abandoned_scratch", False),
+        ))
+        return []
+
+    def acquire_dispatch(_item):
+        nonlocal dispatch_held
+        assert not dispatch_held
+        dispatch_held = True
+        return dispatch_lock
+
+    def acquire_scratch(_item):
+        nonlocal scratch_held
+        assert dispatch_held
+        assert not scratch_held
+        scratch_held = True
+        return scratch_lock
+
+    def validate_scratch(selected, _item):
+        assert selected is scratch_lock
+        assert dispatch_held and scratch_held
+
+    def release_scratch(selected, _item):
+        nonlocal scratch_held
+        assert selected is scratch_lock
+        assert dispatch_held and scratch_held
+        scratch_held = False
+
+    def release_dispatch(selected):
+        nonlocal dispatch_held
+        assert selected is dispatch_lock
+        assert dispatch_held and not scratch_held
+        dispatch_held = False
+
+    def observe_dispatch_boundary(_item):
+        assert dispatch_held and scratch_held
+        raise DispatchBoundaryObserved
+
+    monkeypatch.setattr(R, "_project_runner_receipt", project)
+    monkeypatch.setattr(R, "validate_item", validate)
+    monkeypatch.setattr(R, "_checkpoint_reached", lambda _game: 0)
+    monkeypatch.setattr(R, "validate_inventory_item", lambda *_args: None)
+    monkeypatch.setattr(
+        R, "_resume_existing_contained_residual_classification",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        R, "_resume_existing_zero_ledger_quarantine", lambda _item: None
+    )
+    monkeypatch.setattr(R, "_assert_no_dispatch_quarantine", lambda _item: None)
+    monkeypatch.setattr(R, "validate_live_policy_item", lambda _item: None)
+    monkeypatch.setattr(R, "active_workspace_lock", lambda _game: None)
+    monkeypatch.setattr(
+        R, "item_is_admissible", lambda *_args, **_kwargs: (True, "")
+    )
+    monkeypatch.setattr(R, "_acquire_scheduler_dispatch_lock", acquire_dispatch)
+    monkeypatch.setattr(
+        R, "_acquire_scheduler_scratch_admission_lock", acquire_scratch
+    )
+    monkeypatch.setattr(
+        R, "_validate_scheduler_scratch_admission_lock", validate_scratch
+    )
+    monkeypatch.setattr(
+        R, "_release_scheduler_scratch_admission_lock", release_scratch
+    )
+    monkeypatch.setattr(
+        R, "_acquire_scheduler_lineage_lock", observe_dispatch_boundary
+    )
+    monkeypatch.setattr(R, "_release_scheduler_artifact_lock", release_dispatch)
+
+    with pytest.raises(DispatchBoundaryObserved):
+        R._run_item({}, item, allowance=object())
+
+    assert projected_with_scratch == [
+        (False, True),
+        (False, True),
+        (True, False),
+    ]
+    assert validated_with_scratch == projected_with_scratch
+    assert not scratch_held
+    assert not dispatch_held
 
 
 def _taint_dispatch_fixture(
@@ -1751,6 +2418,18 @@ def test_main_replays_contained_residual_from_sealed_old_scratch_receipt(
     monkeypatch.setattr(
         R.Guard, "weekly_allowance", lambda _snapshot: fixture["allowance"]
     )
+    scratch_admissions = []
+    real_scratch_admission = R._acquire_scheduler_scratch_admission_lock
+
+    def track_scratch_admission(*args, **kwargs):
+        scratch_admissions.append((args, kwargs))
+        return real_scratch_admission(*args, **kwargs)
+
+    monkeypatch.setattr(
+        R,
+        "_acquire_scheduler_scratch_admission_lock",
+        track_scratch_admission,
+    )
     monkeypatch.setattr(
         sys,
         "argv",
@@ -1765,6 +2444,7 @@ def test_main_replays_contained_residual_from_sealed_old_scratch_receipt(
 
     assert R.main() == 0
     assert child_calls == 1
+    assert scratch_admissions == []
     assert fixture["workspace"].is_dir()
     assert fixture["protected"].is_dir()
     assert not any(
@@ -2460,6 +3140,103 @@ def test_nonzero_confirmed_taint_is_noncounting_and_exactly_cleaned(
     assert rows[0]["observed_tokens"] == 123
 
 
+def _hard_deadline_telemetry(item, *, shutdown_seconds=7.0):
+    soft_seconds = float(item["minutes"] * 60)
+    stop_requested_at = soft_seconds + R.EXACT_CHILD_MAX_DRAIN_SECONDS
+    return R._exact_child_lifecycle_telemetry(
+        item,
+        started_at=0.0,
+        direct_exit_observed_at=None,
+        stop_requested_at=stop_requested_at,
+        sealed_at=stop_requested_at + shutdown_seconds,
+    )
+
+
+def test_run_item_locked_quarantines_untainted_hard_deadline(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    lifecycle = _hard_deadline_telemetry(fixture["item"])
+    rollback_calls = []
+    real_rollback = R._rollback_control_failure_canonical
+
+    def deadline_child(*_args, **_kwargs):
+        return R.GuardedChildResult(
+            returncode=-signal.SIGTERM,
+            process_tree_quiesced=True,
+            detached_processes_proven_absent=True,
+            lifecycle=lifecycle,
+        )
+
+    def observed_rollback(*args, **kwargs):
+        rollback_calls.append(True)
+        return real_rollback(*args, **kwargs)
+
+    monkeypatch.setattr(R, "_run_guarded_child", deadline_child)
+    monkeypatch.setattr(
+        R, "_rollback_control_failure_canonical", observed_rollback
+    )
+
+    with pytest.raises(R.ExactChildHardDeadlineExceeded) as raised:
+        R._run_item_locked(
+            fixture["plan"],
+            fixture["item"],
+            allowance=fixture["allowance"],
+        )
+
+    assert raised.value.telemetry is lifecycle
+    assert rollback_calls == [True]
+    assert R.Guard.read_ledger(fixture["ledger"]) == []
+    assert fixture["workspace"].is_dir()
+    assert fixture["protected"].is_dir()
+    marker = (
+        tmp_path
+        / "agent_solutions"
+        / ".campaign_quarantine"
+        / "ar25.jsonl"
+    )
+    record = json.loads(marker.read_text().splitlines()[-1])
+    assert record["exception_type"] == "ExactChildHardDeadlineExceeded"
+    assert record["event"] == "dispatch_failed"
+
+
+def test_run_item_locked_deadline_taint_uses_taint_recovery(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    lifecycle = _hard_deadline_telemetry(fixture["item"])
+
+    def deadline_taint_child(*_args, **_kwargs):
+        R.Guard.append_ledger(fixture["record"], fixture["ledger"])
+        return R.GuardedChildResult(
+            returncode=1,
+            taint_reason="authenticated boundary finding",
+            process_tree_quiesced=True,
+            detached_processes_proven_absent=True,
+            lifecycle=lifecycle,
+        )
+
+    monkeypatch.setattr(R, "_run_guarded_child", deadline_taint_child)
+
+    result = R._run_item_locked(
+        fixture["plan"],
+        fixture["item"],
+        allowance=fixture["allowance"],
+    )
+
+    assert result["result"] == "tainted_noncounting"
+    assert not fixture["workspace"].exists()
+    assert not fixture["protected"].exists()
+    assert [
+        row["event"] for row in R.Guard.read_ledger(fixture["ledger"])
+    ] == [
+        "codex_exec",
+        "codex_exec_classification_correction",
+        "codex_taint_cleanup_completed",
+        "codex_dispatch_release_authorized",
+    ]
+
+
 def test_confirmed_taint_without_scoped_tree_proof_preserves_quarantine(
     tmp_path, monkeypatch
 ):
@@ -2876,6 +3653,37 @@ def test_exact_scan_tracks_process_capability_beyond_first_taint(
         fixture["item"], fixture["record"], require_taint=False
     )
     assert descendant_unproven is True
+
+
+def test_split_stream_historical_final_scan_disables_legacy_banner(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    worktree = tmp_path / "submitted"
+    module_root = worktree / "arc" / "crack_lab"
+    module_root.mkdir(parents=True)
+    fixture["item"]["historical_runner"] = {
+        "evidence_schema": "sealed_transcript_diagnostics_v1",
+        "worktree": str(worktree),
+    }
+    observed = []
+
+    def scan_transcript(_path, **kwargs):
+        observed.append(kwargs)
+        return ()
+
+    monkeypatch.setattr(R, "_revalidate_historical_control", lambda *_a: None)
+    monkeypatch.setattr(R, "_historical_tester_scaffolds", lambda *_a: {})
+    monkeypatch.setattr(R.Boundary, "scan_workspace", lambda *_a, **_k: ())
+    monkeypatch.setattr(R.Boundary, "scan_codex_transcript", scan_transcript)
+
+    R._exact_tainted_generation(
+        fixture["item"], fixture["record"], require_taint=False
+    )
+
+    assert len(observed) == 1
+    assert observed[0]["arena_module_root"] == module_root
+    assert observed[0]["allow_historical_transport_banner"] is False
 
 
 @pytest.mark.parametrize(
@@ -5187,7 +5995,9 @@ def test_not_solved_retry_advance_reconciles_prior_release(
 
     with monkeypatch.context() as next_dispatch:
         next_dispatch.setattr(
-            R, "validate_item", lambda item, plan=None: tuple(item["argv"])
+            R,
+            "validate_item",
+            lambda item, plan=None, **_kwargs: tuple(item["argv"]),
         )
         next_dispatch.setattr(
             R, "validate_inventory_item", lambda *_args, **_kwargs: None
@@ -5223,6 +6033,13 @@ def test_solved_rerun_reconciles_release_before_already_solved(
     with monkeypatch.context() as rerun:
         rerun.setattr(
             R, "validate_inventory_item", lambda *_args, **_kwargs: None
+        )
+        rerun.setattr(
+            R,
+            "_acquire_scheduler_scratch_admission_lock",
+            lambda _item: pytest.fail(
+                "already-solved replay must not acquire scratch custody"
+            ),
         )
         outcome = R._run_item(
             fixture["plan"],
@@ -5483,7 +6300,336 @@ def test_incomplete_prior_taint_cleanup_blocks_new_dispatch(
     assert len(R.Guard.read_ledger(fixture["ledger"])) == 1
 
 
-def _historical_watchdog_fixture(tmp_path, monkeypatch):
+def _control_only_guarded_child(
+    tmp_path,
+    monkeypatch,
+    *,
+    exits_immediately,
+    seal_seconds,
+    on_seal=None,
+    inventory_advance_on_call=None,
+    inventory_advance_seconds=0.0,
+    sleep_overshoot_seconds=0.0,
+    monotonic_advance_on_call=None,
+    monotonic_advance_seconds=0.0,
+):
+    class Clock:
+        now = 0.0
+        monotonic_calls = 0
+
+        def monotonic(self):
+            self.monotonic_calls += 1
+            if self.monotonic_calls == monotonic_advance_on_call:
+                self.now += monotonic_advance_seconds
+            return self.now
+
+        def sleep(self, seconds):
+            self.now += seconds + sleep_overshoot_seconds
+
+    clock = Clock()
+    seal_calls = []
+
+    class Tree:
+        pid = 123
+        sealed = False
+
+        def observe_exit(self):
+            return exits_immediately
+
+        def seal(self, *, stop_requested, grace_seconds):
+            seal_calls.append((stop_requested, grace_seconds))
+            if on_seal is not None:
+                on_seal(stop_requested)
+            clock.now += seal_seconds
+            self.sealed = True
+            return SimpleNamespace(
+                returncode=-signal.SIGTERM if stop_requested else 1,
+                detached_processes_proven_absent=True,
+                normal_exit_left_captured_descendants=False,
+            )
+
+    tree = Tree()
+    opaque_invocation = []
+    protected = tmp_path / ".proposer_transcripts"
+    protected.mkdir()
+    physical_directory_names = R._physical_directory_names
+    inventory_calls = {"count": 0}
+
+    def timed_inventory(*args, **kwargs):
+        inventory_calls["count"] += 1
+        result = physical_directory_names(*args, **kwargs)
+        if inventory_calls["count"] == inventory_advance_on_call:
+            clock.now += inventory_advance_seconds
+        return result
+
+    def launch(received, *, cwd, env, ownership):
+        assert received is opaque_invocation
+        ownership[0] = tree
+        return tree
+
+    monkeypatch.setattr(R.Legs, "SCRATCH", str(tmp_path))
+    monkeypatch.setattr(R, "_dispatch_workspace_prefix", lambda item: "unit-")
+    monkeypatch.setattr(
+        R, "_evidence_schema", lambda item: "sealed_transcript_only_v1"
+    )
+    monkeypatch.setattr(R, "_revalidate_historical_control", lambda item: None)
+    monkeypatch.setattr(R, "_launch_exact_child", launch)
+    monkeypatch.setattr(R, "_physical_directory_names", timed_inventory)
+    monkeypatch.setattr(
+        R,
+        "time",
+        SimpleNamespace(monotonic=clock.monotonic, sleep=clock.sleep),
+    )
+    result = R._run_guarded_child(
+        {"minutes": 1}, opaque_invocation, cwd=tmp_path, env=None
+    )
+    return result, seal_calls
+
+
+def test_guarded_child_reports_normal_lifecycle_phases(tmp_path, monkeypatch):
+    result, seal_calls = _control_only_guarded_child(
+        tmp_path,
+        monkeypatch,
+        exits_immediately=True,
+        seal_seconds=12.0,
+    )
+
+    assert seal_calls == [(False, R.EXACT_CHILD_TERMINATE_SECONDS)]
+    assert result.lifecycle is not None
+    assert result.lifecycle.as_record() == {
+        "schema": R.EXACT_CHILD_LIFECYCLE_SCHEMA,
+        "soft_allocation_seconds": 60.0,
+        "drain_limit_seconds": R.EXACT_CHILD_MAX_DRAIN_SECONDS,
+        "shutdown_limit_seconds": R.EXACT_CHILD_TERMINATE_SECONDS,
+        "proposer_active_seconds": 0.0,
+        "drain_seconds": 0.0,
+        "deadline_overshoot_seconds": 0.0,
+        "settlement_seconds": 12.0,
+        "shutdown_seconds": 0.0,
+        "elapsed_seconds": 12.0,
+        "hard_deadline_exceeded": False,
+    }
+
+
+def test_guarded_child_hard_deadline_has_bounded_drain_and_shutdown(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(R, "LIVE_BOUNDARY_POLL_SECONDS", 60.0)
+    result, seal_calls = _control_only_guarded_child(
+        tmp_path,
+        monkeypatch,
+        exits_immediately=False,
+        seal_seconds=7.0,
+    )
+
+    assert seal_calls == [(True, R.EXACT_CHILD_TERMINATE_SECONDS)]
+    assert result.lifecycle is not None
+    assert result.lifecycle.proposer_active_seconds == 60.0
+    assert result.lifecycle.drain_seconds == R.EXACT_CHILD_MAX_DRAIN_SECONDS
+    assert result.lifecycle.deadline_overshoot_seconds == 0.0
+    assert result.lifecycle.settlement_seconds == 0.0
+    assert result.lifecycle.shutdown_seconds == 7.0
+    assert result.lifecycle.elapsed_seconds == 367.0
+    assert result.lifecycle.hard_deadline_exceeded is True
+    with pytest.raises(R.ExactChildHardDeadlineExceeded) as raised:
+        R._reject_untainted_hard_lifecycle_expiry(result)
+    assert raised.value.telemetry is result.lifecycle
+
+
+def test_guarded_child_taint_keeps_precedence_over_hard_deadline(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(R, "LIVE_BOUNDARY_POLL_SECONDS", 60.0)
+    workspace = tmp_path / "unit-terminal"
+    protected = tmp_path / ".proposer_transcripts" / workspace.name
+    transcript = protected / "terminal.jsonl"
+    terminal_scans = []
+
+    class Finding:
+        code = "synthetic_shutdown_taint"
+
+        @staticmethod
+        def describe():
+            return "authenticated shutdown boundary finding"
+
+    class Monitor:
+        trusted_host_scaffolds = ()
+
+        @staticmethod
+        def scan_workspace():
+            return []
+
+        @staticmethod
+        def scan_transcript(selected, *, final):
+            terminal_scans.append((selected, final))
+            return [Finding()]
+
+    def create_shutdown_taint(stop_requested):
+        assert stop_requested is True
+        workspace.mkdir()
+        protected.mkdir()
+        transcript.touch()
+
+    monkeypatch.setattr(R, "_historical_tester_scaffolds", lambda *_args: ())
+    monkeypatch.setattr(
+        R.Boundary, "LiveBoundaryMonitor", lambda *_args, **_kwargs: Monitor()
+    )
+    monkeypatch.setattr(
+        R.Legs,
+        "_filter_trusted_scaffold_root_literal",
+        lambda _workspace, findings, *, trusted: findings,
+    )
+    monkeypatch.setattr(
+        R,
+        "_live_transcript_inventory",
+        lambda *_args: (transcript, None),
+    )
+    result, seal_calls = _control_only_guarded_child(
+        tmp_path,
+        monkeypatch,
+        exits_immediately=False,
+        seal_seconds=7.0,
+        on_seal=create_shutdown_taint,
+    )
+
+    assert seal_calls == [(True, R.EXACT_CHILD_TERMINATE_SECONDS)]
+    assert result.workspace == workspace.name
+    assert result.transcript == transcript.name
+    assert result.taint_reason == "authenticated shutdown boundary finding"
+    assert terminal_scans == [(transcript, True)]
+    assert result.lifecycle is not None
+    assert result.lifecycle.hard_deadline_exceeded is True
+    assert R._reject_untainted_hard_lifecycle_expiry(result) is None
+
+
+def test_guarded_child_terminal_scan_exception_fails_closed(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(R, "LIVE_BOUNDARY_POLL_SECONDS", 60.0)
+    workspace = tmp_path / "unit-terminal"
+    protected = tmp_path / ".proposer_transcripts" / workspace.name
+    transcript = protected / "terminal.jsonl"
+
+    class Monitor:
+        trusted_host_scaffolds = ()
+
+        @staticmethod
+        def scan_workspace():
+            return []
+
+        @staticmethod
+        def scan_transcript(_selected, *, final):
+            assert final is True
+            raise RuntimeError("synthetic terminal scan failure")
+
+    def create_shutdown_evidence(stop_requested):
+        assert stop_requested is True
+        workspace.mkdir()
+        protected.mkdir()
+        transcript.touch()
+
+    monkeypatch.setattr(R, "_historical_tester_scaffolds", lambda *_args: ())
+    monkeypatch.setattr(
+        R.Boundary, "LiveBoundaryMonitor", lambda *_args, **_kwargs: Monitor()
+    )
+    monkeypatch.setattr(
+        R.Legs,
+        "_filter_trusted_scaffold_root_literal",
+        lambda _workspace, findings, *, trusted: findings,
+    )
+    monkeypatch.setattr(
+        R,
+        "_live_transcript_inventory",
+        lambda *_args: (transcript, None),
+    )
+
+    with pytest.raises(RuntimeError, match="synthetic terminal scan failure"):
+        _control_only_guarded_child(
+            tmp_path,
+            monkeypatch,
+            exits_immediately=False,
+            seal_seconds=7.0,
+            on_seal=create_shutdown_evidence,
+        )
+
+
+def test_guarded_child_scan_overshoot_is_not_counted_as_drain(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(R, "LIVE_BOUNDARY_POLL_SECONDS", 350.0)
+    result, seal_calls = _control_only_guarded_child(
+        tmp_path,
+        monkeypatch,
+        exits_immediately=False,
+        seal_seconds=7.0,
+        inventory_advance_on_call=5,
+        inventory_advance_seconds=15.0,
+    )
+
+    assert seal_calls == [(True, R.EXACT_CHILD_TERMINATE_SECONDS)]
+    assert result.lifecycle is not None
+    assert result.lifecycle.drain_seconds == R.EXACT_CHILD_MAX_DRAIN_SECONDS
+    assert result.lifecycle.deadline_overshoot_seconds == 5.0
+    assert result.lifecycle.shutdown_seconds == 7.0
+    assert result.lifecycle.elapsed_seconds == 372.0
+
+
+def test_guarded_child_poll_overshoot_is_not_counted_as_drain(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(R, "LIVE_BOUNDARY_POLL_SECONDS", 360.0)
+    result, seal_calls = _control_only_guarded_child(
+        tmp_path,
+        monkeypatch,
+        exits_immediately=False,
+        seal_seconds=7.0,
+        sleep_overshoot_seconds=4.0,
+    )
+
+    assert seal_calls == [(True, R.EXACT_CHILD_TERMINATE_SECONDS)]
+    assert result.lifecycle is not None
+    assert result.lifecycle.drain_seconds == R.EXACT_CHILD_MAX_DRAIN_SECONDS
+    assert result.lifecycle.deadline_overshoot_seconds == 4.0
+    assert result.lifecycle.shutdown_seconds == 7.0
+
+
+def test_guarded_child_clock_crossing_after_scan_uses_deadline_path(
+    tmp_path, monkeypatch
+):
+    result, seal_calls = _control_only_guarded_child(
+        tmp_path,
+        monkeypatch,
+        exits_immediately=False,
+        seal_seconds=7.0,
+        monotonic_advance_on_call=9,
+        monotonic_advance_seconds=365.0,
+    )
+
+    assert seal_calls == [(True, R.EXACT_CHILD_TERMINATE_SECONDS)]
+    assert result.lifecycle is not None
+    assert result.lifecycle.hard_deadline_exceeded is True
+    assert result.lifecycle.deadline_overshoot_seconds == 5.0
+
+
+def test_guarded_child_rejects_shutdown_bound_overrun(tmp_path, monkeypatch):
+    monkeypatch.setattr(R, "LIVE_BOUNDARY_POLL_SECONDS", 60.0)
+
+    with pytest.raises(
+        R.UnquiescedChildError,
+        match="exceeded its bounded shutdown window",
+    ):
+        _control_only_guarded_child(
+            tmp_path,
+            monkeypatch,
+            exits_immediately=False,
+            seal_seconds=R.EXACT_CHILD_TERMINATE_SECONDS + 1.0,
+        )
+
+
+def _historical_watchdog_fixture(
+    tmp_path, monkeypatch,
+    *, evidence_schema="sealed_transcript_only_v1",
+):
     scratch = tmp_path / "scratch"
     protected_root = scratch / ".proposer_transcripts"
     protected_root.mkdir(parents=True)
@@ -5492,7 +6638,7 @@ def _historical_watchdog_fixture(tmp_path, monkeypatch):
     item["argv"].append(f"--tag={tag}")
     worktree = tmp_path / "submitted"
     item["historical_runner"] = {
-        "evidence_schema": "sealed_transcript_only_v1",
+        "evidence_schema": evidence_schema,
         "worktree": str(worktree),
     }
     name = f"gkm_legs_ws_ar25_{tag}_cafefeed"
@@ -5809,12 +6955,65 @@ def test_guarded_child_accepts_legacy_banner_and_split_clean_json_growth(
         workspace_identity=(workspace.stat().st_dev, workspace.stat().st_ino),
         protected_identity=(protected.stat().st_dev, protected.stat().st_ino),
         process_tree_quiesced=True,
+        lifecycle=result.lifecycle,
     )
+    assert result.lifecycle is not None
+    assert result.lifecycle.schema == R.EXACT_CHILD_LIFECYCLE_SCHEMA
     assert phase["sleeps"] == 2
     assert len(spawned) == 1
     assert spawned[0].seal_calls == [
         (False, R.EXACT_CHILD_TERMINATE_SECONDS)
     ]
+
+
+def test_split_stream_historical_runner_rejects_legacy_banner(
+    tmp_path, monkeypatch
+):
+    item, workspace, protected, transcript = _historical_watchdog_fixture(
+        tmp_path,
+        monkeypatch,
+        evidence_schema="sealed_transcript_diagnostics_v1",
+    )
+    diagnostics = protected / transcript.name.replace(
+        ".jsonl", ".stderr.log"
+    )
+
+    class FakeScopedTree:
+        pid = 12346
+        sealed = False
+
+        def __init__(self):
+            workspace.mkdir()
+            protected.mkdir()
+            transcript.write_bytes(
+                R.Boundary.HISTORICAL_STDIN_DIAGNOSTIC
+                + b'{"type":"thread.started","thread_id":"clean"}\n'
+                + b'{"type":"turn.completed","usage":{}}\n'
+            )
+            diagnostics.write_bytes(b"")
+
+        @staticmethod
+        def observe_exit():
+            return True
+
+        def seal(self, *, stop_requested, grace_seconds):
+            del stop_requested, grace_seconds
+            self.sealed = True
+            return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(
+        R, "_launch_exact_child", lambda *_args, **_kwargs: FakeScopedTree()
+    )
+    result = R._run_guarded_child(
+        item,
+        ["exact-split-stream-child"],
+        cwd=tmp_path,
+        env={"GKM_SCRATCH": str(tmp_path / "scratch")},
+    )
+
+    assert result.taint_reason is not None
+    assert result.workspace == workspace.name
+    assert result.transcript == transcript.name
 
 
 def _open_historical_router_diagnostic(workspace):

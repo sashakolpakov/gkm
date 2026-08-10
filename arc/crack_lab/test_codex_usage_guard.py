@@ -7,6 +7,17 @@ from pathlib import Path
 import pytest
 
 import codex_usage_guard as G
+import test_codex_failure_revision_contract as RevisionFixture
+
+
+def test_local_totals_charge_valid_aggregate_rounds_and_fail_closed():
+    legacy = {"event": "codex_exec", "observed_tokens": 3}
+    aggregate, _transcript, _diagnostics = RevisionFixture._aggregate()
+    assert G.local_window_totals([legacy, aggregate])["runs"] == 5
+
+    aggregate.pop("rounds_evaluated")
+    with pytest.raises(G.CodexUsageGuardError, match="missing required"):
+        G.local_window_totals([aggregate])
 
 
 def _snapshot(*, weekly_used=6, weekly_reset=1_800_000_000):

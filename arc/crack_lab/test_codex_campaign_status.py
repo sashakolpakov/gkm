@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 import codex_campaign_status as S
+import test_codex_failure_revision_contract as RevisionFixture
 
 
 def _binding(game: str, reached: int, *, action_count: int = 0):
@@ -308,7 +309,6 @@ def test_append_only_failure_classification_correction_updates_old_turn():
     assert turn["clean_no_progress"] is False
     assert turn["retry_increment"] == 0
 
-
 def test_taint_correction_remains_noncounting_after_generation_cleanup(
     tmp_path, monkeypatch
 ):
@@ -494,6 +494,200 @@ def test_completed_clean_failure_uses_protected_transcript_after_cleanup(
     assert turn["transcript_complete"] is True
     assert turn["clean_no_progress"] is True
     assert turn["retry_increment"] == 1
+
+
+def test_failure_revision_status_authenticates_one_aggregate_retry(tmp_path):
+    record, transcript, diagnostics = RevisionFixture._aggregate()
+    record.update({
+        "workspace": "revision-ws",
+        "run_label": "lf52:L9:propose",
+        "game": "lf52",
+        "reasoning_effort": "max",
+    })
+    protected = (
+        tmp_path / ".proposer_transcripts" / record["workspace"]
+    )
+    protected.mkdir(parents=True)
+    (protected / record["transcript"]).write_bytes(transcript)
+    (protected / record["diagnostics"]).write_bytes(diagnostics)
+    metadata = [{
+        "target_level": 9,
+        **{field: row[field] for field in (
+            "round_index", "turn_kind", "termination_kind",
+            *S.Revision.VERIFIER_FIELDS,
+        )},
+    } for row in record["rounds"]]
+    outcome = {
+        "event": "codex_level_outcome",
+        **RevisionFixture._outcome(record, metadata),
+    }
+
+    turn = S.joined_turns(
+        [record, outcome], transcript_roots=(tmp_path,)
+    )[0]
+    assert turn["failure_revision_contract_valid"] == 1
+    assert turn["failure_revision_rounds_used"] == 4
+    assert turn["turn_completed_events"] == 4
+    assert turn["transcript_complete"] is True
+    assert turn["retry_increment"] == 1
+
+    duplicate = S.joined_turns(
+        [record, outcome, dict(outcome)], transcript_roots=(tmp_path,)
+    )[0]
+    assert duplicate["failure_revision_contract_valid"] == 0
+    assert duplicate["transcript_complete"] is False
+    assert duplicate["retry_increment"] == 0
+
+    (protected / record["diagnostics"]).write_bytes(diagnostics + b"tamper")
+    tampered = S.joined_turns(
+        [record, outcome], transcript_roots=(tmp_path,)
+    )[0]
+    assert tampered["failure_revision_contract_valid"] == 0
+    assert tampered["transcript_complete"] is False
+    assert tampered["retry_increment"] == 0
+
+
+def test_completed_prefix_terminal_is_complete_but_noncounting(tmp_path):
+    record, transcript, diagnostics = (
+        RevisionFixture._completed_prefix_terminal()
+    )
+    frontier = _frontier(
+        "lf52", 8,
+        incumbent_kind="promoted",
+        priority_score=1.0,
+        warm_wip_available=True,
+        warm_wip_attempt="not_reached_prefix",
+        warm_wip_phase="not_reached",
+        warm_wip_recovery_required=False,
+    )
+    record.update({
+        **_turn_on(frontier),
+        "workspace": "revision-terminal-ws",
+        "run_label": "lf52:L9:propose",
+        "game": "lf52",
+        "reasoning_effort": "max",
+    })
+    protected = (
+        tmp_path / ".proposer_transcripts" / record["workspace"]
+    )
+    protected.mkdir(parents=True)
+    (protected / record["transcript"]).write_bytes(transcript)
+    (protected / record["diagnostics"]).write_bytes(diagnostics)
+    metadata = [{
+            "target_level": 9,
+            **{field: row[field] for field in (
+                "round_index", "turn_kind", "termination_kind",
+                *S.Revision.VERIFIER_FIELDS,
+            )},
+        } for row in record["rounds"]]
+    outcome = {
+        "event": "codex_level_outcome",
+        **RevisionFixture._outcome(record, metadata),
+    }
+
+    turn = S.joined_turns(
+        [record, outcome], transcript_roots=(tmp_path,)
+    )[0]
+    assert turn["transcript_complete"] is True
+    assert turn["failure_revision_rounds_used"] == 2
+    assert turn["turn_completed_events"] == 2
+    assert turn["clean_no_progress"] is False
+    assert turn["retry_increment"] == 0
+
+    non_monotonic = {
+        "event": "codex_exec_classification_correction",
+        "thread_id": record["thread_id"],
+        "transcript": record["transcript"],
+        "failure_class": None,
+        "solved_target": False,
+        "taint_verdict": "clean",
+        "retry_increment": 1,
+    }
+    corrupted = S.joined_turns(
+        [record, outcome, non_monotonic], transcript_roots=(tmp_path,)
+    )[0]
+    assert corrupted["failure_revision_contract_valid"] == 0
+    assert corrupted["transcript_complete"] is False
+    assert corrupted["solved_target"] is None
+    assert corrupted["clean_no_progress"] is False
+    assert corrupted["retry_increment"] == 0
+
+    downgrade = {
+        "event": "codex_exec_classification_correction",
+        "thread_id": record["thread_id"],
+        "transcript": record["transcript"],
+        "failure_class": "taint",
+        "failure_detail_class": "post_hoc_boundary_taint",
+        "solved_target": None,
+        "taint_verdict": "tainted",
+        "retry_increment": 0,
+    }
+    downgraded = S.joined_turns(
+        [record, outcome, downgrade], transcript_roots=(tmp_path,)
+    )[0]
+    assert downgraded["failure_revision_contract_valid"] == 1
+    assert downgraded["failure_class"] == "taint"
+    assert downgraded["solved_target"] is None
+    assert downgraded["retry_increment"] == 0
+
+    forged_outcome = dict(outcome)
+    forged_outcome.update({
+        "solved_target": True,
+        "winning_path_present": True,
+        "winning_marginal_C": 0,
+    })
+    forged = S.joined_turns(
+        [record, forged_outcome], transcript_roots=(tmp_path,)
+    )[0]
+    assert forged["failure_revision_contract_valid"] == 0
+    assert forged["solved_target"] is None
+    assert forged["retry_increment"] == 0
+
+    prior = [
+        _turn_on(frontier, **{
+            "thread_id": f"prior-{index}",
+            "reasoning_effort": "max",
+            "failure_class": None,
+            "solved_target": False,
+            "clean_no_progress": True,
+        })
+        for index in range(9)
+    ]
+    ranked = S.ranked_frontiers([frontier], [*prior, turn])[0]
+    assert ranked["retry_complexity_n"] == 9
+    assert ranked["paid_attempts_at_frontier"] == 9
+    assert ranked["infrastructure_turns_at_frontier"] == 1
+    assert ranked["warm_wip_phase"] == "not_reached"
+    assert ranked["warm_wip_recovery_required"] is False
+    assert ranked["recommended_wip_mode"] == "exclude"
+
+    for rejected in (corrupted, forged):
+        rejected_ranked = S.ranked_frontiers(
+            [frontier], [*prior, rejected]
+        )[0]
+        assert rejected_ranked["retry_complexity_n"] == 9
+        assert rejected_ranked["paid_attempts_at_frontier"] == 9
+        efficiency = S.effort_efficiency([rejected])["max"]
+        assert efficiency["proposal_attempts"] == 0
+        assert efficiency["solved_levels"] == 0
+
+
+def test_legacy_join_shape_has_no_failure_revision_telemetry():
+    turn = S.joined_turns([{
+        "event": "codex_exec",
+        "thread_id": "legacy-default-one",
+        "transcript": "legacy-default-one.jsonl",
+        "run_label": "lf52:L9:propose",
+        "reasoning_effort": "max",
+    }])[0]
+    assert {
+        "failure_revision_contract_valid",
+        "authenticated_revision_rounds_used",
+        "authenticated_revision_rounds_max",
+        "failure_revision_rounds_used",
+        "failure_revision_rounds_max",
+        "failure_revision_protocol_sha256",
+    }.isdisjoint(turn)
 
 
 def test_private_sealed_transcript_extends_canonical_retry_history(
