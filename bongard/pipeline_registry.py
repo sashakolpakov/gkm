@@ -108,29 +108,24 @@ _REGISTRATIONS = (
         PipelineLifecycle.ACTIVE_DEVELOPMENT,
         new_execution_authorized=True,
         authorized_scope=(
-            "typed-observer FIT/calibration and support-only development; "
-            "query release remains gated by calibrated support consistency"
+            "typed-axis observer development and support-only deterministic "
+            "version-space construction; target/query release remains closed "
+            "until exact calibrated observer and v2 custody gates pass"
         ),
-        entrypoints=(
-            "bongard.panel_action_count_phase_command",
-            "bongard.panel_action_count_multiview_fit_command",
-        ),
+        entrypoints=(),
         source_modules=(
-            "bongard.panel_action_count_phase_command",
-            "bongard.panel_action_count_multiview_adapter",
-            "bongard.panel_action_count_multiview_fit_command",
-            "bongard.panel_feature_observation",
-            "bongard.panel_feature_empirical_calibration",
-            "bongard.panel_feature_closed_catalog_inventory",
-            "bongard.panel_positive_atom_slate",
-            "bongard.panel_componentwise_positive_prose_observer",
-            "bongard.panel_hierarchical_action_geometry",
-            "bongard.panel_hierarchical_visual_adapter",
-            "bongard.panel_positive_formula_ranker",
+            "bongard.panel_typed_axis_slate_v2",
+            "bongard.panel_typed_axis_headless_proposer",
+            "bongard.panel_typed_axis_task_runner",
+            "bongard.panel_action_count_cnn_typed_axis_adapter",
             "bongard.panel_feature_extracted_release_gate",
             "bongard.python_predicate_authority",
         ),
-        retained_for=("successor implementation",),
+        retained_for=(
+            "candidate-independent typed observations",
+            "exhaustive positive singleton/pair version space",
+            "frozen Python predicate and model-free replay",
+        ),
     ),
     _registration(
         SHARED_CUSTODY_PIPELINE_ID,
@@ -221,6 +216,67 @@ _REGISTRATIONS = (
         removal_blockers=(
             "checked campaign records bind the exact campaign module bytes",
             "cold replay compares the loaded source digest with those records",
+        ),
+        successor_pipeline_id=ACTIVE_SUCCESSOR_PIPELINE_ID,
+    ),
+    _registration(
+        "panel-action-count-prompt-development-v1",
+        PipelineLifecycle.RETIRED,
+        new_execution_authorized=False,
+        authorized_scope=(
+            "cold replay and inspection of completed FIT-only prompt, multiview, "
+            "and decomposition diagnostics"
+        ),
+        entrypoints=(
+            "python -m bongard.panel_action_count_phase_command",
+            "python -m bongard.panel_action_count_multiview_fit_command",
+            "python -m bongard.panel_action_decomposition_fit_ablation_command",
+        ),
+        source_modules=(
+            "bongard.panel_action_count_phase_command",
+            "bongard.panel_action_count_multiview_adapter",
+            "bongard.panel_action_count_multiview_fit_command",
+            "bongard.panel_action_decomposition_threeview_adapter",
+            "bongard.panel_action_decomposition_fit_ablation_command",
+        ),
+        retained_for=(
+            "exact historical prompt receipts and cold replay",
+            "authenticated failure outcomes",
+        ),
+        removal_blockers=(
+            "historical result and replay records bind exact loaded source bytes",
+            "verification-only decoders have not yet been split from executors",
+        ),
+        successor_pipeline_id=ACTIVE_SUCCESSOR_PIPELINE_ID,
+    ),
+    _registration(
+        "panel-action-count-global-spatial-cnn-development-v1",
+        PipelineLifecycle.RETIRED,
+        new_execution_authorized=False,
+        authorized_scope=(
+            "cold replay of the failed global CNN and inspection of the bounded "
+            "spatial runtime-gap precommit only"
+        ),
+        entrypoints=(
+            "python -m bongard.panel_action_count_cnn_train_command",
+            "python -m bongard.panel_action_count_cnn_calibration_eval_v3",
+            "python -m bongard.panel_action_count_spatial_dev_command",
+        ),
+        source_modules=(
+            "bongard.panel_action_count_cnn_preregister_v3",
+            "bongard.panel_action_count_cnn_train_command",
+            "bongard.panel_action_count_cnn_postprediction_labels_v3",
+            "bongard.panel_action_count_cnn_calibration_eval_v3",
+            "bongard.panel_action_count_spatial_dev_command",
+        ),
+        retained_for=(
+            "exact failed-fit checkpoint and replay verification",
+            "decontaminated development cohort custody",
+            "authenticated one-hour spatial runtime-gap evidence",
+        ),
+        removal_blockers=(
+            "the next local observer still consumes the frozen development cohort authority",
+            "verification-only decoders have not yet been split from trainer source",
         ),
         successor_pipeline_id=ACTIVE_SUCCESSOR_PIPELINE_ID,
     ),

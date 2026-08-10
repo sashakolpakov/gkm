@@ -104,21 +104,42 @@ def test_registry_report_names_removal_blockers_and_unlean_authority() -> None:
     assert by_id["panel-positive-prose-exposed-probe-v1"]["removal_blockers"] == []
 
 
-def test_active_action_count_commands_have_no_retired_probe_imports() -> None:
+def test_active_typed_axis_sources_exclude_retired_action_count_executors() -> None:
     retired_modules = {
         "bongard.panel_feature_exposed_support_smoke_command",
         "bongard.panel_positive_prose_exposed_probe_command",
         "bongard.panel_positive_contextual_typed_count_probe_command",
         "bongard.panel_positive_atom_slate_exposed_probe_command",
-    }
-    for source_module in (
         "bongard.panel_action_count_phase_command",
         "bongard.panel_action_count_multiview_fit_command",
-    ):
-        imports = _imported_modules(source_module)
-        assert imports.isdisjoint(retired_modules)
-        assert "bongard.panel_probe_custody" in imports
-        assert "bongard.panel_probe_transport" in imports
+        "bongard.panel_action_decomposition_fit_ablation_command",
+        "bongard.panel_action_count_cnn_train_command",
+        "bongard.panel_action_count_spatial_dev_command",
+    }
+    successor = pipeline_registration(ACTIVE_SUCCESSOR_PIPELINE_ID)
+    assert successor.entrypoints == ()
+    assert set(successor.source_modules).isdisjoint(retired_modules)
+    assert {
+        "bongard.panel_typed_axis_slate_v2",
+        "bongard.panel_typed_axis_task_runner",
+        "bongard.panel_feature_extracted_release_gate",
+        "bongard.python_predicate_authority",
+    }.issubset(successor.source_modules)
+
+
+def test_failed_action_observers_are_registered_retired() -> None:
+    prompt = pipeline_registration("panel-action-count-prompt-development-v1")
+    cnn = pipeline_registration(
+        "panel-action-count-global-spatial-cnn-development-v1"
+    )
+    assert prompt.lifecycle is PipelineLifecycle.RETIRED
+    assert cnn.lifecycle is PipelineLifecycle.RETIRED
+    assert prompt.new_execution_authorized is False
+    assert cnn.new_execution_authorized is False
+    assert "bongard.panel_action_count_multiview_fit_command" in prompt.source_modules
+    assert "bongard.panel_action_count_spatial_dev_command" in cnn.source_modules
+    assert prompt.removal_blockers
+    assert cnn.removal_blockers
 
 
 def test_removed_launcher_is_gone_but_immutable_failure_record_remains() -> None:
@@ -163,6 +184,8 @@ def test_physically_retired_python_m_surfaces_fail_closed(module: str) -> None:
         "legacy-two-query-episode-cli-v1",
         "legacy-visual-semantic-calibration-cli-v1",
         "panel-soft-exact-unused-campaign-v1",
+        "panel-action-count-prompt-development-v1",
+        "panel-action-count-global-spatial-cnn-development-v1",
         "panel-feature-exposed-support-smoke-v1",
         "panel-positive-prose-exposed-probe-v1",
         "panel-positive-contextual-typed-count-probe-v1",
