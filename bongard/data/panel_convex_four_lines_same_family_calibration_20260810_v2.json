@@ -1,0 +1,246 @@
+{
+  "adapter_contract": {
+    "catalog_model_class_order": [
+      "catalog_unresolved",
+      "nonconvex",
+      "convex"
+    ],
+    "catalog_model_to_typed_value": {
+      "convex": "catalog_convex",
+      "nonconvex": "catalog_nonconvex"
+    },
+    "catalog_set_containing_unresolved_disposition": "gap",
+    "catalog_typed_axis": "catalog_convexity",
+    "catalog_typed_domain": [
+      "catalog_nonconvex",
+      "catalog_convex"
+    ],
+    "empty_or_malformed_class_set_disposition": "error",
+    "generic_geometric_turning_axis_present": false,
+    "other_six_typed_axes_disposition": "gap",
+    "straight_model_class_order": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "straight_typed_axis": "straight_action_count",
+    "three_class_catalog_head_can_populate_geometric_turning": false
+  },
+  "authorization": {
+    "action_programs_or_labels_before_prediction_fsync": false,
+    "calibration_family_pixels_after_all_freezes_and_exposure_record": true,
+    "diagnostic_0001_pixels": false,
+    "official_TEST_pixels": false,
+    "official_validation_0018_0019_pixels": false,
+    "target_0000_pixels": false
+  },
+  "calibration_protocol": {
+    "alpha": 0.1,
+    "calibration_task_count": 16,
+    "class_set_rule": "include_class_c_iff_1_minus_p_c_is_at_most_q",
+    "coverage_claim": "under exchangeability of whole same-family task repetitions only, a new whole-task two-head score is covered with finite-sample probability at least 16/17; this is not a panelwise, distribution-shift, official-validation, or official-TEST claim",
+    "coverage_fraction_denominator": 17,
+    "coverage_fraction_numerator": 16,
+    "coverage_fraction_value": 0.9411764705882353,
+    "head_order": [
+      "straight_action_count",
+      "catalog_convexity"
+    ],
+    "order_statistic_one_indexed": 16,
+    "q_rule": "ceil((n+1)*(1-alpha))_one-indexed_order_statistic",
+    "q_value_rule": "maximum_of_the_16_whole-task_scores",
+    "repetition_is_unit_of_exchangeability": true,
+    "task_score": "maximum_over_all_14_task_panels_and_both_relevant_heads_of_1_minus_probability_of_the_true_class",
+    "within_task_panels_claimed_exchangeable": false
+  },
+  "chronology": [
+    "commit_and_cold-verify_this_metadata-only_v2_preregistration_before_any_new_family_PNG_action_label_or_action_program_byte",
+    "freeze_the_final_non-family-trained_checkpoint_preprocess_class_orders_typed-adapter_score-function_and_efficiency-gate_before_any_calibration-family_pixel",
+    "append_all_16_calibration_task_ids_to_the_exposure_ledger_and_precommit_exact_PNG_sha256_and_sizes_before_inference",
+    "infer_all_224_calibration_panels_then_fsync_and_reload_logits_and_probabilities_before_opening_any_family_action_label_or_action_program",
+    "open_only_the_224_calibration_labels_needed_for_the_frozen_two-head_true-class_scores_and_compute_exactly_one_whole-task_score_per_repetition",
+    "freeze_q_as_the_maximum_of_all_16_task_scores_before_any_target_pixel",
+    "compute_and_report_the_fixed_leave-one-task-out_recovery_diagnostic_without_tuning_or_selection_authority",
+    "using_the_same_frozen_q_build_each_fixed_6-plus-6_support_matrix_and_full_1366-formula_inventory_then_apply_the_preregistered_efficiency_gate",
+    "if_any_efficiency_condition_fails_emit_a_global_target_GAP_keep_target_pixels_sealed_and_do_not_tune_reroll_or_replace_any_component",
+    "if_the_gate_passes_this_plan_still_does_not_authorize_target_pixels;_any_later_target_execution_must_bind_the_already-frozen_checkpoint_adapter_score_q_and_gate_result",
+    "leave_diagnostic_0001_official-validation_0018_0019_and_every_official_TEST_pixel_sealed"
+  ],
+  "claim": "same-family-TRAIN-repetition-calibration-and-efficiency-preregistration-not-an-official-benchmark",
+  "dataset_bindings": {
+    "corpus_manifest_digest": "sha256:6fa51548520190a412812ba8f872dc3c7a7a2b2c47c0e42a4d9f6df351dce138",
+    "official_release_descriptor_digest": "sha256:4d5fb0ad6093ab32e8a8ac0ca5a3405482e1218994f9d257238e4a09fc56cd2b",
+    "split_manifest_digest": "sha256:83e4d791609588ba053243ae7f702851ee3addae821ab79c4fde884957688090",
+    "split_source_digest": "sha256:ebb9cd474478e0776dff539951070db2c96b9b312c4b0b073689d20792ed7230",
+    "task_inventory_digest": "sha256:4503ae6b40dc7b34520eb5b8a4cca6ff8153635df0f42db5f6715cc349602dd0"
+  },
+  "efficiency_gate": {
+    "catalog_typed_decisive_panel_fraction_at_least": 0.3,
+    "evaluated_after_global_q_freeze": true,
+    "failure_action": "global_target_gap_with_target_pixels_sealed",
+    "fixed_formula": [
+      [
+        "straight_action_count",
+        4
+      ],
+      [
+        "catalog_convexity",
+        "catalog_convex"
+      ]
+    ],
+    "formula_admitted_task_count_at_least": 14,
+    "formula_admitted_task_denominator": 16,
+    "formula_inventory_algorithm": "exhaustive_57_singletons_plus_1309_cross-axis_pairs",
+    "formula_inventory_count": 1366,
+    "formula_or_cell_error_count_must_equal": 0,
+    "global_q_only": true,
+    "no_tuning_reroll_checkpoint_replacement_adapter_replacement_or_threshold_change": true,
+    "straight_count_4_singleton_panel_fraction_at_least": 0.25,
+    "straight_mean_class_set_size_at_most": 4.0,
+    "support_contrast_side": 0,
+    "support_excluded_ordinal": 4,
+    "support_excluded_ordinal_has_query_role": false,
+    "support_ordinals": [
+      0,
+      1,
+      2,
+      3,
+      5,
+      6
+    ],
+    "support_primary_side": 1,
+    "support_rows_per_task": 12,
+    "target_aligned_gate_is_additional_efficiency_screen_not_coverage_theorem": true,
+    "typed_inventory_nomination_candidate_selection_authority": false
+  },
+  "execution_precommit": {
+    "must_exist_before_first_calibration_family_pixel": true,
+    "required_frozen_addresses": [
+      "checkpoint_state_dict_sha256",
+      "checkpoint_training_result_address",
+      "model_architecture_and_preprocess_address",
+      "straight_and_catalog_class_order_address",
+      "typed_adapter_source_sha256",
+      "typed_adapter_algorithm_digest",
+      "whole-task_score_source_sha256",
+      "whole-task_score_algorithm_digest",
+      "typed_axis_algorithm_digest",
+      "typed_axis_source_sha256",
+      "efficiency_gate_digest",
+      "calibration_panel_identity_manifest_address"
+    ]
+  },
+  "exposure_accounting": {
+    "active_predecessor_digest": "sha256:6995ea9cfda2f384cb0ba1b1cdc3611c965227c60fdb281d1e2e56fffa357b56",
+    "before": {
+      "exact_unused_train": 9010,
+      "exact_unused_validation": 876,
+      "exposed_official_test": 0,
+      "exposed_total": 314,
+      "exposed_train": 290,
+      "exposed_validation": 24,
+      "sealed_official_test": 1800
+    },
+    "maximum_after_authorized_calibration": {
+      "exact_unused_train": 8994,
+      "exact_unused_validation": 876,
+      "exposed_official_test": 0,
+      "exposed_total": 330,
+      "exposed_train": 306,
+      "exposed_validation": 24,
+      "sealed_official_test": 1800
+    },
+    "partial_or_failed_run_policy": "every_task_whose_first_pixel_is_opened_remains_append-only_exposed_and_cannot_be_replaced"
+  },
+  "family_partition": {
+    "calibration_panel_count": 224,
+    "calibration_panel_order": "task_order_then_side_1_then_side_0_then_ordinal_0_through_6",
+    "calibration_panel_path_template": "hd/{task_id}/{side}/{ordinal}.png",
+    "calibration_panel_roles": "all_14_are_calibration;_there_is_no_query_role",
+    "calibration_sides": [
+      1,
+      0
+    ],
+    "calibration_task_ids": [
+      "hd_convex-has_four_straight_lines_0002",
+      "hd_convex-has_four_straight_lines_0003",
+      "hd_convex-has_four_straight_lines_0004",
+      "hd_convex-has_four_straight_lines_0005",
+      "hd_convex-has_four_straight_lines_0006",
+      "hd_convex-has_four_straight_lines_0007",
+      "hd_convex-has_four_straight_lines_0008",
+      "hd_convex-has_four_straight_lines_0009",
+      "hd_convex-has_four_straight_lines_0010",
+      "hd_convex-has_four_straight_lines_0011",
+      "hd_convex-has_four_straight_lines_0012",
+      "hd_convex-has_four_straight_lines_0013",
+      "hd_convex-has_four_straight_lines_0014",
+      "hd_convex-has_four_straight_lines_0015",
+      "hd_convex-has_four_straight_lines_0016",
+      "hd_convex-has_four_straight_lines_0017"
+    ],
+    "calibration_task_split": "train",
+    "calibration_task_count": 16,
+    "diagnostic_tainted_task_ids": [
+      "hd_convex-has_four_straight_lines_0001"
+    ],
+    "official_validation_sealed_task_ids": [
+      "hd_convex-has_four_straight_lines_0018",
+      "hd_convex-has_four_straight_lines_0019"
+    ],
+    "panel_ordinals": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "target_sealed_task_ids": [
+      "hd_convex-has_four_straight_lines_0000"
+    ]
+  },
+  "leave_one_task_out_diagnostic": {
+    "diagnostic_only_no_gate_tuning_or_selection_authority": true,
+    "heldout_recovered_rule": "heldout_task_score_is_at_most_q_minus_i",
+    "q_minus_i_rule": "maximum_of_the_other_15_whole-task_scores",
+    "report_fields": [
+      "task_id",
+      "heldout_task_score",
+      "q_minus_i",
+      "recovered"
+    ],
+    "report_recovered_count_and_fraction_over_16": true
+  },
+  "metadata_only_preregistration": true,
+  "new_family_action_labels_read_before_commit": false,
+  "new_family_action_programs_read_before_commit": false,
+  "new_family_panel_pixels_read_before_commit": false,
+  "predicate_authority": "python",
+  "record_digest": "sha256:77a8aba2868ab3369a40befca470ee686eb998543dcae27d4f4b1f68a7df0b5a",
+  "schema": "gkm.bongard-convex-four-lines-same-family-calibration-preregistration.v2",
+  "semantic_key": "hd_convex-has_four_straight_lines",
+  "supersedes": {
+    "commit": "fe9e92eb35f6e41af393e9a664092368129c57ab",
+    "record_digest": "sha256:a8a94af6b430018ce9f80550a7bce910c8095c781d4fa51113abdb505a1e3cd7",
+    "reason": "replace_development-plus-heldout-query_drill_with_all-14-panel_whole-task_same-family_conformal_calibration"
+  },
+  "target_release_requires_separate_authorization": true,
+  "typed_axis_core": {
+    "algorithm_digest": "sha256:02cfdbf3ade04700c3a3f6939505e0132d5f3b79bd9f8642075c5954f3c1f752",
+    "algorithm_id": "bongard.typed-axis/all-equalities-cross-axis-pairs-v5",
+    "closed_atom_count": 57,
+    "cross_axis_pair_count": 1309,
+    "maximum_formula_count": 1366,
+    "source_path": "bongard/panel_typed_axis_slate_v2.py",
+    "source_sha256": "ea0c6f7b4694678c6eeabb4959ba90b9d7bfb53a5e137b82d09620ea05f211d4"
+  }
+}

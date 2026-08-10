@@ -72,25 +72,25 @@ from bongard.transport import (
 
 
 HEADLESS_TYPED_AXIS_PROTOCOL_ID = (
-    "bongard.panel-typed-axis-headless-proposer/twelve-support-hints-v1"
+    "bongard.panel-typed-axis-headless-proposer/twelve-support-hints-v2"
 )
 HEADLESS_TYPED_AXIS_RUNTIME_SCHEMA = (
-    "gkm.bongard-typed-axis-headless-runtime.v1"
+    "gkm.bongard-typed-axis-headless-runtime.v2"
 )
 HEADLESS_TYPED_AXIS_REQUEST_SCHEMA = (
-    "gkm.bongard-typed-axis-headless-request.v1"
+    "gkm.bongard-typed-axis-headless-request.v2"
 )
 HEADLESS_TYPED_AXIS_OUTCOME_SCHEMA = (
-    "gkm.bongard-typed-axis-headless-outcome.v1"
+    "gkm.bongard-typed-axis-headless-outcome.v2"
 )
 HEADLESS_TYPED_AXIS_ARTIFACT_SCHEMA = (
-    "gkm.bongard-typed-axis-headless-artifact.v1"
+    "gkm.bongard-typed-axis-headless-artifact.v2"
 )
 HEADLESS_TYPED_AXIS_ATTEMPT_ERROR_SCHEMA = (
-    "gkm.bongard-typed-axis-headless-attempt-error.v1"
+    "gkm.bongard-typed-axis-headless-attempt-error.v2"
 )
 HEADLESS_TYPED_AXIS_TRANSPORT_PROVENANCE_SCHEMA = (
-    "gkm.bongard-typed-axis-headless-transport-provenance.v1"
+    "gkm.bongard-typed-axis-headless-transport-provenance.v2"
 )
 SUPPORT_ROLE_SIZE = 6
 SUPPORT_IMAGE_COUNT = 12
@@ -960,7 +960,7 @@ def _contract_digest(request: HeadlessTypedAxisProposerRequest) -> str:
     schema = headless_typed_axis_proposer_output_schema(request)
     return canonical_digest(
         {
-            "schema": "gkm.bongard-typed-axis-headless-contract.v1",
+            "schema": "gkm.bongard-typed-axis-headless-contract.v2",
             "protocol_id": HEADLESS_TYPED_AXIS_PROTOCOL_ID,
             "proposer_source_sha256": (
                 panel_typed_axis_headless_proposer_source_digest()

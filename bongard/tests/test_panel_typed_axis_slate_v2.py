@@ -41,7 +41,7 @@ PRIMARY_VALUES = {
     Axis.COMPONENT_COUNT: 1,
     Axis.STRAIGHT_ACTION_COUNT: 4,
     Axis.PRIMITIVE_MIX_OR_ARC_COUNT: "straight_only",
-    Axis.TURNING_CONVEXITY: "convex_turning",
+    Axis.CATALOG_CONVEXITY: "catalog_convex",
     Axis.SYMMETRY: "none",
     Axis.ASPECT_ORIENTATION: "compact",
     Axis.TEXTURE: "plain",
@@ -167,28 +167,28 @@ def test_conjunction_error_precedes_absence_then_indeterminate() -> None:
     assert [item.axis for item in evaluation.failure_witnesses] == [Axis.TOPOLOGY]
 
 
-def test_closed_slate_enumerates_59_atoms_and_1419_cross_axis_pairs() -> None:
+def test_closed_slate_enumerates_57_atoms_and_1309_cross_axis_pairs() -> None:
     matrix = _matrix()
     inventory = TypedAxisInventory.derive(matrix, _slate(matrix))
 
-    assert CLOSED_ATOM_COUNT == 59
-    assert CROSS_AXIS_PAIR_COUNT == 1_419
-    assert len(inventory.formulas) == MAX_FORMULA_COUNT == 1_478
-    assert [len(item.atoms) for item in inventory.formulas[:59]] == [1] * 59
-    assert [len(item.atoms) for item in inventory.formulas[59:]] == [2] * 1_419
+    assert CLOSED_ATOM_COUNT == 57
+    assert CROSS_AXIS_PAIR_COUNT == 1_309
+    assert len(inventory.formulas) == MAX_FORMULA_COUNT == 1_366
+    assert [len(item.atoms) for item in inventory.formulas[:57]] == [1] * 57
+    assert [len(item.atoms) for item in inventory.formulas[57:]] == [2] * 1_309
     assert all(
         item.atoms[0].axis is not item.atoms[1].axis
-        for item in inventory.formulas[59:]
+        for item in inventory.formulas[57:]
     )
     assert [
         (item.atoms[0].axis, item.atoms[0].value)
-        for item in inventory.formulas[:59]
+        for item in inventory.formulas[:57]
     ] == [
         (axis, value) for axis in AXES for value in AXIS_DOMAINS[axis]
     ]
     assert [
         tuple((atom.axis, atom.value) for atom in item.atoms)
-        for item in inventory.formulas[59:]
+        for item in inventory.formulas[57:]
     ] == [
         ((left_axis, left_value), (right_axis, right_value))
         for left_index, left_axis in enumerate(AXES)
@@ -352,9 +352,9 @@ def test_nomination_hints_cannot_change_empty_version_space_gap() -> None:
     assert with_primary_hints.admitted_formula_ids == ()
     assert with_primary_hints.empty_gap is not None
     assert with_primary_hints.empty_gap.measurement_gap_or_error_axes == ()
-    assert with_primary_hints.empty_gap.evaluated_formula_count == 1_478
+    assert with_primary_hints.empty_gap.evaluated_formula_count == 1_366
     assert with_primary_hints.empty_gap.rejected_formula_ids[0] == "formula_0000"
-    assert with_primary_hints.empty_gap.rejected_formula_ids[-1] == "formula_1477"
+    assert with_primary_hints.empty_gap.rejected_formula_ids[-1] == "formula_1365"
     assert canonical_json(with_primary_hints.to_data()) == canonical_json(
         with_gap_hints.to_data()
     )
@@ -448,14 +448,39 @@ def test_matrix_and_nomination_shape_fail_closed() -> None:
         TypedAxisCell.python_exact(Axis.COMPONENT_COUNT, True, PROTOCOL)
     with pytest.raises(TypedAxisSlateError):
         TypedAxisCell.python_exact(
-            Axis.TURNING_CONVEXITY, "concave_turning", PROTOCOL
+            Axis.CATALOG_CONVEXITY, "convex_turning", PROTOCOL
         )
     assert (
         TypedAxisCell.python_exact(
-            Axis.TURNING_CONVEXITY, "nonconvex_turning", PROTOCOL
+            Axis.CATALOG_CONVEXITY, "catalog_nonconvex", PROTOCOL
         ).possible_values
-        == ("nonconvex_turning",)
+        == ("catalog_nonconvex",)
     )
+
+
+def test_catalog_axis_cannot_be_populated_with_geometric_or_unresolved_values() -> None:
+    assert AXIS_DOMAINS[Axis.CATALOG_CONVEXITY] == (
+        "catalog_nonconvex",
+        "catalog_convex",
+    )
+    for forbidden in (
+        "catalog_unresolved",
+        "convex_turning",
+        "nonconvex_turning",
+        "mixed_turning",
+        "not_applicable",
+    ):
+        with pytest.raises(TypedAxisSlateError):
+            TypedAxisCell.calibrated_set(
+                Axis.CATALOG_CONVEXITY, [forbidden], PROTOCOL, GRANT
+            )
+
+    gap = TypedAxisCell.gap(
+        Axis.CATALOG_CONVEXITY,
+        PROTOCOL,
+        "catalog_set_contains_unresolved",
+    )
+    assert gap.equality_disposition("catalog_convex") is Disposition.INDETERMINATE
 
 
 def test_domains_source_and_algorithm_are_immutable_and_sealed() -> None:

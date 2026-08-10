@@ -56,7 +56,7 @@ PRIMARY_VALUES = {
     Axis.COMPONENT_COUNT: 1,
     Axis.STRAIGHT_ACTION_COUNT: 4,
     Axis.PRIMITIVE_MIX_OR_ARC_COUNT: "straight_only",
-    Axis.TURNING_CONVEXITY: "convex_turning",
+    Axis.CATALOG_CONVEXITY: "catalog_convex",
     Axis.SYMMETRY: "none",
     Axis.ASPECT_ORIENTATION: "elongated_oblique_positive",
     Axis.TEXTURE: "plain",
@@ -139,9 +139,9 @@ def _payload() -> dict[str, object]:
             "value": "straight_only",
             "gap_reason_code": "none",
         },
-        "turning_convexity": {
+        "catalog_convexity": {
             "status": "nominated",
-            "value": "convex_turning",
+            "value": "catalog_convex",
             "gap_reason_code": "none",
         },
         "symmetry": {

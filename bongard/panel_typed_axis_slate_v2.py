@@ -36,19 +36,19 @@ PRIMARY_ROW_COUNT = 6
 CONTRAST_ROW_COUNT = 6
 SUPPORT_ROW_COUNT = PRIMARY_ROW_COUNT + CONTRAST_ROW_COUNT
 
-CELL_SCHEMA = "gkm.bongard-typed-axis-cell.v4"
-ROW_SCHEMA = "gkm.bongard-typed-axis-row.v4"
-MATRIX_SCHEMA = "gkm.bongard-typed-axis-support-matrix.v4"
-NOMINATION_SCHEMA = "gkm.bongard-typed-axis-nomination.v4"
-NOMINATION_SLATE_SCHEMA = "gkm.bongard-typed-axis-nomination-slate.v4"
-ATOM_SCHEMA = "gkm.bongard-typed-axis-equality-atom.v4"
-WITNESS_SCHEMA = "gkm.bongard-typed-axis-evidence-witness.v4"
-ROW_EVALUATION_SCHEMA = "gkm.bongard-typed-axis-formula-row-evaluation.v4"
-FORMULA_SCHEMA = "gkm.bongard-typed-axis-formula-evaluation.v4"
-EMPTY_GAP_SCHEMA = "gkm.bongard-typed-axis-empty-gap.v4"
-INVENTORY_SCHEMA = "gkm.bongard-typed-axis-inventory.v4"
-ALGORITHM_ID = "bongard.typed-axis/all-equalities-cross-axis-pairs-v4"
-ALGORITHM_SCHEMA = "gkm.bongard-typed-axis-algorithm.v4"
+CELL_SCHEMA = "gkm.bongard-typed-axis-cell.v5"
+ROW_SCHEMA = "gkm.bongard-typed-axis-row.v5"
+MATRIX_SCHEMA = "gkm.bongard-typed-axis-support-matrix.v5"
+NOMINATION_SCHEMA = "gkm.bongard-typed-axis-nomination.v5"
+NOMINATION_SLATE_SCHEMA = "gkm.bongard-typed-axis-nomination-slate.v5"
+ATOM_SCHEMA = "gkm.bongard-typed-axis-equality-atom.v5"
+WITNESS_SCHEMA = "gkm.bongard-typed-axis-evidence-witness.v5"
+ROW_EVALUATION_SCHEMA = "gkm.bongard-typed-axis-formula-row-evaluation.v5"
+FORMULA_SCHEMA = "gkm.bongard-typed-axis-formula-evaluation.v5"
+EMPTY_GAP_SCHEMA = "gkm.bongard-typed-axis-empty-gap.v5"
+INVENTORY_SCHEMA = "gkm.bongard-typed-axis-inventory.v5"
+ALGORITHM_ID = "bongard.typed-axis/all-equalities-cross-axis-pairs-v5"
+ALGORITHM_SCHEMA = "gkm.bongard-typed-axis-algorithm.v5"
 
 _ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _KEY = re.compile(r"[A-Za-z0-9][A-Za-z0-9_./:-]{0,255}\Z")
@@ -64,7 +64,7 @@ class Axis(str, Enum):
     COMPONENT_COUNT = "component_count"
     STRAIGHT_ACTION_COUNT = "straight_action_count"
     PRIMITIVE_MIX_OR_ARC_COUNT = "primitive_mix_or_arc_count"
-    TURNING_CONVEXITY = "turning_convexity"
+    CATALOG_CONVEXITY = "catalog_convexity"
     SYMMETRY = "symmetry"
     ASPECT_ORIENTATION = "aspect_orientation"
     TEXTURE = "texture"
@@ -102,11 +102,14 @@ AXIS_DOMAINS: Mapping[Axis, tuple[AxisValue, ...]] = MappingProxyType({
         *(f"arc_only_{count}" for count in range(1, 10)),
         *(f"mixed_{count}_arcs" for count in range(1, 10)),
     ),
-    Axis.TURNING_CONVEXITY: (
-        "convex_turning",
-        "nonconvex_turning",
-        "mixed_turning",
-        "not_applicable",
+    # This is deliberately a task-catalog label, not a claim about generic
+    # geometric turning.  A learned three-class head may emit a calibrated
+    # set over these two values only when ``catalog_unresolved`` is excluded;
+    # any set containing ``catalog_unresolved`` must be translated to a GAP by
+    # the external observer adapter and therefore never reaches this domain.
+    Axis.CATALOG_CONVEXITY: (
+        "catalog_nonconvex",
+        "catalog_convex",
     ),
     Axis.SYMMETRY: ("none", "reflection", "rotation", "reflection_and_rotation"),
     Axis.ASPECT_ORIENTATION: (
@@ -128,9 +131,9 @@ CROSS_AXIS_PAIR_COUNT = sum(
 MAX_FORMULA_COUNT = CLOSED_ATOM_COUNT + CROSS_AXIS_PAIR_COUNT
 
 if (CLOSED_ATOM_COUNT, CROSS_AXIS_PAIR_COUNT, MAX_FORMULA_COUNT) != (
-    59,
-    1_419,
-    1_478,
+    57,
+    1_309,
+    1_366,
 ):  # pragma: no cover - import-time closed-language guard
     raise RuntimeError("typed axis closed-language cardinality differs")
 
