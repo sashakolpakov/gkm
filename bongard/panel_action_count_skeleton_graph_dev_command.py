@@ -5,6 +5,11 @@ entry point.  It freezes the pixel-only feature bank and estimator topology
 selected after inspecting the already-exposed ShapeBongard development split.
 Its results are therefore adaptive engineering evidence for the finite HD
 carrier catalog, never an independent evaluation or a novel-carrier claim.
+
+The original 256-tree v1 fit failed closed at its prewrite model-size guard.
+V2 is a capacity-only repair: it freezes 32 trees, the first passing candidate
+in a disclosed eight-prefix adaptive study over a raw-addressed cached feature
+matrix.  Runtime fitting performs no capacity search.
 """
 
 from __future__ import annotations
@@ -47,12 +52,24 @@ from bongard.panel_action_local_supervision_authority import (
 )
 
 
-SCHEMA_PRECOMMIT: Final = "gkm.bongard-skeleton-graph-development-precommit.v1"
-SCHEMA_RESULT: Final = "gkm.bongard-skeleton-graph-development-result.v1"
-SCHEMA_FEATURES: Final = "gkm.bongard-skeleton-graph-development-features.v1"
-SCHEMA_PREDICTIONS: Final = "gkm.bongard-skeleton-graph-development-predictions.v1"
-SCHEMA_REPLAY: Final = "gkm.bongard-skeleton-graph-development-replay.v1"
-MODEL_SCHEMA: Final = "gkm.bongard-skeleton-graph-development-model-pickle.v1"
+def _freeze_literal(value: Any) -> Any:
+    """Deep-freeze one source literal before it becomes protocol authority."""
+
+    if isinstance(value, Mapping):
+        return MappingProxyType(
+            {str(key): _freeze_literal(item) for key, item in value.items()}
+        )
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_literal(item) for item in value)
+    return value
+
+
+SCHEMA_PRECOMMIT: Final = "gkm.bongard-skeleton-graph-development-precommit.v2"
+SCHEMA_RESULT: Final = "gkm.bongard-skeleton-graph-development-result.v2"
+SCHEMA_FEATURES: Final = "gkm.bongard-skeleton-graph-development-features.v2"
+SCHEMA_PREDICTIONS: Final = "gkm.bongard-skeleton-graph-development-predictions.v2"
+SCHEMA_REPLAY: Final = "gkm.bongard-skeleton-graph-development-replay.v2"
+MODEL_SCHEMA: Final = "gkm.bongard-skeleton-graph-development-model-pickle.v2"
 MODEL_MAX_BYTES: Final = 512 * 1024 * 1024
 FEATURE_ARTIFACT_MAX_BYTES: Final = 32 * 1024 * 1024
 PREDICTION_ARTIFACT_MAX_BYTES: Final = 32 * 1024 * 1024
@@ -72,6 +89,30 @@ COMMITTED_LABEL_AUTHORITY_AUDIT_RECORD_DIGEST: Final = (
 )
 COMMITTED_LABEL_AUTHORITY_AUDIT_RELATIVE_PATH: Final = (
     "bongard/data/panel_action_local_duplicate_conflict_audit_20260810_v1.json"
+)
+
+BASE_PROTOCOL_COMMIT: Final = "f65d3f79b45fa0fa1b001bf9c0cbb6c7f3e0b302"
+BASE_PROTOCOL_SOURCE_SHA256: Final = (
+    "8154c3099ccbf4980004574b0bb023a13720dbbaa858c3ba1184567d918a81b0"
+)
+PRIOR_FAILED_PRECOMMIT_SCHEMA: Final = (
+    "gkm.bongard-skeleton-graph-development-precommit.v1"
+)
+PRIOR_FAILED_PRECOMMIT_RECORD_DIGEST: Final = (
+    "sha256:540712206d87c3d50e1663e64c6e1048103f07bc198cb926603bd30968837fe8"
+)
+PRIOR_FAILED_PRECOMMIT_FILE_SHA256: Final = (
+    "sha256:37a18000f2b6b9feb4e2a1adce2a862496a96a2511de15da0f03fffefd769879"
+)
+PRIOR_FAILED_OUTPUT_ROOT: Final = (
+    "/Users/sasha/gkm/downloads/ShapeBongard_V2_full/"
+    "panel_action_count_skeleton_graph_dev_20260810_v1"
+)
+PRIOR_FAILED_OUTPUT_ROOT_IDENTITY: Final = MappingProxyType(
+    {"st_dev": 16_777_234, "st_ino": 38_039_341, "st_mode": 16_877}
+)
+PRIOR_FAILED_INTENDED_OUTPUT_NAMES: Final = (
+    "features.json", "model.pkl", "predictions.json", "replay.json", "result.json",
 )
 
 CLAIM_SCOPE: Final = "finite_catalog_known_carrier_style_pose_transfer_engineering"
@@ -144,7 +185,7 @@ PROTOCOL: Final = MappingProxyType(
         "image_size": IMAGE_SIZE,
         "max_features": "sqrt",
         "min_samples_leaf": 2,
-        "n_estimators": 256,
+        "n_estimators": 32,
         "n_jobs": 1,
         "one_vote_per_unique_png_digest_group": True,
         "promotion": False,
@@ -228,6 +269,300 @@ ENGINEERING_THRESHOLDS: Final = MappingProxyType(
     {
         "direct_pair_joint_accuracy": 0.78,
         "catalog_known_truth_balanced_accuracy": 0.70,
+    }
+)
+
+# The 256-tree v1 protocol failed closed before its first post-precommit write:
+# its exact deterministic pickle exceeded the unchanged 512 MiB replay cap.
+# Capacity repair inspected only an already-derived, raw-addressed feature cache.
+# It fit no candidate during v2 execution: the ordered study below is historical,
+# validation-adapted development evidence and selects the first disclosed prefix
+# satisfying both existing gates and the existing byte cap.  Counts 17..31 were
+# not tried, so 32 is not claimed to be the globally smallest passing tree count.
+CAPACITY_SELECTION_LEDGER: Final = _freeze_literal(
+    {
+        "schema": "gkm.bongard-skeleton-graph-capacity-selection-ledger.v1",
+        "status": "adaptive_development_capacity_repair_not_fresh_gate_evidence",
+        "base_protocol": {
+            "commit": BASE_PROTOCOL_COMMIT,
+            "source_sha256": BASE_PROTOCOL_SOURCE_SHA256,
+            "n_estimators": 256,
+            "model_max_bytes": MODEL_MAX_BYTES,
+        },
+        "failed_v1_attempt": {
+            "precommit_schema": PRIOR_FAILED_PRECOMMIT_SCHEMA,
+            "precommit_record_digest": PRIOR_FAILED_PRECOMMIT_RECORD_DIGEST,
+            "precommit_file_sha256": PRIOR_FAILED_PRECOMMIT_FILE_SHA256,
+            "output_root": PRIOR_FAILED_OUTPUT_ROOT,
+            "output_root_identity": PRIOR_FAILED_OUTPUT_ROOT_IDENTITY,
+            "durable_file_names": ("precommit.json",),
+            "absent_intended_output_names": PRIOR_FAILED_INTENDED_OUTPUT_NAMES,
+            "durable_output_count_beyond_precommit": 0,
+            "result_exists": False,
+            "failure_stage": "prewrite_artifact_size_guard_after_fit",
+            "failure_message": (
+                "model, feature, or prediction artifact exceeds replay cap"
+            ),
+            "model_serialized_bytes": 780_044_909,
+            "model_max_bytes": MODEL_MAX_BYTES,
+            "direct_pair_total_node_count": 2_086_910,
+            "catalog_three_class_total_node_count": 1_083_066,
+        },
+        "cached_feature_matrix": {
+            "path_is_not_runtime_authority": True,
+            "raw_file_sha256": (
+                "sha256:ad7160dfa7f7f40d1889a22eab17b9782f1aee2999ff7752e080883563cd9680"
+            ),
+            "raw_file_bytes": 2_991_202,
+            "custody_limitation": (
+                "ephemeral_uncommitted_diagnostic_cache_bound_by_raw_address"
+            ),
+            "arrays": {
+                "X": {
+                    "shape": (12_535, 112),
+                    "dtype": "float32",
+                    "raw_array_sha256": (
+                        "sha256:bd90575c33d0368058407d93810dee0b684d7579e12ef46a1641c88c7e437cd0"
+                    ),
+                },
+                "Y": {
+                    "shape": (12_535, 3),
+                    "dtype": "int64",
+                    "raw_array_sha256": (
+                        "sha256:c850130862e90ebf38e16811f7fecfd358c89bcce768d5ac56b2ce7ddee231c0"
+                    ),
+                },
+                "S": {
+                    "shape": (12_535,),
+                    "dtype": "<U10",
+                    "raw_array_sha256": (
+                        "sha256:b4f68697fc2c35bd8c00754068c2822ba806c73ba08d78d2b58f6120936f31fc"
+                    ),
+                },
+                "T": {
+                    "shape": (12_535,),
+                    "dtype": "<U56",
+                    "raw_array_sha256": (
+                        "sha256:39cc51a208d00e7b0afa8e6b4ee6a14f6430ee991465a8eb4f44b38c91711056"
+                    ),
+                },
+            },
+            "effective_group_counts": {"train": 11_143, "validation": 1_392},
+            "capacity_selection_data_access": {
+                "cached_npz_read_only": True,
+                "png_reads": 0,
+                "action_program_reads": 0,
+                "fresh_cohort_reads": 0,
+            },
+            "generator_history_limitation": (
+                "cache_generator_was_exploratory_and_not_precommitted_write_once"
+            ),
+        },
+        "estimator_protocol": {
+            "classifier": "sklearn.ensemble.ExtraTreesClassifier",
+            "class_weight": "balanced_fit_on_training_labels_only",
+            "max_features": "sqrt",
+            "min_samples_leaf": 2,
+            "n_jobs": 1,
+            "random_seeds": FIXED_CLASSIFIER_SEEDS,
+            "scikit_learn": "1.8.0",
+            "numpy": "2.4.4",
+            "source_addresses": {
+                "sklearn.base": (
+                    "sha256:10992a4472940aa33f499e3bfc2477c2fe82509963907127fbd71ce3f7380ec6"
+                ),
+                "sklearn.ensemble._forest": (
+                    "sha256:c1e8d4ce4036fda18b8033f7d7892ec9b8534f0e5663cfa57e5455ca404c891c"
+                ),
+                "sklearn.tree._classes": (
+                    "sha256:5494c9f6821d092a207a5529a0a57b47c2a249f92cafa8a52dd53b452abaaf63"
+                ),
+                "sklearn.tree._tree": (
+                    "sha256:9e011f8940abbf61c81b12991ee31887c05b98fe3787a180c884455b0e221365"
+                ),
+            },
+        },
+        "selection_rule": (
+            "first candidate in the exact disclosed tested sequence meeting both "
+            "unchanged engineering gates and the unchanged model byte cap"
+        ),
+        "candidate_tree_count_order": (16, 32, 48, 64, 96, 128, 192, 256),
+        "candidate_rows": (
+            {
+                "n_estimators": 16,
+                "direct_pair_joint_accuracy": 0.7600574712643678,
+                "decoded_straight_accuracy": 0.7837643678160919,
+                "decoded_arc_accuracy": 0.8469827586206896,
+                "catalog_known_truth_balanced_accuracy": 0.7118589743589744,
+                "catalog_three_class_accuracy": 0.9001436781609196,
+                "direct_pair_total_node_count": 130_264,
+                "catalog_three_class_total_node_count": 69_320,
+                "estimators_only_serialized_bytes": 48_842_341,
+                "model_bundle_serialized_bytes": 48_850_411,
+                "within_model_cap": True,
+                "direct_pair_passed": False,
+                "catalog_three_class_passed": True,
+                "selected": False,
+            },
+            {
+                "n_estimators": 32,
+                "direct_pair_joint_accuracy": 0.7801724137931034,
+                "decoded_straight_accuracy": 0.7995689655172413,
+                "decoded_arc_accuracy": 0.8663793103448276,
+                "catalog_known_truth_balanced_accuracy": 0.7385489510489511,
+                "catalog_three_class_accuracy": 0.9166666666666666,
+                "direct_pair_total_node_count": 261_776,
+                "catalog_three_class_total_node_count": 136_500,
+                "estimators_only_serialized_bytes": 97_903_781,
+                "model_bundle_serialized_bytes": 97_911_851,
+                "within_model_cap": True,
+                "direct_pair_passed": True,
+                "catalog_three_class_passed": True,
+                "selected": True,
+            },
+            {
+                "n_estimators": 48,
+                "direct_pair_joint_accuracy": 0.7880747126436781,
+                "decoded_straight_accuracy": 0.805316091954023,
+                "decoded_arc_accuracy": 0.8706896551724138,
+                "catalog_known_truth_balanced_accuracy": 0.7346445221445221,
+                "catalog_three_class_accuracy": 0.9181034482758621,
+                "direct_pair_total_node_count": 392_960,
+                "catalog_three_class_total_node_count": 204_082,
+                "estimators_only_serialized_bytes": 146_893_013,
+                "model_bundle_serialized_bytes": 146_901_083,
+                "within_model_cap": True,
+                "direct_pair_passed": True,
+                "catalog_three_class_passed": True,
+                "selected": False,
+            },
+            {
+                "n_estimators": 64,
+                "direct_pair_joint_accuracy": 0.8038793103448276,
+                "decoded_straight_accuracy": 0.8225574712643678,
+                "decoded_arc_accuracy": 0.8793103448275862,
+                "catalog_known_truth_balanced_accuracy": 0.7212703962703964,
+                "catalog_three_class_accuracy": 0.915948275862069,
+                "direct_pair_total_node_count": 523_402,
+                "catalog_three_class_total_node_count": 272_314,
+                "estimators_only_serialized_bytes": 195_696_069,
+                "model_bundle_serialized_bytes": 195_704_139,
+                "within_model_cap": True,
+                "direct_pair_passed": True,
+                "catalog_three_class_passed": True,
+                "selected": False,
+            },
+            {
+                "n_estimators": 96,
+                "direct_pair_joint_accuracy": 0.819683908045977,
+                "decoded_straight_accuracy": 0.8347701149425287,
+                "decoded_arc_accuracy": 0.8922413793103449,
+                "catalog_known_truth_balanced_accuracy": 0.738490675990676,
+                "catalog_three_class_accuracy": 0.9195402298850575,
+                "direct_pair_total_node_count": 784_480,
+                "catalog_three_class_total_node_count": 408_474,
+                "estimators_only_serialized_bytes": 293_339_061,
+                "model_bundle_serialized_bytes": 293_347_131,
+                "within_model_cap": True,
+                "direct_pair_passed": True,
+                "catalog_three_class_passed": True,
+                "selected": False,
+            },
+            {
+                "n_estimators": 128,
+                "direct_pair_joint_accuracy": 0.826867816091954,
+                "decoded_straight_accuracy": 0.8433908045977011,
+                "decoded_arc_accuracy": 0.896551724137931,
+                "catalog_known_truth_balanced_accuracy": 0.738490675990676,
+                "catalog_three_class_accuracy": 0.9195402298850575,
+                "direct_pair_total_node_count": 1_044_820,
+                "catalog_three_class_total_node_count": 542_838,
+                "estimators_only_serialized_bytes": 390_581_941,
+                "model_bundle_serialized_bytes": 390_590_011,
+                "within_model_cap": True,
+                "direct_pair_passed": True,
+                "catalog_three_class_passed": True,
+                "selected": False,
+            },
+            {
+                "n_estimators": 192,
+                "direct_pair_joint_accuracy": 0.834051724137931,
+                "decoded_straight_accuracy": 0.8512931034482759,
+                "decoded_arc_accuracy": 0.8972701149425287,
+                "catalog_known_truth_balanced_accuracy": 0.7441724941724941,
+                "catalog_three_class_accuracy": 0.9216954022988506,
+                "direct_pair_total_node_count": 1_563_876,
+                "catalog_three_class_total_node_count": 814_946,
+                "estimators_only_serialized_bytes": 584_832_469,
+                "model_bundle_serialized_bytes": 584_840_539,
+                "within_model_cap": False,
+                "direct_pair_passed": True,
+                "catalog_three_class_passed": True,
+                "selected": False,
+            },
+            {
+                "n_estimators": 256,
+                "direct_pair_joint_accuracy": 0.8326149425287356,
+                "decoded_straight_accuracy": 0.8484195402298851,
+                "decoded_arc_accuracy": 0.8958333333333334,
+                "catalog_known_truth_balanced_accuracy": 0.757604895104895,
+                "catalog_three_class_accuracy": 0.9238505747126436,
+                "direct_pair_total_node_count": 2_086_910,
+                "catalog_three_class_total_node_count": 1_083_066,
+                "estimators_only_serialized_bytes": 780_036_839,
+                "model_bundle_serialized_bytes": 780_044_909,
+                "within_model_cap": False,
+                "direct_pair_passed": True,
+                "catalog_three_class_passed": True,
+                "selected": False,
+            },
+        ),
+        "prefix_equivalence_replay": {
+            "tested_tree_counts": (16, 32),
+            "separate_fit_tree_states_equal_prefix": True,
+            "separate_fit_validation_probabilities_byte_equal_prefix": True,
+            "probability_raw_sha256": {
+                "16": {
+                    "direct_pair": (
+                        "sha256:2417a298b57476da1cde0c7d594c5fdd2abd34c78b928712b664d0998ef310e8"
+                    ),
+                    "catalog_three_class": (
+                        "sha256:3bc1396ac2cab48aec3f87ca002579c14cc0d55d04faec350bcb16adac89f745"
+                    ),
+                },
+                "32": {
+                    "direct_pair": (
+                        "sha256:307ab73c09481c30ca8d174f4ffb84e0591680e6a9a3947815615c90239e0296"
+                    ),
+                    "catalog_three_class": (
+                        "sha256:0cfd53b434dcb4d99d8a7f3a4aff18d1b1d269c3b234d64805893301b926bf3c"
+                    ),
+                },
+            },
+        },
+        "known_selection_and_reproduction_fit_history": {
+            "capacity_selection_head_fit_count": 2,
+            "capacity_selection_counts": {
+                "direct_pair_256": 1,
+                "catalog_three_class_256": 1,
+            },
+            "implementation_reproduction_head_fit_count": 10,
+            "implementation_reproduction_counts": {
+                "direct_pair_16": 1, "catalog_three_class_16": 1,
+                "direct_pair_32": 2, "catalog_three_class_32": 2,
+                "direct_pair_256": 2, "catalog_three_class_256": 2,
+            },
+            "total_head_fit_count": 12,
+            "regression_and_independent_audit_replays_excluded": True,
+            "purpose": "selection_then_metric_size_and_prefix_equivalence_reproduction",
+        },
+        "selected_n_estimators": 32,
+        "v2_runtime_capacity_search": False,
+        "unchanged_engineering_thresholds": {
+            "direct_pair_joint_accuracy": 0.78,
+            "catalog_known_truth_balanced_accuracy": 0.70,
+        },
+        "unchanged_model_max_bytes": MODEL_MAX_BYTES,
     }
 )
 
@@ -462,7 +797,7 @@ def _expected_estimator_params(seed: int) -> dict[str, Any]:
         "max_leaf_nodes": None, "max_samples": None, "min_impurity_decrease": 0.0,
         "min_samples_leaf": 2, "min_samples_split": 2,
         "min_weight_fraction_leaf": 0.0, "monotonic_cst": None,
-        "n_estimators": 256, "n_jobs": 1, "oob_score": False,
+        "n_estimators": 32, "n_jobs": 1, "oob_score": False,
         "random_state": seed, "verbose": 0, "warm_start": False,
     }
 
@@ -485,7 +820,7 @@ def _validate_fitted_estimators(estimators: Mapping[str, Any]) -> None:
             or tuple(int(value) for value in getattr(estimator, "classes_", ())) != classes
             or getattr(estimator, "n_features_in_", None) != 112
             or type(getattr(estimator, "estimators_", None)) is not list
-            or len(estimator.estimators_) != 256
+            or len(estimator.estimators_) != 32
             or any(
                 type(tree) is not ExtraTreeClassifier
                 or getattr(tree, "n_features_in_", None) != 112
@@ -508,6 +843,28 @@ def _model_structure(estimators: Mapping[str, Any], serialized_bytes: int) -> di
             }
             for name, estimator in sorted(estimators.items())
         },
+    }
+
+
+def _build_model_bundle(
+    estimators: Mapping[str, Any], *, precommit_record_digest: str
+) -> dict[str, Any]:
+    """Build the exact production pickle body around authenticated heads."""
+
+    _validate_fitted_estimators(estimators)
+    if not _ADDRESS.fullmatch(precommit_record_digest):
+        raise SkeletonGraphDevelopmentError("model precommit address differs")
+    return {
+        "catalog_class_order": CATALOG_CLASS_ORDER,
+        "config_digest": config_digest(),
+        "estimators": estimators,
+        "feature_names": FEATURE_NAMES,
+        "observed_pair_class_order": OBSERVED_TRAIN_PAIR_CLASS_ORDER,
+        "precommit_record_digest": precommit_record_digest,
+        "runtime": runtime_fingerprint(),
+        "schema": MODEL_SCHEMA,
+        "source_sha256": source_sha256(),
+        "valid_pair_class_order": VALID_PAIR_CLASS_ORDER,
     }
 
 
@@ -725,6 +1082,7 @@ def config_digest() -> str:
     return "sha256:" + canonical_digest(
         _plain({
             "adaptive_variant_ledger": ADAPTIVE_VARIANT_LEDGER,
+            "capacity_selection_ledger": CAPACITY_SELECTION_LEDGER,
             "catalog_class_order": CATALOG_CLASS_ORDER,
             "carrier_signature_cv": CARRIER_SIGNATURE_CV_DIAGNOSTIC,
             "claim_scope": CLAIM_SCOPE,
@@ -906,6 +1264,120 @@ def _write_record_once(
     )
 
 
+def _verify_prior_failed_capacity_attempt() -> dict[str, Any]:
+    """Replay the inode-bound v1 failure state without writing to that root."""
+
+    root = Path(PRIOR_FAILED_OUTPUT_ROOT)
+    try:
+        descriptor = _open_nonsymlink_directory(root)
+    except OSError as exc:
+        raise SkeletonGraphDevelopmentError(
+            f"prior failed v1 root is unavailable or symlinked: {exc}"
+        ) from exc
+    expected_identity = dict(PRIOR_FAILED_OUTPUT_ROOT_IDENTITY)
+    try:
+        if _directory_identity(os.fstat(descriptor)) != expected_identity:
+            raise SkeletonGraphDevelopmentError("prior failed v1 root identity differs")
+        if sorted(os.listdir(descriptor)) != ["precommit.json"]:
+            raise SkeletonGraphDevelopmentError(
+                "prior failed v1 root has post-precommit artifacts"
+            )
+        flags = (
+            os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
+        precommit_descriptor = os.open("precommit.json", flags, dir_fd=descriptor)
+        try:
+            before = os.fstat(precommit_descriptor)
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or before.st_size <= 0
+                or before.st_size > 4 * 1024 * 1024
+            ):
+                raise SkeletonGraphDevelopmentError(
+                    "prior failed v1 precommit is not a bounded regular file"
+                )
+            chunks: list[bytes] = []
+            total = 0
+            while True:
+                chunk = os.read(
+                    precommit_descriptor,
+                    min(1 << 20, 4 * 1024 * 1024 + 1 - total),
+                )
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                total += len(chunk)
+                if total > 4 * 1024 * 1024:
+                    raise SkeletonGraphDevelopmentError(
+                        "prior failed v1 precommit exceeds its byte cap"
+                    )
+            after = os.fstat(precommit_descriptor)
+        finally:
+            os.close(precommit_descriptor)
+        fingerprint = lambda value: (
+            value.st_dev, value.st_ino, value.st_mode, value.st_size,
+            value.st_mtime_ns, value.st_ctime_ns,
+        )
+        if fingerprint(before) != fingerprint(after):
+            raise SkeletonGraphDevelopmentError(
+                "prior failed v1 precommit changed during verification"
+            )
+        raw = b"".join(chunks)
+        if len(raw) != before.st_size or _address(raw) != PRIOR_FAILED_PRECOMMIT_FILE_SHA256:
+            raise SkeletonGraphDevelopmentError("prior failed v1 precommit address differs")
+        try:
+            value = json.loads(raw)
+        except (UnicodeError, json.JSONDecodeError, RecursionError) as exc:
+            raise SkeletonGraphDevelopmentError(
+                f"cannot decode prior failed v1 precommit: {exc}"
+            ) from exc
+        body = dict(value) if type(value) is dict else {}
+        record_digest = body.pop("record_digest", None)
+        expected_outputs = {
+            "features": str(root / "features.json"),
+            "model": str(root / "model.pkl"),
+            "predictions": str(root / "predictions.json"),
+            "replay": str(root / "replay.json"),
+            "result": str(root / "result.json"),
+        }
+        if (
+            type(value) is not dict
+            or raw != canonical_json(value) + b"\n"
+            or value.get("schema") != PRIOR_FAILED_PRECOMMIT_SCHEMA
+            or record_digest != PRIOR_FAILED_PRECOMMIT_RECORD_DIGEST
+            or record_digest != "sha256:" + canonical_digest(body)
+            or value.get("source_sha256") != BASE_PROTOCOL_SOURCE_SHA256
+            or value.get("output_root") != PRIOR_FAILED_OUTPUT_ROOT
+            or value.get("output_root_identity") != expected_identity
+            or value.get("intended_outputs") != expected_outputs
+        ):
+            raise SkeletonGraphDevelopmentError("prior failed v1 precommit policy differs")
+        if _directory_identity(os.fstat(descriptor)) != expected_identity:
+            raise SkeletonGraphDevelopmentError(
+                "prior failed v1 root changed during verification"
+            )
+        if sorted(os.listdir(descriptor)) != ["precommit.json"]:
+            raise SkeletonGraphDevelopmentError(
+                "prior failed v1 root changed during verification"
+            )
+    finally:
+        os.close(descriptor)
+    return {
+        "base_protocol_commit": BASE_PROTOCOL_COMMIT,
+        "base_protocol_source_sha256": BASE_PROTOCOL_SOURCE_SHA256,
+        "precommit_schema": PRIOR_FAILED_PRECOMMIT_SCHEMA,
+        "precommit_record_digest": PRIOR_FAILED_PRECOMMIT_RECORD_DIGEST,
+        "precommit_file_sha256": PRIOR_FAILED_PRECOMMIT_FILE_SHA256,
+        "output_root": PRIOR_FAILED_OUTPUT_ROOT,
+        "output_root_identity": expected_identity,
+        "durable_file_names": ["precommit.json"],
+        "absent_intended_output_names": list(PRIOR_FAILED_INTENDED_OUTPUT_NAMES),
+        "durable_output_count_beyond_precommit": 0,
+        "verified_read_only": True,
+    }
+
+
 def _task_from_panel_id(panel_id: str) -> str:
     match = _PANEL_ID.fullmatch(panel_id)
     if match is None:
@@ -1064,6 +1536,7 @@ def create_development_precommit(
     label_authority_audit = _verify_committed_label_authority_audit(
         repository_root.resolve(strict=True)
     )
+    prior_failed_capacity_attempt = _verify_prior_failed_capacity_attempt()
     deadline.check()
     outputs = {
         "model": str(model_path.resolve()),
@@ -1073,6 +1546,15 @@ def create_development_precommit(
         "replay": str(replay_path.resolve()),
     }
     output_root = output_path.parent.absolute()
+    prior_root = Path(PRIOR_FAILED_OUTPUT_ROOT).absolute()
+    if (
+        output_root == prior_root
+        or output_root.is_relative_to(prior_root)
+        or prior_root.is_relative_to(output_root)
+    ):
+        raise SkeletonGraphDevelopmentError(
+            "v2 capacity repair requires a fresh disjoint output root"
+        )
     output_root.mkdir(parents=True, exist_ok=True)
     output_root_descriptor = _open_nonsymlink_directory(output_root)
     output_root_identity = _directory_identity(os.fstat(output_root_descriptor))
@@ -1088,6 +1570,7 @@ def create_development_precommit(
     body = {
         "adaptive_variant_ledger": ADAPTIVE_VARIANT_LEDGER,
         "authorized_input": "already_exposed_decontaminated_development_only",
+        "capacity_selection_ledger": CAPACITY_SELECTION_LEDGER,
         "carrier_signature_cv_diagnostic": CARRIER_SIGNATURE_CV_DIAGNOSTIC,
         "claim_scope": CLAIM_SCOPE,
         "config_digest": config_digest(),
@@ -1106,6 +1589,7 @@ def create_development_precommit(
         "label_authority_audit": label_authority_audit,
         "maximum_seconds": float(maximum_seconds),
         "pixels_read_by_precommit": 0,
+        "prior_failed_capacity_attempt": prior_failed_capacity_attempt,
         "output_root": str(resolved_output_root),
         "output_root_identity": output_root_identity,
         "promotion": False,
@@ -1153,10 +1637,13 @@ def _load_development_precommit(
         or value.get("forbidden_inputs") != expected_forbidden
         or value.get("protocol") != _plain(PROTOCOL)
         or value.get("adaptive_variant_ledger") != _plain(ADAPTIVE_VARIANT_LEDGER)
+        or value.get("capacity_selection_ledger") != _plain(CAPACITY_SELECTION_LEDGER)
         or value.get("carrier_signature_cv_diagnostic") != _plain(CARRIER_SIGNATURE_CV_DIAGNOSTIC)
         or value.get("engineering_thresholds") != _plain(ENGINEERING_THRESHOLDS)
         or value.get("label_authority_audit")
         != _verify_committed_label_authority_audit(Path(value["repository_root"]))
+        or value.get("prior_failed_capacity_attempt")
+        != _verify_prior_failed_capacity_attempt()
         or value.get("fit_inventory_audit")
         != {
             "cross_cohort_png_digest_overlap": 0,
@@ -1175,9 +1662,13 @@ def _load_development_precommit(
         raise SkeletonGraphDevelopmentError("development output inventory differs")
     output_paths = [Path(item) for item in outputs.values()]
     output_root = Path(str(value.get("output_root", "")))
+    prior_root = Path(PRIOR_FAILED_OUTPUT_ROOT)
     identity = value.get("output_root_identity")
     if (
         not output_root.is_absolute()
+        or output_root == prior_root
+        or output_root.is_relative_to(prior_root)
+        or prior_root.is_relative_to(output_root)
         or type(identity) is not dict
         or set(identity) != {"st_dev", "st_ino", "st_mode"}
         or any(not item.is_absolute() for item in output_paths)
@@ -1633,18 +2124,9 @@ def train_development(
         prediction_artifact = _build_predictions(
             validation_groups, pair_probability, catalog_probability
         )
-        model_bundle = {
-            "catalog_class_order": CATALOG_CLASS_ORDER,
-            "config_digest": config_digest(),
-            "estimators": estimators,
-            "feature_names": FEATURE_NAMES,
-            "observed_pair_class_order": OBSERVED_TRAIN_PAIR_CLASS_ORDER,
-            "precommit_record_digest": expected_precommit_record_digest,
-            "runtime": runtime_fingerprint(),
-            "schema": MODEL_SCHEMA,
-            "source_sha256": source_sha256(),
-            "valid_pair_class_order": VALID_PAIR_CLASS_ORDER,
-        }
+        model_bundle = _build_model_bundle(
+            estimators, precommit_record_digest=expected_precommit_record_digest
+        )
         model_bytes = pickle.dumps(model_bundle, protocol=5)
         feature_bytes = canonical_json(feature_artifact) + b"\n"
         prediction_bytes = canonical_json(prediction_artifact) + b"\n"
@@ -1659,6 +2141,7 @@ def train_development(
             {
                 "adaptive_evidence": True,
                 "benchmark_promotion": False,
+                "capacity_selection_ledger": CAPACITY_SELECTION_LEDGER,
                 "carrier_signature_cv_diagnostic": CARRIER_SIGNATURE_CV_DIAGNOSTIC,
                 "claim_scope": CLAIM_SCOPE,
                 "config_digest": config_digest(),
@@ -1675,6 +2158,9 @@ def train_development(
                 "prediction_artifact_record_digest": prediction_artifact["record_digest"],
                 "promoted_heads": promoted_heads,
                 "precommit_record_digest": expected_precommit_record_digest,
+                "prior_failed_capacity_attempt": precommit[
+                    "prior_failed_capacity_attempt"
+                ],
                 "promotion_requires": PROMOTION_REQUIRES,
                 "runtime": runtime_fingerprint(),
                 "schema": SCHEMA_RESULT,
@@ -1744,6 +2230,10 @@ def _load_result_and_model(
         or result.get("precommit_record_digest") != precommit["record_digest"]
         or result.get("source_sha256") != source_sha256()
         or result.get("config_digest") != config_digest()
+        or result.get("capacity_selection_ledger")
+        != _plain(CAPACITY_SELECTION_LEDGER)
+        or result.get("prior_failed_capacity_attempt")
+        != precommit.get("prior_failed_capacity_attempt")
         or result.get("runtime") != runtime_fingerprint()
         or result.get("benchmark_promotion") is not False
         or result.get("claim_scope") != CLAIM_SCOPE
