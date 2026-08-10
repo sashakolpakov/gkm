@@ -57,6 +57,22 @@ def test_preprocessing_and_content_keys_ignore_path_identity() -> None:
     assert len({command.d4_transform(ink, index).tobytes() for index in range(8)}) >= 4
 
 
+def test_logical_panel_id_maps_to_release_hd_images_path(tmp_path: Path) -> None:
+    dataset_root = tmp_path / "ShapeBongard_V2"
+    physical = dataset_root / "hd/images/hd_synthetic_task_0000/1/0.png"
+    physical.parent.mkdir(parents=True)
+    physical.write_bytes(_png_bytes())
+    decoy = dataset_root / "hd/hd_synthetic_task_0000/1/0.png"
+    decoy.parent.mkdir(parents=True)
+    decoy.write_bytes(b"not the release path")
+
+    resolved = command._panel_path(
+        dataset_root, "hd/hd_synthetic_task_0000/1/0.png"
+    )
+    assert resolved == physical.resolve()
+    assert resolved != decoy.resolve()
+
+
 def test_duplicate_digest_groups_are_path_independent_and_fail_on_leakage() -> None:
     raw = _png_bytes()
     rows = [

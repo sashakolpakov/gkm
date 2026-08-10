@@ -442,7 +442,7 @@ def _panel_path(dataset_root: Path, panel_id: str) -> Path:
         or any(part in {"", ".", ".."} for part in parts)
     ):
         raise ActionCountCNNFitError(f"invalid HD panel ID: {panel_id!r}")
-    candidate = dataset_root.joinpath(*parts)
+    candidate = dataset_root.joinpath(parts[0], "images", *parts[1:])
     try:
         resolved = candidate.resolve(strict=True)
         root = dataset_root.resolve(strict=True)
