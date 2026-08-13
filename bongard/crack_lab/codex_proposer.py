@@ -56,6 +56,7 @@ MAX_AUTH_FILE_BYTES = 1_000_000
 MAX_CODEX_LAUNCHER_BYTES = 20_000_000
 MAX_NAMED_IMAGES = 32
 PROCESS_GROUP_GRACE_SECONDS = 2
+SEMANTIC_INK_THRESHOLD = 128
 
 WORKSPACE_ROOT = os.path.realpath(
     os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -629,7 +630,10 @@ def _semantic_panel_set_digest_from_snapshot(
     try:
         import numpy as np
         from PIL import Image
-        import semantic_replay
+        try:
+            from . import semantic_replay
+        except ImportError:  # Backward-compatible direct ``crack_lab`` import.
+            import semantic_replay
     except (ImportError, OSError) as exc:
         raise CodexProposerFailure(
             "cannot load canonical panel digest dependencies") from exc
@@ -641,23 +645,40 @@ def _semantic_panel_set_digest_from_snapshot(
                     "Codex semantic panel order is non-canonical")
             side, raw_index = name[:-4].split("_")
             with Image.open(io.BytesIO(data)) as encoded:
-                if encoded.format != "PNG" or encoded.mode != "L" \
+                if encoded.format != "PNG" \
                         or getattr(encoded, "n_frames", 1) != 1:
                     raise CodexProposerFailure(
-                        f"Codex panel {name!r} is not a canonical grayscale PNG")
+                        f"Codex panel {name!r} is not a canonical PNG")
                 width, height = encoded.size
                 if width <= 0 or height <= 0 \
                         or width * height > semantic_replay.MAX_PANEL_ELEMENTS:
                     raise CodexProposerFailure(
                         f"Codex panel {name!r} has an invalid decoded size")
                 encoded.load()
-                presentation = np.array(encoded, dtype=np.uint8, copy=True)
-            if presentation.ndim != 2 \
-                    or not bool(np.isin(presentation, (0, 255)).all()):
+                if encoded.mode == "L":
+                    presentation = np.array(
+                        encoded, dtype=np.uint8, copy=True)
+                elif encoded.mode == "RGB":
+                    rgb = np.array(encoded, dtype=np.uint8, copy=True)
+                    if rgb.ndim != 3 or rgb.shape[2] != 3 \
+                            or not bool((rgb[..., 0] == rgb[..., 1]).all()) \
+                            or not bool((rgb[..., 1] == rgb[..., 2]).all()):
+                        raise CodexProposerFailure(
+                            f"Codex panel {name!r} has non-grayscale RGB pixels")
+                    presentation = rgb[..., 0]
+                else:
+                    raise CodexProposerFailure(
+                        f"Codex panel {name!r} is not grayscale L/RGB")
+            if presentation.ndim != 2:
                 raise CodexProposerFailure(
-                    f"Codex panel {name!r} is not binary black-on-white")
+                    f"Codex panel {name!r} is not a grayscale raster")
+            # The released ShapeBongard_V2 PNGs are lossless grayscale RGB
+            # with antialiased edge pixels.  Codex receives those exact source
+            # bytes; this threshold is only the deterministic derived ink
+            # witness used by the historical semantic panel-set digest.
             panel = np.ascontiguousarray(
-                (presentation == 0).astype(np.uint8, copy=False))
+                (presentation < SEMANTIC_INK_THRESHOLD).astype(
+                    np.uint8, copy=False))
             records.append(semantic_replay.PanelRecord.from_array(
                 panel, side, int(raw_index)))
         if len(records) != len(_PANEL_NAMES):
@@ -1567,9 +1588,17 @@ def run_codex_structured(
             schema_path, schema_digest)
         if returncode != 0:
             try:
-                detail = stderr.decode("utf-8", errors="strict").strip()[-800:]
+                stderr_detail = stderr.decode(
+                    "utf-8", errors="strict").strip()[-800:]
             except UnicodeError:
-                detail = "non-UTF-8 diagnostic output"
+                stderr_detail = "non-UTF-8 diagnostic output"
+            try:
+                stdout_detail = stdout.decode(
+                    "utf-8", errors="strict").strip()[-1600:]
+            except UnicodeError:
+                stdout_detail = "non-UTF-8 JSONL diagnostic output"
+            detail = " | ".join(
+                part for part in (stderr_detail, stdout_detail) if part)
             raise CodexProposerFailure(
                 f"Codex exited {returncode}: {detail or 'no diagnostic'}")
         resolved_after, launcher_identity_after = _codex_launcher_identity(

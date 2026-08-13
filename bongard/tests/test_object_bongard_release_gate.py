@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 from pathlib import Path
 from typing import Any, Mapping
@@ -33,7 +33,10 @@ from bongard.object_bongard_release_gate import (
     release_object_bongard_support_panel,
     verify_prepared_object_bongard_release,
 )
-from bongard.official_panel_archive import OfficialPanelArchive
+from bongard.official_panel_archive import (
+    OfficialPanelArchive,
+    OfficialPanelArchiveError,
+)
 from bongard.release import OfficialReleaseDescriptor
 
 
@@ -324,7 +327,9 @@ def test_execution_precommit_accepts_the_strict_drill_plan_type(
     )
 
 
-def test_query_is_closed_until_exact_freeze_and_commit_are_durable(tmp_path: Path) -> None:
+def test_query_rejects_counterfeit_protocol_pair_before_archive_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
     fixture = _fixture(tmp_path)
     prepared = prepare_object_bongard_release(
         store=fixture.store, plan=fixture.plan, precommit=fixture.precommit,
@@ -332,32 +337,26 @@ def test_query_is_closed_until_exact_freeze_and_commit_are_durable(tmp_path: Pat
     )
     task = fixture.plan.tasks[0]
     freeze = _freeze(task.task_id, task.record_digest, fixture.precommit.record_digest)
-    with pytest.raises(ObjectBongardReleaseGateError, match="payload differs"):
-        release_object_bongard_query_panel(
-            prepared=prepared, archive=fixture.archive,
-            panel_id=task.side_0_query_panel_id,
-            task_freeze=freeze, task_commit=freeze,  # type: ignore[arg-type]
-            task_freeze_receipt=prepared.plan_receipt,
-            task_commit_receipt=prepared.precommit_receipt,
-        )
     freeze_receipt = persist_object_bongard_task_freeze(store=fixture.store, freeze=freeze)
     commit = _commit(freeze, freeze_receipt.payload_digest, freeze_receipt.record_digest)
     commit_receipt = persist_object_bongard_task_commit(store=fixture.store, commit=commit)
-    released, receipt = release_object_bongard_query_panel(
-        prepared=prepared, archive=fixture.archive,
-        panel_id=task.side_0_query_panel_id,
-        task_freeze=freeze, task_commit=commit,
-        task_freeze_receipt=freeze_receipt, task_commit_receipt=commit_receipt,
-    )
-    assert released.panel_id == task.side_0_query_panel_id
-    assert receipt.object_kind == "released-query-panel"
-    with pytest.raises(ObjectBongardReleaseGateError, match="sealed query"):
+
+    reads = 0
+
+    def forbidden_read(*args: object, **kwargs: object) -> object:
+        nonlocal reads
+        reads += 1
+        raise AssertionError("counterfeit decision reached archive.read_panel")
+
+    monkeypatch.setattr(OfficialPanelArchive, "read_panel", forbidden_read)
+    with pytest.raises(ObjectBongardReleaseGateError, match="exact production pair"):
         release_object_bongard_query_panel(
             prepared=prepared, archive=fixture.archive,
-            panel_id=task.side_0_support_panel_ids[0],
+            panel_id=task.side_0_query_panel_id,
             task_freeze=freeze, task_commit=commit,
             task_freeze_receipt=freeze_receipt, task_commit_receipt=commit_receipt,
         )
+    assert reads == 0
 
 
 def test_write_once_store_and_cold_replay_reject_tamper(tmp_path: Path) -> None:
@@ -406,3 +405,190 @@ def test_exact_unused_and_nonvisual_precommit_fail_closed(tmp_path: Path) -> Non
             runtime_source_bindings={"runner_source": _address({"runner": 1})},
             configuration={"pixel_bytes": "forbidden"}, exposure_observed_at="2026-08-08T12:00:00Z",
         )
+
+
+def test_release_gates_reject_virtual_store_and_archive_before_any_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _fixture(tmp_path)
+    prepared = prepare_object_bongard_release(
+        store=fixture.store,
+        plan=fixture.plan,
+        precommit=fixture.precommit,
+        predecessor=fixture.predecessor,
+    )
+    task = fixture.plan.tasks[0]
+
+    class VirtualStore(ObjectBongardReleaseStore):
+        verify_calls = 0
+
+        def verify(self, *args: object, **kwargs: object) -> Mapping[str, Any]:
+            self.verify_calls += 1
+            raise AssertionError("virtual store verification ran")
+
+    virtual_store = VirtualStore(fixture.store.root)
+    virtual_prepared = replace(prepared, store=virtual_store)
+    archive_reads = 0
+
+    def forbidden_archive_read(*args: object, **kwargs: object) -> object:
+        nonlocal archive_reads
+        archive_reads += 1
+        raise AssertionError("archive read ran")
+
+    monkeypatch.setattr(OfficialPanelArchive, "read_panel", forbidden_archive_read)
+    with pytest.raises(TypeError, match="exact ObjectBongardReleaseStore"):
+        release_object_bongard_support_panel(
+            prepared=virtual_prepared,
+            archive=fixture.archive,
+            panel_id=task.side_0_support_panel_ids[0],
+        )
+    with pytest.raises(TypeError, match="exact ObjectBongardReleaseStore"):
+        release_object_bongard_query_panel(
+            prepared=virtual_prepared,
+            archive=fixture.archive,
+            panel_id=task.side_0_query_panel_id,
+            task_freeze=object(),  # type: ignore[arg-type]
+            task_commit=object(),  # type: ignore[arg-type]
+            task_freeze_receipt=object(),  # type: ignore[arg-type]
+            task_commit_receipt=object(),  # type: ignore[arg-type]
+        )
+    assert virtual_store.verify_calls == 0
+    assert archive_reads == 0
+
+    class VirtualArchive(OfficialPanelArchive):
+        read_calls = 0
+
+        def read_panel(self, panel_id: str) -> object:
+            self.read_calls += 1
+            raise AssertionError("virtual archive read ran")
+
+    virtual_archive = object.__new__(VirtualArchive)
+    for field_name in OfficialPanelArchive.__slots__:
+        object.__setattr__(
+            virtual_archive,
+            field_name,
+            getattr(fixture.archive, field_name),
+        )
+    OfficialPanelArchive.__post_init__(virtual_archive)
+    store_verifies = 0
+    original_verify = ObjectBongardReleaseStore.verify
+
+    def tracked_store_verify(
+        store: ObjectBongardReleaseStore,
+        *args: object,
+        **kwargs: object,
+    ) -> Mapping[str, Any]:
+        nonlocal store_verifies
+        store_verifies += 1
+        return original_verify(store, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(ObjectBongardReleaseStore, "verify", tracked_store_verify)
+    with pytest.raises(TypeError, match="exact OfficialPanelArchive"):
+        release_object_bongard_support_panel(
+            prepared=prepared,
+            archive=virtual_archive,
+            panel_id=task.side_0_support_panel_ids[0],
+        )
+    with pytest.raises(TypeError, match="exact OfficialPanelArchive"):
+        release_object_bongard_query_panel(
+            prepared=prepared,
+            archive=virtual_archive,
+            panel_id=task.side_0_query_panel_id,
+            task_freeze=object(),  # type: ignore[arg-type]
+            task_commit=object(),  # type: ignore[arg-type]
+            task_freeze_receipt=object(),  # type: ignore[arg-type]
+            task_commit_receipt=object(),  # type: ignore[arg-type]
+        )
+    assert virtual_archive.read_calls == 0
+    assert store_verifies == 0
+
+    exact_forged_archive = object.__new__(OfficialPanelArchive)
+    for field_name in OfficialPanelArchive.__slots__:
+        object.__setattr__(
+            exact_forged_archive,
+            field_name,
+            getattr(fixture.archive, field_name),
+        )
+    object.__setattr__(
+        exact_forged_archive,
+        "archive_digest",
+        "sha256:" + "f" * 64,
+    )
+    assert type(exact_forged_archive) is OfficialPanelArchive
+    with pytest.raises(
+        OfficialPanelArchiveError, match="official archive binding differs"
+    ):
+        release_object_bongard_support_panel(
+            prepared=prepared,
+            archive=exact_forged_archive,
+            panel_id=task.side_0_support_panel_ids[0],
+        )
+    assert archive_reads == 0
+
+
+def test_release_gates_reject_virtual_precommit_before_any_store_or_archive_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _fixture(tmp_path)
+    prepared = prepare_object_bongard_release(
+        store=fixture.store,
+        plan=fixture.plan,
+        precommit=fixture.precommit,
+        predecessor=fixture.predecessor,
+    )
+
+    class VirtualPrecommit(ObjectBongardExecutionPrecommit):
+        @property
+        def runtime_source_bindings(self) -> tuple[tuple[str, str], ...]:
+            return (("forged_binding", "sha256:" + "f" * 64),)
+
+    virtual_precommit = object.__new__(VirtualPrecommit)
+    for field_name in ObjectBongardExecutionPrecommit.__slots__:
+        if field_name != "runtime_source_bindings":
+            object.__setattr__(
+                virtual_precommit,
+                field_name,
+                getattr(prepared.precommit, field_name),
+            )
+    virtual_prepared = replace(prepared, precommit=virtual_precommit)
+    store_verifies = 0
+    archive_reads = 0
+    original_verify = ObjectBongardReleaseStore.verify
+
+    def tracked_store_verify(
+        store: ObjectBongardReleaseStore,
+        *args: object,
+        **kwargs: object,
+    ) -> Mapping[str, Any]:
+        nonlocal store_verifies
+        store_verifies += 1
+        return original_verify(store, *args, **kwargs)  # type: ignore[arg-type]
+
+    def forbidden_archive_read(*args: object, **kwargs: object) -> object:
+        nonlocal archive_reads
+        archive_reads += 1
+        raise AssertionError("archive read ran")
+
+    monkeypatch.setattr(ObjectBongardReleaseStore, "verify", tracked_store_verify)
+    monkeypatch.setattr(OfficialPanelArchive, "read_panel", forbidden_archive_read)
+    task = fixture.plan.tasks[0]
+    with pytest.raises(TypeError, match="exact ObjectBongardExecutionPrecommit"):
+        release_object_bongard_support_panel(
+            prepared=virtual_prepared,
+            archive=fixture.archive,
+            panel_id=task.side_0_support_panel_ids[0],
+        )
+    with pytest.raises(TypeError, match="exact ObjectBongardExecutionPrecommit"):
+        release_object_bongard_query_panel(
+            prepared=virtual_prepared,
+            archive=fixture.archive,
+            panel_id=task.side_0_query_panel_id,
+            task_freeze=object(),  # type: ignore[arg-type]
+            task_commit=object(),  # type: ignore[arg-type]
+            task_freeze_receipt=object(),  # type: ignore[arg-type]
+            task_commit_receipt=object(),  # type: ignore[arg-type]
+        )
+    assert store_verifies == 0
+    assert archive_reads == 0

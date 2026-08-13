@@ -20,6 +20,7 @@ _LOADED_SOURCE_SHA256 = capture_loaded_source(__name__, __file__)
 
 from dataclasses import dataclass, field
 import hashlib
+import importlib
 import json
 import os
 from pathlib import Path
@@ -29,7 +30,7 @@ import stat
 from typing import Any, Mapping, Protocol, Sequence, runtime_checkable
 
 from bongard.canonical import canonical_digest, canonical_json
-from bongard.exposure import ExposureLedger
+from bongard.exposure import ExposureEvent, ExposureLedger
 from bongard.object_bongard_batch import (
     ObjectBongardBatchPlan,
     ObjectBongardTaskPlan,
@@ -59,6 +60,29 @@ _CONFIG_KEY = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
 _FORBIDDEN_CONFIG_KEY = re.compile(r"(?:pixel|image|png|action|program|path|bytes)")
 _MAX_OBJECT_BYTES = 64 * 1024 * 1024
 
+_PRODUCTION_TASK_DECISION_TYPES = {
+    (
+        "bongard.object_scene_anchor_task_decision_custody",
+        "ObjectSceneAnchorTaskDecisionFreeze",
+        "ObjectSceneAnchorTaskDecisionCommit",
+    ): "object-scene-anchor",
+    (
+        "bongard.panel_feature_task_runner",
+        "PanelFeatureTaskFreeze",
+        "PanelFeatureTaskFreezeCommit",
+    ): "panel-feature",
+    (
+        "bongard.object_bongard_rubric_task_runner",
+        "ObjectBongardRubricTaskFreeze",
+        "ObjectBongardRubricTaskFreezeCommit",
+    ): "object-bongard-rubric",
+    (
+        "bongard.panel_program_official_task",
+        "PanelProgramOfficialTaskFreeze",
+        "PanelProgramOfficialTaskCommit",
+    ): "panel-program",
+}
+
 
 class ObjectBongardReleaseGateError(RuntimeError):
     """A precommit, durable record, exposure transition, or release is invalid."""
@@ -73,13 +97,13 @@ def _bytes_address(value: bytes) -> str:
 
 
 def _require_address(value: object, label: str) -> str:
-    if not isinstance(value, str) or _ADDRESS.fullmatch(value) is None:
+    if type(value) is not str or _ADDRESS.fullmatch(value) is None:
         raise ObjectBongardReleaseGateError(f"{label} must be a sha256: address")
     return value
 
 
 def _require_raw_digest(value: object, label: str) -> str:
-    if not isinstance(value, str) or _RAW_DIGEST.fullmatch(value) is None:
+    if type(value) is not str or _RAW_DIGEST.fullmatch(value) is None:
         raise ObjectBongardReleaseGateError(f"{label} must be a raw SHA-256 digest")
     return value
 
@@ -104,7 +128,7 @@ def _sorted_ids(values: Sequence[str], label: str) -> tuple[str, ...]:
         raise ObjectBongardReleaseGateError(f"{label} must be a sequence")
     result = tuple(values)
     if (
-        any(not isinstance(item, str) or not item for item in result)
+        any(type(item) is not str or not item for item in result)
         or result != tuple(sorted(set(result)))
     ):
         raise ObjectBongardReleaseGateError(f"{label} must be unique and sorted")
@@ -112,10 +136,10 @@ def _sorted_ids(values: Sequence[str], label: str) -> tuple[str, ...]:
 
 
 def _freeze_bindings(values: Mapping[str, str]) -> tuple[tuple[str, str], ...]:
-    if not isinstance(values, Mapping) or not values:
+    if type(values) is not dict or not values:
         raise ObjectBongardReleaseGateError("runtime source bindings must be nonempty")
     result = tuple(sorted(values.items()))
-    if any(_CONFIG_KEY.fullmatch(key) is None for key, _ in result):
+    if any(type(key) is not str or _CONFIG_KEY.fullmatch(key) is None for key, _ in result):
         raise ObjectBongardReleaseGateError("runtime source binding name is invalid")
     for key, value in result:
         _require_address(value, f"runtime source binding {key}")
@@ -125,18 +149,16 @@ def _freeze_bindings(values: Mapping[str, str]) -> tuple[tuple[str, str], ...]:
 def _freeze_configuration(
     values: Mapping[str, str | int | bool],
 ) -> tuple[tuple[str, str | int | bool], ...]:
-    if not isinstance(values, Mapping):
+    if type(values) is not dict:
         raise ObjectBongardReleaseGateError("configuration must be a mapping")
     result = tuple(sorted(values.items()))
     for key, value in result:
         if (
-            not isinstance(key, str)
+            type(key) is not str
             or _CONFIG_KEY.fullmatch(key) is None
             or _FORBIDDEN_CONFIG_KEY.search(key) is not None
-            or isinstance(value, float)
-            or value is None
-            or not isinstance(value, (str, int, bool))
-            or (isinstance(value, str) and (not value or "\x00" in value or len(value.encode()) > 512))
+            or type(value) not in (str, int, bool)
+            or (type(value) is str and (not value or "\x00" in value or len(value.encode()) > 512))
         ):
             raise ObjectBongardReleaseGateError(
                 "configuration must contain bounded metadata scalars and no visual/action inputs"
@@ -260,7 +282,7 @@ class ObjectBongardExecutionPrecommit:
             raise ObjectBongardReleaseGateError("support/query panels overlap")
         _freeze_bindings(dict(self.runtime_source_bindings))
         _freeze_configuration(dict(self.configuration))
-        if any(not isinstance(item, str) or not item for item in (
+        if any(type(item) is not str or not item for item in (
             self.exposure_observed_at, self.exposure_actor,
             self.exposure_purpose, self.exposure_source,
         )):
@@ -285,7 +307,7 @@ class ObjectBongardExecutionPrecommit:
             "official_test_authorized", "query_identities_sealed_before_support_pixels",
             *_authority_data(), "record_digest",
         }
-        if not isinstance(raw, Mapping) or set(raw) != expected:
+        if type(raw) is not dict or set(raw) != expected:
             raise ObjectBongardReleaseGateError("execution precommit fields differ")
         if (
             raw["schema"] != PRECOMMIT_SCHEMA
@@ -294,7 +316,7 @@ class ObjectBongardExecutionPrecommit:
             or raw["official_test_authorized"] is not False
             or raw["query_identities_sealed_before_support_pixels"] is not True
             or any(raw[key] != item for key, item in _authority_data().items())
-            or not all(isinstance(raw[key], list) for key in (
+            or not all(type(raw[key]) is list for key in (
                 "selected_task_ids", "authorized_support_panel_ids", "sealed_query_panel_ids",
                 "runtime_source_bindings", "configuration",
             ))
@@ -349,10 +371,17 @@ def create_object_bongard_execution_precommit(
     exposure_purpose: str = "broad-object-predicate-support-and-sealed-query",
     exposure_source: str = "official-shapebongard-v2-archive",
 ) -> ObjectBongardExecutionPrecommit:
-    if not isinstance(plan, (ObjectBongardBatchPlan, ObjectBongardDrillBatchPlan)):
-        raise TypeError("plan must be an object Bongard release plan")
-    if not isinstance(predecessor, ExposureLedger):
-        raise TypeError("predecessor must be ExposureLedger")
+    if type(plan) not in (ObjectBongardBatchPlan, ObjectBongardDrillBatchPlan):
+        raise TypeError("plan must be an exact object Bongard release plan")
+    if type(predecessor) is not ExposureLedger:
+        raise TypeError("predecessor must be exact ExposureLedger")
+    if type(descriptor) is not OfficialReleaseDescriptor:
+        raise TypeError("descriptor must be exact OfficialReleaseDescriptor")
+    if type(archive) is not OfficialPanelArchive:
+        raise TypeError("archive must be exact OfficialPanelArchive")
+    plan = type(plan).from_data(plan.to_data())
+    predecessor = ExposureLedger.from_dict(predecessor.to_dict())
+    descriptor = OfficialReleaseDescriptor.from_dict(descriptor.to_dict())
     inventory = _sorted_ids(task_ids, "official task inventory")
     train = _sorted_ids(train_task_ids, "TRAIN task inventory")
     used = _sorted_ids(exact_used_task_ids, "exact-used task inventory")
@@ -449,15 +478,15 @@ class ObjectBongardWriteOnceReceipt:
     record_digest: str
 
     def __post_init__(self) -> None:
-        if _NAME.fullmatch(self.object_kind) is None:
+        if type(self.object_kind) is not str or _NAME.fullmatch(self.object_kind) is None:
             raise ObjectBongardReleaseGateError("stored object kind is invalid")
         for name in ("object_digest", "payload_digest", "record_digest"):
             _require_address(getattr(self, name), name)
         expected_path = f"objects/{self.object_kind}/{self.object_digest[7:]}.json"
         if (
-            isinstance(self.size_bytes, bool)
-            or not isinstance(self.size_bytes, int)
+            type(self.size_bytes) is not int
             or not 0 < self.size_bytes <= _MAX_OBJECT_BYTES
+            or type(self.relative_path) is not str
             or self.relative_path != expected_path
             or self.record_digest != _address(_receipt_content(self))
         ):
@@ -473,7 +502,7 @@ class ObjectBongardWriteOnceReceipt:
             "size_bytes", "relative_path", "persisted_and_reloaded", "record_digest",
         }
         if (
-            not isinstance(raw, Mapping)
+            type(raw) is not dict
             or set(raw) != expected
             or raw["schema"] != STORE_RECEIPT_SCHEMA
             or raw["persisted_and_reloaded"] is not True
@@ -559,7 +588,7 @@ class ObjectBongardReleaseStore:
     root: Path
 
     def __post_init__(self) -> None:
-        if not isinstance(self.root, Path) or not self.root.is_absolute():
+        if type(self.root) is not type(Path()) or not self.root.is_absolute():
             raise ObjectBongardReleaseGateError("release store root must be absolute")
         try:
             self.root.mkdir(parents=True, exist_ok=True)
@@ -577,10 +606,10 @@ class ObjectBongardReleaseStore:
         object_digest: str,
         data: Mapping[str, Any],
     ) -> ObjectBongardWriteOnceReceipt:
-        if _NAME.fullmatch(object_kind) is None:
+        if type(object_kind) is not str or _NAME.fullmatch(object_kind) is None:
             raise ObjectBongardReleaseGateError("stored object kind is invalid")
         digest = _require_address(object_digest, "stored object digest")
-        if not isinstance(data, Mapping):
+        if type(data) is not dict:
             raise ObjectBongardReleaseGateError("stored object must be a mapping")
         payload = canonical_json(dict(data)) + b"\n"
         if not 0 < len(payload) <= _MAX_OBJECT_BYTES:
@@ -617,22 +646,38 @@ class ObjectBongardReleaseStore:
         self,
         receipt: ObjectBongardWriteOnceReceipt,
         *,
-        expected_data: Mapping[str, Any],
+        expected_data: Mapping[str, Any] | None = None,
     ) -> Mapping[str, Any]:
-        if not isinstance(receipt, ObjectBongardWriteOnceReceipt):
+        if type(receipt) is not ObjectBongardWriteOnceReceipt:
             raise TypeError("receipt must be ObjectBongardWriteOnceReceipt")
-        path = self.root / receipt.relative_path
-        if path.parent.resolve(strict=True) != (self.root / "objects" / receipt.object_kind):
+        frozen_receipt = ObjectBongardWriteOnceReceipt.from_data(receipt.to_data())
+        path = self.root / frozen_receipt.relative_path
+        expected_parent = self.root / "objects" / frozen_receipt.object_kind
+        if path.parent.resolve(strict=True) != expected_parent:
             raise ObjectBongardReleaseGateError("receipt escapes its release store")
         payload = _stable_read(path)
-        expected = canonical_json(dict(expected_data)) + b"\n"
         if (
-            payload != expected
-            or len(payload) != receipt.size_bytes
-            or _bytes_address(payload) != receipt.payload_digest
+            len(payload) != frozen_receipt.size_bytes
+            or _bytes_address(payload) != frozen_receipt.payload_digest
         ):
             raise ObjectBongardReleaseGateError("durable receipt payload differs")
-        return json.loads(payload)
+        try:
+            decoded = json.loads(payload.decode("utf-8", errors="strict"))
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise ObjectBongardReleaseGateError("durable receipt payload is not JSON") from exc
+        if not isinstance(decoded, dict) or canonical_json(decoded) + b"\n" != payload:
+            raise ObjectBongardReleaseGateError(
+                "durable receipt payload is not canonical"
+            )
+        if expected_data is not None:
+            if type(expected_data) is not dict:
+                raise TypeError("expected_data must be a mapping or None")
+            expected = canonical_json(dict(expected_data)) + b"\n"
+            if payload != expected:
+                raise ObjectBongardReleaseGateError(
+                    "durable receipt payload differs from expectation"
+                )
+        return decoded
 
 
 def _authorization_content(value: "ObjectBongardReleaseAuthorization") -> dict[str, object]:
@@ -710,7 +755,7 @@ class ObjectBongardReleaseAuthorization:
             "exposure_successor_persisted_and_reloaded_before_authorization",
             "query_requires_durable_task_freeze_and_commit", *_authority_data(), "record_digest",
         }
-        if not isinstance(raw, Mapping) or set(raw) != expected:
+        if type(raw) is not dict or set(raw) != expected:
             raise ObjectBongardReleaseGateError("release authorization fields differ")
         if (
             raw["schema"] != AUTHORIZATION_SCHEMA
@@ -828,29 +873,163 @@ def prepare_object_bongard_release(
     )
 
 
-def verify_prepared_object_bongard_release(prepared: PreparedObjectBongardRelease) -> None:
-    if not isinstance(prepared, PreparedObjectBongardRelease):
-        raise TypeError("prepared must be PreparedObjectBongardRelease")
-    store = prepared.store
-    store.verify(prepared.plan_receipt, expected_data=prepared.plan.to_data())
-    store.verify(prepared.precommit_receipt, expected_data=prepared.precommit.to_data())
-    store.verify(prepared.exposure_receipt, expected_data=prepared.successor.to_dict())
-    store.verify(prepared.authorization_receipt, expected_data=prepared.authorization.to_data())
+def verify_prepared_object_bongard_release(
+    prepared: PreparedObjectBongardRelease,
+) -> PreparedObjectBongardRelease:
+    """Cold-reconstruct and return the exact authority-bearing release state."""
+    if type(prepared) is not PreparedObjectBongardRelease:
+        raise TypeError("prepared must be exact PreparedObjectBongardRelease")
+    if type(prepared.store) is not ObjectBongardReleaseStore:
+        raise TypeError("prepared store must be exact ObjectBongardReleaseStore")
+    ObjectBongardReleaseStore.__post_init__(prepared.store)
+    if type(prepared.plan) not in (
+        ObjectBongardBatchPlan,
+        ObjectBongardDrillBatchPlan,
+    ):
+        raise TypeError("prepared plan must be an exact admitted release plan")
+    if any(type(task) is not ObjectBongardTaskPlan for task in prepared.plan.tasks):
+        raise TypeError("prepared task plans must be exact ObjectBongardTaskPlan")
+    if type(prepared.precommit) is not ObjectBongardExecutionPrecommit:
+        raise TypeError("prepared precommit must be exact ObjectBongardExecutionPrecommit")
     if (
-        len(prepared.successor.events) != len(prepared.predecessor.events) + 1
-        or prepared.successor.events[:-1] != prepared.predecessor.events
-        or prepared.successor.events[-1].task_ids != prepared.precommit.selected_task_ids
-        or prepared.successor.events[-1].panel_ids
-        or prepared.authorization.exposure_successor_digest != prepared.successor.digest
-        or prepared.authorization.execution_precommit_digest != prepared.precommit.record_digest
-        or prepared.authorization.plan_store_receipt_digest
-        != prepared.plan_receipt.record_digest
-        or prepared.authorization.precommit_store_receipt_digest
-        != prepared.precommit_receipt.record_digest
-        or prepared.authorization.exposure_store_receipt_digest
-        != prepared.exposure_receipt.record_digest
+        type(prepared.predecessor) is not ExposureLedger
+        or type(prepared.successor) is not ExposureLedger
+    ):
+        raise TypeError("prepared exposure ledgers must be exact ExposureLedger")
+    if any(
+        type(event) is not ExposureEvent
+        for ledger in (prepared.predecessor, prepared.successor)
+        for event in ledger.events
+    ):
+        raise TypeError("prepared exposure events must be exact ExposureEvent")
+    if type(prepared.authorization) is not ObjectBongardReleaseAuthorization:
+        raise TypeError(
+            "prepared authorization must be exact ObjectBongardReleaseAuthorization"
+        )
+    receipts = (
+        prepared.plan_receipt,
+        prepared.precommit_receipt,
+        prepared.exposure_receipt,
+        prepared.authorization_receipt,
+    )
+    if any(type(receipt) is not ObjectBongardWriteOnceReceipt for receipt in receipts):
+        raise TypeError("prepared receipts must be exact ObjectBongardWriteOnceReceipt")
+
+    store = prepared.store
+    plan_receipt, precommit_receipt, exposure_receipt, authorization_receipt = (
+        receipts
+    )
+    plan_data = dict(store.verify(plan_receipt))
+    precommit_data = dict(store.verify(precommit_receipt))
+    successor_data = dict(store.verify(exposure_receipt))
+    authorization_data = dict(store.verify(authorization_receipt))
+    cold_plan = type(prepared.plan).from_data(plan_data)
+    cold_precommit = ObjectBongardExecutionPrecommit.from_data(precommit_data)
+    cold_successor = ExposureLedger.from_dict(successor_data)
+    if not cold_successor.events:
+        raise ObjectBongardReleaseGateError(
+            "prepared exposure successor lacks its authorization event"
+        )
+    cold_predecessor = ExposureLedger(
+        corpus_digest=cold_successor.corpus_digest,
+        events=cold_successor.events[:-1],
+    )
+    cold_authorization = ObjectBongardReleaseAuthorization.from_data(
+        authorization_data
+    )
+    cold_receipts = tuple(
+        ObjectBongardWriteOnceReceipt.from_data(receipt.to_data())
+        for receipt in receipts
+    )
+    if (
+        cold_plan != prepared.plan
+        or cold_precommit != prepared.precommit
+        or cold_predecessor.digest != prepared.predecessor.digest
+        or cold_successor != prepared.successor
+        or cold_authorization != prepared.authorization
+        or cold_receipts != receipts
+    ):
+        raise ObjectBongardReleaseGateError(
+            "prepared release child canonical replay differs"
+        )
+
+    plan_receipt, precommit_receipt, exposure_receipt, authorization_receipt = cold_receipts
+    if (
+        plan_receipt.object_kind != "batch-plan"
+        or plan_receipt.object_digest != cold_plan.record_digest
+        or precommit_receipt.object_kind != "execution-precommit"
+        or precommit_receipt.object_digest != cold_precommit.record_digest
+        or exposure_receipt.object_kind != "exposure-successor"
+        or exposure_receipt.object_digest != cold_successor.digest
+        or authorization_receipt.object_kind != "release-authorization"
+        or authorization_receipt.object_digest != cold_authorization.record_digest
+    ):
+        raise ObjectBongardReleaseGateError("prepared release receipt binding differs")
+
+    if (
+        cold_precommit.batch_plan_digest != cold_plan.record_digest
+        or cold_precommit.batch_algorithm_digest
+        != _plan_algorithm_digest(cold_plan)
+        or cold_precommit.batch_source_digest
+        != "sha256:" + _plan_source_digest(cold_plan)
+        or cold_precommit.release_gate_source_digest
+        != "sha256:" + object_bongard_release_gate_source_digest()
+        or cold_precommit.release_descriptor_digest
+        != cold_plan.release_descriptor_digest
+        or cold_precommit.exposure_predecessor_digest != cold_predecessor.digest
+        or cold_plan.exposure_predecessor_digest != cold_predecessor.digest
+        or cold_precommit.corpus_digest != cold_predecessor.corpus_digest
+        or cold_precommit.task_inventory_digest != cold_plan.task_inventory_digest
+        or cold_precommit.train_task_ids_digest != cold_plan.train_task_ids_digest
+        or cold_precommit.exact_used_task_ids_digest
+        != cold_plan.exact_used_task_ids_digest
+        or cold_precommit.selected_task_ids
+        != tuple(task.task_id for task in cold_plan.tasks)
+        or _all_panels(cold_plan)
+        != (
+            cold_precommit.authorized_support_panel_ids,
+            cold_precommit.sealed_query_panel_ids,
+        )
+        or len(cold_successor.events) != len(cold_predecessor.events) + 1
+        or cold_successor.corpus_digest != cold_predecessor.corpus_digest
+        or cold_successor.events[:-1] != cold_predecessor.events
+        or cold_successor.events[-1].task_ids != cold_precommit.selected_task_ids
+        or cold_successor.events[-1].panel_ids
+        or cold_authorization.batch_plan_digest != cold_plan.record_digest
+        or cold_authorization.exposure_predecessor_digest != cold_predecessor.digest
+        or cold_authorization.exposure_successor_digest != cold_successor.digest
+        or cold_authorization.exposure_event_digest
+        != cold_successor.events[-1].digest
+        or cold_authorization.execution_precommit_digest != cold_precommit.record_digest
+        or cold_authorization.release_descriptor_digest
+        != cold_precommit.release_descriptor_digest
+        or cold_authorization.archive_record_digest
+        != cold_precommit.archive_record_digest
+        or cold_authorization.selected_task_ids != cold_precommit.selected_task_ids
+        or cold_authorization.authorized_support_panel_ids
+        != cold_precommit.authorized_support_panel_ids
+        or cold_authorization.sealed_query_panel_ids
+        != cold_precommit.sealed_query_panel_ids
+        or cold_authorization.plan_store_receipt_digest
+        != plan_receipt.record_digest
+        or cold_authorization.precommit_store_receipt_digest
+        != precommit_receipt.record_digest
+        or cold_authorization.exposure_store_receipt_digest
+        != exposure_receipt.record_digest
     ):
         raise ObjectBongardReleaseGateError("prepared release cold replay differs")
+    return PreparedObjectBongardRelease(
+        store=store,
+        plan=cold_plan,
+        precommit=cold_precommit,
+        predecessor=cold_predecessor,
+        successor=cold_successor,
+        authorization=cold_authorization,
+        plan_receipt=plan_receipt,
+        precommit_receipt=precommit_receipt,
+        exposure_receipt=exposure_receipt,
+        authorization_receipt=authorization_receipt,
+    )
 
 
 def _task_for_panel(plan: ObjectBongardReleasePlan, panel_id: str) -> ObjectBongardTaskPlan:
@@ -864,11 +1043,42 @@ def _task_for_panel(plan: ObjectBongardReleasePlan, panel_id: str) -> ObjectBong
     return matches[0]
 
 
+def _verify_release_archive(
+    archive: OfficialPanelArchive,
+    prepared: PreparedObjectBongardRelease,
+) -> OfficialPanelArchive:
+    """Revalidate the exact live archive binding before any panel read."""
+
+    if type(archive) is not OfficialPanelArchive:
+        raise TypeError("archive must be exact OfficialPanelArchive")
+    OfficialPanelArchive.__post_init__(archive)
+    if (
+        archive.record_digest != prepared.authorization.archive_record_digest
+        or archive.record_digest != prepared.precommit.archive_record_digest
+        or archive.release_descriptor_digest
+        != prepared.precommit.release_descriptor_digest
+        or archive.archive_digest != prepared.precommit.archive_digest
+        or archive.central_directory_digest
+        != prepared.precommit.archive_central_directory_digest
+    ):
+        raise ObjectBongardReleaseGateError(
+            "archive differs from the cold prepared release"
+        )
+    return archive
+
+
 def release_object_bongard_support_panel(
     *, prepared: PreparedObjectBongardRelease, archive: OfficialPanelArchive, panel_id: str,
 ) -> tuple[ReleasedOfficialPanel, ObjectBongardWriteOnceReceipt]:
-    verify_prepared_object_bongard_release(prepared)
-    if archive.record_digest != prepared.authorization.archive_record_digest or panel_id not in prepared.authorization.authorized_support_panel_ids:
+    if type(prepared) is not PreparedObjectBongardRelease:
+        raise TypeError("prepared must be exact PreparedObjectBongardRelease")
+    if type(prepared.store) is not ObjectBongardReleaseStore:
+        raise TypeError("prepared store must be exact ObjectBongardReleaseStore")
+    if type(archive) is not OfficialPanelArchive:
+        raise TypeError("archive must be exact OfficialPanelArchive")
+    prepared = verify_prepared_object_bongard_release(prepared)
+    archive = _verify_release_archive(archive, prepared)
+    if panel_id not in prepared.authorization.authorized_support_panel_ids:
         raise ObjectBongardReleaseGateError("support panel release is not authorized")
     released = ReleasedOfficialPanel.release(
         archive, panel_id,
@@ -917,6 +1127,123 @@ def _canonical_protocol_data(value: ObjectBongardTaskFreezeProtocol, label: str)
     return data
 
 
+def _production_task_decision_pair(
+    freeze: ObjectBongardTaskFreezeProtocol,
+    commit: ObjectBongardTaskCommitProtocol,
+) -> tuple[type[Any], type[Any], str]:
+    """Resolve an exact, production-owned freeze/commit pair lazily.
+
+    The protocol types above are useful to task runners, but structural typing
+    is not release authority.  Keep the imports at this release boundary so
+    the production task modules can continue to import the protocol without a
+    module-import cycle.
+    """
+
+    freeze_type = type(freeze)
+    commit_type = type(commit)
+    if freeze_type.__module__ != commit_type.__module__:
+        raise ObjectBongardReleaseGateError(
+            "task decision records are not an admitted exact production pair"
+        )
+    key = (freeze_type.__module__, freeze_type.__name__, commit_type.__name__)
+    family = _PRODUCTION_TASK_DECISION_TYPES.get(key)
+    if family is None:
+        raise ObjectBongardReleaseGateError(
+            "task decision records are not an admitted exact production pair"
+        )
+    try:
+        owner = importlib.import_module(key[0])
+        admitted_freeze_type = getattr(owner, key[1])
+        admitted_commit_type = getattr(owner, key[2])
+    except (AttributeError, ImportError) as exc:
+        raise ObjectBongardReleaseGateError(
+            "admitted production task decision implementation is unavailable"
+        ) from exc
+    if (
+        freeze_type is not admitted_freeze_type
+        or commit_type is not admitted_commit_type
+    ):
+        raise ObjectBongardReleaseGateError(
+            "task decision records are not an admitted exact production pair"
+        )
+    return admitted_freeze_type, admitted_commit_type, family
+
+
+def _canonical_production_task_decision_pair(
+    freeze: ObjectBongardTaskFreezeProtocol,
+    commit: ObjectBongardTaskCommitProtocol,
+) -> tuple[dict[str, Any], dict[str, Any], str]:
+    """Deeply reconstruct an allowlisted pair from its canonical wire data."""
+
+    freeze_type, commit_type, family = _production_task_decision_pair(
+        freeze, commit
+    )
+    freeze_data = _canonical_protocol_data(freeze, "task freeze")
+    commit_data = _canonical_protocol_data(commit, "task commit")
+    try:
+        cold_freeze = freeze_type.from_data(freeze_data)
+        cold_commit = commit_type.from_data(commit_data)
+    except Exception as exc:
+        raise ObjectBongardReleaseGateError(
+            "task decision records fail canonical production reconstruction"
+        ) from exc
+    if (
+        type(cold_freeze) is not freeze_type
+        or type(cold_commit) is not commit_type
+        or cold_freeze != freeze
+        or cold_commit != commit
+        or cold_freeze.to_data() != freeze_data
+        or cold_commit.to_data() != commit_data
+    ):
+        raise ObjectBongardReleaseGateError(
+            "task decision canonical production replay differs"
+        )
+    return freeze_data, commit_data, family
+
+
+def _cold_verify_production_task_decision_binding(
+    *,
+    freeze: ObjectBongardTaskFreezeProtocol,
+    commit: ObjectBongardTaskCommitProtocol,
+    freeze_data: Mapping[str, Any],
+    freeze_receipt: ObjectBongardWriteOnceReceipt,
+    family: str,
+) -> None:
+    """Recreate the production commit from the exact durable freeze bytes."""
+
+    exact_payload = canonical_json(dict(freeze_data)) + b"\n"
+    try:
+        if family == "object-scene-anchor":
+            commit.assert_matches(freeze, exact_payload)  # type: ignore[attr-defined]
+        elif family == "panel-feature":
+            expected = type(commit).seal(freeze, freeze_receipt)
+            if expected != commit:
+                raise ObjectBongardReleaseGateError(
+                    "panel-feature task decision cold replay differs"
+                )
+        elif family == "object-bongard-rubric":
+            commit.assert_matches(freeze, exact_payload)  # type: ignore[attr-defined]
+        elif family == "panel-program":
+            # The successor follows the same release-boundary convention: its
+            # commit must expose an exact cold replay against freeze bytes and
+            # the durable freeze receipt.
+            commit.assert_matches(  # type: ignore[attr-defined]
+                freeze,
+                exact_payload,
+                freeze_receipt,
+            )
+        else:  # pragma: no cover - closed by _production_task_decision_pair
+            raise ObjectBongardReleaseGateError(
+                "task decision production family is unknown"
+            )
+    except ObjectBongardReleaseGateError:
+        raise
+    except Exception as exc:
+        raise ObjectBongardReleaseGateError(
+            "task decision commit differs from production cold replay"
+        ) from exc
+
+
 def _validate_freeze_bindings(
     freeze: ObjectBongardTaskFreezeProtocol,
     *, task: ObjectBongardTaskPlan, prepared: PreparedObjectBongardRelease,
@@ -960,18 +1287,35 @@ def release_object_bongard_query_panel(
     task_freeze_receipt: ObjectBongardWriteOnceReceipt,
     task_commit_receipt: ObjectBongardWriteOnceReceipt,
 ) -> tuple[ReleasedOfficialPanel, ObjectBongardWriteOnceReceipt]:
-    verify_prepared_object_bongard_release(prepared)
+    if type(prepared) is not PreparedObjectBongardRelease:
+        raise TypeError("prepared must be exact PreparedObjectBongardRelease")
+    if type(prepared.store) is not ObjectBongardReleaseStore:
+        raise TypeError("prepared store must be exact ObjectBongardReleaseStore")
+    if type(archive) is not OfficialPanelArchive:
+        raise TypeError("archive must be exact OfficialPanelArchive")
+    prepared = verify_prepared_object_bongard_release(prepared)
+    archive = _verify_release_archive(archive, prepared)
+    _freeze_data, _commit_data, production_family = (
+        _canonical_production_task_decision_pair(task_freeze, task_commit)
+    )
+    freeze_raw = dict(prepared.store.verify(task_freeze_receipt))
+    commit_raw = dict(prepared.store.verify(task_commit_receipt))
+    cold_freeze = type(task_freeze).from_data(freeze_raw)
+    cold_commit = type(task_commit).from_data(commit_raw)
+    freeze_data, commit_data, cold_family = (
+        _canonical_production_task_decision_pair(cold_freeze, cold_commit)
+    )
+    if cold_family != production_family:
+        raise ObjectBongardReleaseGateError("task decision family changed on replay")
+    task_freeze = cold_freeze
+    task_commit = cold_commit
     task = _task_for_panel(prepared.plan, panel_id)
     if (
-        archive.record_digest != prepared.authorization.archive_record_digest
-        or panel_id not in prepared.authorization.sealed_query_panel_ids
+        panel_id not in prepared.authorization.sealed_query_panel_ids
         or panel_id not in (task.side_0_query_panel_id, task.side_1_query_panel_id)
     ):
         raise ObjectBongardReleaseGateError("query panel is not the task's sealed query")
-    freeze_data = _validate_freeze_bindings(task_freeze, task=task, prepared=prepared)
-    commit_data = _canonical_protocol_data(task_commit, "task commit")
-    prepared.store.verify(task_freeze_receipt, expected_data=freeze_data)
-    prepared.store.verify(task_commit_receipt, expected_data=commit_data)
+    _validate_freeze_bindings(task_freeze, task=task, prepared=prepared)
     if (
         task_freeze_receipt.object_kind != "task-freeze"
         or task_freeze_receipt.object_digest != task_freeze.record_digest
@@ -989,6 +1333,27 @@ def release_object_bongard_query_panel(
         or task_commit.task_freeze_store_receipt_digest != task_freeze_receipt.record_digest
     ):
         raise ObjectBongardReleaseGateError("task decision commit does not bind the exact durable freeze")
+    _cold_verify_production_task_decision_binding(
+        freeze=task_freeze,
+        commit=task_commit,
+        freeze_data=freeze_data,
+        freeze_receipt=task_freeze_receipt,
+        family=production_family,
+    )
+    if production_family == "panel-program":
+        try:
+            from bongard.panel_program_official_task import (
+                verify_panel_program_query_release_authority,
+            )
+
+            verify_panel_program_query_release_authority(
+                prepared=prepared,
+                freeze=task_freeze,  # exact type established above
+            )
+        except Exception as exc:
+            raise ObjectBongardReleaseGateError(
+                "panel-program support release authority differs"
+            ) from exc
     released = ReleasedOfficialPanel.release(
         archive, panel_id,
         execution_precommit_digest=prepared.precommit.record_digest,

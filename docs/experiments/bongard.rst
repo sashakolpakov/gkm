@@ -77,6 +77,130 @@ These are real engineering advances: model capacity, artifact identity,
 delayed-label chronology, and model-free replay are now explicit and tested.
 They do not by themselves authorize a campaign.
 
+Synthetic representation experiments
+------------------------------------
+
+Phase 0: disconnected ordered-path control
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The weak carrier-signature-held-out development diagnostic (joint
+``0.35215`` for the historical separate-marginal head) localized a
+representation problem: the 112 pooled scalars discard path order, incidence,
+and visible primitive boundaries.  A new in-memory synthetic experiment tests
+that mechanism without reading repository or official images.
+
+Its renderer covers all 54 legal line/arc count pairs in each of five carrier
+families and four D4 nuisances at fixed stroke width 2 and scale 1000.  Three
+complete families provide 648 training rows (641 unique PNGs) for a fresh
+fixed-32 pooled-feature control; two complete, D4-raster-orbit-disjoint
+families are evaluated on the exact same 432 held-out rows (425 unique PNGs).
+
+The target is a partial pure function of the PNG.  Every 8-connected ink
+component must exactly reproduce one finite line raster or one finite
+annular-sector raster; if any component does not, the panel target is
+unresolved.  Identical PNG bytes therefore always have identical target state,
+even when different action histories meet in touching context.  The ordered
+observer independently thins each image, retains graph incidence, traces
+maximal paths, fits line and circular-arc spans, and keeps every count pair
+with globally minimum complexity under its bounded sampled fit grammar.  A
+post-fit target-resolvability gate then suppresses singleton claims for
+unresolved rasters.  It does not select a pair, but the resulting set/GAP
+safety is policy-enforced rather than independent observer evidence.
+
+On the current run, the ordered observer is 432/432 joint-count
+singleton-correct, versus 189/432 for the pooled control, a paired lift of
+243/432.  The family breakdown is 216/216 versus 115/216 on ``radial``, and
+216/216 versus 74/216 on ``staggered``.
+
+This is bounded synthetic engineering evidence, not an official benchmark or
+generalization result.  There are only two held-out carrier clusters, so the
+family-resampling quantile is descriptive and no confidence bound is claimed.
+This is deliberately an easy, disconnected, exact-component mechanistic
+benchmark, not a broad solution to connected action boundaries.  Its ten
+exact hidden-history alias cases and one near case include two exact aliases
+under identical touching context; both have unresolved targets and the
+post-fit gate returns a set or GAP.  Of nine structural stress cases, eight are
+unresolved connected rasters and all return set/GAP; only the resolved legal
+shallow arc is identified.  The bounded 20,000-pair near-collision scan is not
+exhaustive.  Neither observer accepts unissued PNG bytes, and the experiment
+has no filesystem, CLI, calibration, official or corpus-facing target/query
+input, or campaign-authority surface.  Its partial synthetic target is local
+to the in-memory experiment.
+
+The current source-bound phase-0 replay record is
+``sha256:4a2221b9b39a22ee0b60b2b3dd0ac5859c0b15de92e16a6c238cb6a5aaf774f3``.
+The prior pre-issuer-bridge record is
+``sha256:3e48a026d3b3bc3126c7a3ee8d424c52b3e1ad837043d1b5d5da61d39ff90bb0``;
+the panels, predictions, and metrics are identical.
+
+Connected fixed-catalog phase
+-----------------------------
+
+Phase 1 replaces the easy component normal form with actual ordered ``LL``,
+``LA``, ``AL``, and ``AA`` within-shape raster boundaries and disconnected
+two-shape unions.  Each of five carrier families under two nuisance regimes
+contains all 54 single-shape count pairs plus 52 two-shape layouts.  Three
+whole families provide 636 training rows; ``radial`` and ``staggered`` provide
+424 held-out rows.  All 1,060 PNGs are unique, and complete eight-element D4
+raster orbits have zero overlap across roles.
+
+The raw observer accepts only exact PNG bytes previously issued by the
+process-local synthetic renderer, traces its skeleton graph, and searches the
+complete fixed line/arc mask catalog for every minimum-cardinality exact
+cover.  This SHA-256-keyed issuance check establishes only in-memory fixture
+provenance; it is not a digital signature, external-file authentication, or
+official release authority.  Every retained hypothesis must cover all
+foreground and no background pixel (XOR zero, IoU one).  Held-out targets are
+exhaustive PNG-plus-catalog covers constructed after raw predictions, and the
+raw API is tested with the target oracle replaced by a failing sentinel.
+
+The raw observer is 424/424 target-set correct and exact-reconstructing,
+versus 106/424 for the freshly fitted fixed-32, 112-feature pooled control, a
+lift of 318/424 (``0.75``).  Layout comparisons are 216/216 versus 43/216 on
+``single_shape`` and 208/208 versus 63/208 on ``two_shape``.  Family
+comparisons are 212/212 versus 45/212 on ``radial`` and 212/212 versus 61/212
+on ``staggered``.  A deterministic 212-pair pooled-feature assignment uses
+all 424 held-out occurrences once; both endpoints are correct in 212/212 raw
+pairs and 17/212 control pairs.
+
+This is fixed-catalog inversion, not unseen-grammar induction: target and raw
+observer share the complete primitive catalog, including held-family
+geometry.  Removing every held-family-only mask in a target-free ablation
+leaves 0/424 held-out PNGs with an exact cover (0/216 single-shape and 0/208
+two-shape).  All held-out target sets happen to be singletons, so the
+false-singleton ambiguity gate has no ambiguous held-out case.  The phase
+tests neither official transfer nor broad visual generalization and creates
+no official, calibration, target, query, production, benchmark-promotion, or
+campaign authority.  Its record digest is
+``sha256:0e5f711a6e686cfb9c2b1ff2cde1559a06f15542846794ce44cde57e6a368aff``.
+The earlier disconnected phase and its frozen digest remain distinct.
+
+Hypothesis-preserving rule layer
+--------------------------------
+
+The connected output now feeds a canonical role-free program observation that
+retains every complete minimum hypothesis.  A closed language enumerates 399
+positive count formulas: 32 singleton atoms and 367 cross-axis conjunctions.
+Each whole formula is evaluated on each hypothesis before supervaluation, so
+correlated ambiguity is preserved: unanimous true is ``present``, unanimous
+false is ``certified_absent``, disagreement is ``indeterminate``, and observer
+failure is ``error``.
+
+Support induction persists the complete 399 by 12 matrix and requires strict
+6/6 primary presence plus 6/6 contrast certified absence.  It freezes the
+minimum-arity survivor with a digest tie-break.  A typed zero-survivor record
+distinguishes language exhaustion from observer error or unresolved support
+ambiguity.
+A dormant release adapter binds already released support records, the
+precommitted observer/catalog/policy, the matrix, selected rule, and sealed
+query identities.  The query gate rejects structurally similar counterfeit
+records before any archive read.
+
+The end-to-end proof uses locally generated PNGs in a temporary
+official-shaped TRAIN archive.  It reads no real official/download data and
+reports no official accuracy.  The fixed catalog is not scientifically
+validated for official geometry, so no live successor authority is created.
+
 Custody incident and terminal GAP
 ---------------------------------
 

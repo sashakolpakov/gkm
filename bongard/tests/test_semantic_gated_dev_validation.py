@@ -58,9 +58,14 @@ from bongard.tests.test_semantic_calibration_campaign import (
     _proposal_payload as _stage_a_proposal_payload,
     _unique_receipt,
 )
-from bongard.tests.test_semantic_observation import _receipt as _scorer_receipt
-from bongard.tests.test_typed_visual_transport import _receipt as _proposer_receipt
-from bongard.transport import CloudPolicyCacheSnapshot, CodexReceipt, CodexStructuredResult
+from bongard.tests.no_tools_fixture import canonical_codex_receipt
+from bongard.transport import (
+    DEFAULT_CODEX_MODEL,
+    PINNED_CODEX_CLI_VERSION,
+    CloudPolicyCacheSnapshot,
+    CodexReceipt,
+    CodexStructuredResult,
+)
 from bongard.typed_visual_proposal import PANEL_DESCRIPTION_KEYS
 from bongard.corpus import ShapeBongardCorpus
 
@@ -71,7 +76,48 @@ _DEV_IDS = (
 )
 _TEST_ID = "hd_balanced_two-exist_quadrangle_0000"
 _STAGE_A_SEED = hashlib.sha256(b"external stage-a fixture seed").hexdigest()
-_LAUNCHER_VERSION = "codex-cli fixture-version"
+_LAUNCHER_VERSION = PINNED_CODEX_CLI_VERSION
+
+
+def _proposer_receipt(
+    prompt: str,
+    paths: Sequence[str],
+    schema: Mapping[str, Any],
+    payload: Mapping[str, Any],
+    *,
+    model: str,
+    effort: str,
+) -> CodexReceipt:
+    return canonical_codex_receipt(
+        prompt,
+        paths,
+        schema,
+        payload,
+        launcher_digest=_LAUNCHER_DIGEST,
+        model=model,
+        reasoning_effort=effort,
+        command_fixture="semantic proposer turn",
+    )
+
+
+def _scorer_receipt(
+    prompt: str,
+    paths: Sequence[str],
+    names: Sequence[str],
+    schema: Mapping[str, Any],
+    payload: Mapping[str, Any],
+) -> CodexReceipt:
+    return canonical_codex_receipt(
+        prompt,
+        paths,
+        schema,
+        payload,
+        launcher_digest=_LAUNCHER_DIGEST,
+        model=DEFAULT_CODEX_MODEL,
+        reasoning_effort="medium",
+        names=names,
+        command_fixture="semantic scorer turn",
+    )
 
 
 def _draw_panel(
@@ -124,9 +170,9 @@ def _corpus(tmp_path: Path):
 
 def _protocol():
     return build_prospective_soft_scorer_protocol(
-        proposer_model_id="fixture-proposer",
+        proposer_model_id=DEFAULT_CODEX_MODEL,
         proposer_reasoning_effort="medium",
-        scorer_model_id="fixture-scorer",
+        scorer_model_id=DEFAULT_CODEX_MODEL,
         scorer_reasoning_effort="medium",
         score_bin_edges=(0.0, 0.5, 1.0),
         affirmative_boundary=0.5,

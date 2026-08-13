@@ -49,13 +49,13 @@ def _address(value: object) -> str:
 
 
 def _require_address(value: object, label: str) -> str:
-    if not isinstance(value, str) or _ADDRESS.fullmatch(value) is None:
+    if type(value) is not str or _ADDRESS.fullmatch(value) is None:
         raise OfficialPanelArchiveError(f"{label} must be a sha256: address")
     return value
 
 
 def _exact_fields(value: Mapping[str, Any], expected: set[str], label: str) -> None:
-    if not isinstance(value, Mapping) or set(value) != expected:
+    if type(value) is not dict or set(value) != expected:
         raise OfficialPanelArchiveError(f"{label} fields differ from schema")
 
 
@@ -110,7 +110,7 @@ def _hash_open_file(descriptor: int) -> tuple[str, int, tuple[int, ...]]:
 
 
 def _panel_member(panel_id: str) -> str:
-    if not isinstance(panel_id, str) or _PANEL_ID.fullmatch(panel_id) is None:
+    if type(panel_id) is not str or _PANEL_ID.fullmatch(panel_id) is None:
         raise OfficialPanelArchiveError(
             "panel_id is outside the official bd/ff/hd PNG namespace"
         )
@@ -146,7 +146,7 @@ class OfficialPanelReceipt:
 
     def __post_init__(self) -> None:
         expected_member = _panel_member(self.panel_id)
-        if self.archive_member != expected_member:
+        if type(self.archive_member) is not str or self.archive_member != expected_member:
             raise OfficialPanelArchiveError("receipt member differs from panel_id")
         for name in (
             "sha256",
@@ -157,11 +157,9 @@ class OfficialPanelReceipt:
         ):
             _require_address(getattr(self, name), name)
         if (
-            isinstance(self.size_bytes, bool)
-            or not isinstance(self.size_bytes, int)
+            type(self.size_bytes) is not int
             or not 0 < self.size_bytes <= _MAX_PNG_BYTES
-            or isinstance(self.zip_crc32, bool)
-            or not isinstance(self.zip_crc32, int)
+            or type(self.zip_crc32) is not int
             or not 0 <= self.zip_crc32 <= 0xFFFFFFFF
             or self.record_digest != _address(self.content_dict())
         ):
@@ -254,23 +252,23 @@ class OfficialPanelArchive:
         ):
             _require_address(getattr(self, name), name)
         if (
-            isinstance(self.archive_size_bytes, bool)
-            or not isinstance(self.archive_size_bytes, int)
+            type(self.archive_size_bytes) is not int
             or self.archive_size_bytes <= 0
             or not isinstance(self.archive_path, Path)
             or not self.archive_path.is_absolute()
+            or type(self.archive_identity) is not tuple
             or len(self.archive_identity) != 5
-            or any(isinstance(item, bool) or not isinstance(item, int) for item in self.archive_identity)
+            or any(type(item) is not int for item in self.archive_identity)
+            or type(self.members) is not tuple
+            or any(type(row) is not tuple or len(row) != 3 for row in self.members)
             or self.members != tuple(sorted(self.members))
             or len({item[0] for item in self.members}) != len(self.members)
             or any(
-                not isinstance(name, str)
+                type(name) is not str
                 or not name
-                or isinstance(size, bool)
-                or not isinstance(size, int)
+                or type(size) is not int
                 or size < 0
-                or isinstance(crc, bool)
-                or not isinstance(crc, int)
+                or type(crc) is not int
                 or not 0 <= crc <= 0xFFFFFFFF
                 for name, size, crc in self.members
             )
@@ -299,8 +297,14 @@ class OfficialPanelArchive:
         *,
         expected_release_descriptor_digest: str,
     ) -> "OfficialPanelArchive":
-        if not isinstance(descriptor, OfficialReleaseDescriptor):
-            raise TypeError("descriptor must be OfficialReleaseDescriptor")
+        if type(descriptor) is not OfficialReleaseDescriptor:
+            raise TypeError("descriptor must be exact OfficialReleaseDescriptor")
+        cold_descriptor = OfficialReleaseDescriptor.from_dict(descriptor.to_dict())
+        if cold_descriptor != descriptor:
+            raise OfficialPanelArchiveError(
+                "release descriptor canonical replay differs"
+            )
+        descriptor = cold_descriptor
         expected = _require_address(
             expected_release_descriptor_digest, "release descriptor digest"
         )
@@ -388,8 +392,32 @@ class OfficialPanelArchive:
             before = os.fstat(descriptor)
             if _descriptor_identity(before) != self.archive_identity:
                 raise OfficialPanelArchiveError("official archive changed after pinning")
+            digest, archive_size, live_identity = _hash_open_file(descriptor)
+            if (
+                "sha256:" + digest != self.archive_digest
+                or archive_size != self.archive_size_bytes
+                or live_identity != self.archive_identity
+            ):
+                raise OfficialPanelArchiveError(
+                    "official archive bytes differ from the pinned release"
+                )
             with os.fdopen(os.dup(descriptor), "rb") as handle:
                 with zipfile.ZipFile(handle) as bundle:
+                    infos = bundle.infolist()
+                    names = tuple(item.filename for item in infos)
+                    live_members = tuple(
+                        sorted(
+                            (item.filename, item.file_size, item.CRC)
+                            for item in infos
+                        )
+                    )
+                    if (
+                        len(names) != len(set(names))
+                        or live_members != self.members
+                    ):
+                        raise OfficialPanelArchiveError(
+                            "official archive directory differs from the pin"
+                        )
                     payload = bundle.read(member)
             after = os.fstat(descriptor)
             if _descriptor_identity(after) != self.archive_identity:
@@ -461,6 +489,9 @@ class ReleasedOfficialPanel:
     record_digest: str
 
     def __post_init__(self) -> None:
+        if type(self.release_receipt) is not OfficialPanelReceipt:
+            raise TypeError("release_receipt must be exact OfficialPanelReceipt")
+        OfficialPanelReceipt.__post_init__(self.release_receipt)
         if _panel_member(self.panel_id) != self.release_receipt.archive_member:
             raise OfficialPanelArchiveError("released panel identity differs")
         for name in (
@@ -471,7 +502,7 @@ class ReleasedOfficialPanel:
         ):
             _require_address(getattr(self, name), name)
         if (
-            not isinstance(self.exact_png_bytes, bytes)
+            type(self.exact_png_bytes) is not bytes
             or not self.exact_png_bytes.startswith(_PNG_SIGNATURE)
             or not 0 < len(self.exact_png_bytes) <= _MAX_PNG_BYTES
             or self.exact_png_digest
@@ -548,7 +579,7 @@ class ReleasedOfficialPanel:
             "record_digest",
         }
         _exact_fields(value, expected, "released official panel")
-        if not isinstance(value["release_receipt"], Mapping):
+        if type(value["release_receipt"]) is not dict:
             raise OfficialPanelArchiveError("released panel receipt is malformed")
         try:
             payload = base64.b64decode(value["exact_png_base64"], validate=True)

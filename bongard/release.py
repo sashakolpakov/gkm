@@ -71,7 +71,7 @@ def _stable_file_identity(path: Path) -> tuple[str, int]:
 
 
 def _object(value: object, label: str) -> Mapping[str, Any]:
-    if not isinstance(value, Mapping) or any(not isinstance(key, str) for key in value):
+    if type(value) is not dict or any(type(key) is not str for key in value):
         raise ReleaseIdentityError(f"{label} must be a JSON object")
     return value
 
@@ -79,10 +79,9 @@ def _object(value: object, label: str) -> Mapping[str, Any]:
 def _strict_counts(value: object, label: str) -> tuple[tuple[str, int], ...]:
     data = _object(value, label)
     if any(
-        not isinstance(name, str)
+        type(name) is not str
         or not name
-        or isinstance(count, bool)
-        or not isinstance(count, int)
+        or type(count) is not int
         or count < 0
         for name, count in data.items()
     ):
@@ -109,7 +108,7 @@ class OfficialReleaseDescriptor:
     schema: str = RELEASE_SCHEMA
 
     def __post_init__(self) -> None:
-        if self.schema != RELEASE_SCHEMA:
+        if type(self.schema) is not str or self.schema != RELEASE_SCHEMA:
             raise ReleaseIdentityError(f"unsupported release schema: {self.schema!r}")
         for label, value in (
             ("release_id", self.release_id),
@@ -117,7 +116,7 @@ class OfficialReleaseDescriptor:
             ("split_filename", self.split_filename),
             ("upstream_repository", self.upstream_repository),
         ):
-            if not isinstance(value, str) or not value.strip():
+            if type(value) is not str or not value.strip():
                 raise ReleaseIdentityError(f"{label} must be a non-empty string")
         for label, value in (
             ("archive_sha256", self.archive_sha256),
@@ -125,27 +124,32 @@ class OfficialReleaseDescriptor:
             ("task_ids_sha256", self.task_ids_sha256),
             ("corpus_manifest_sha256", self.corpus_manifest_sha256),
         ):
-            if _ADDRESS.fullmatch(value) is None:
+            if type(value) is not str or _ADDRESS.fullmatch(value) is None:
                 raise ReleaseIdentityError(f"{label} must be a sha256: content address")
         for label, value in (
             ("archive_size_bytes", self.archive_size_bytes),
             ("split_size_bytes", self.split_size_bytes),
         ):
-            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            if type(value) is not int or value <= 0:
                 raise ReleaseIdentityError(f"{label} must be a positive integer")
-        if _COMMIT.fullmatch(self.upstream_commit) is None:
+        if type(self.upstream_commit) is not str or _COMMIT.fullmatch(self.upstream_commit) is None:
             raise ReleaseIdentityError("upstream_commit must be an exact 40-hex commit")
         for label, counts in (
             ("family_counts", self.family_counts),
             ("primary_split_counts", self.primary_split_counts),
             ("regime_counts", self.regime_counts),
         ):
-            if tuple(sorted(counts)) != counts or len(dict(counts)) != len(counts):
+            if (
+                type(counts) is not tuple
+                or any(type(row) is not tuple or len(row) != 2 for row in counts)
+                or tuple(sorted(counts)) != counts
+                or len(dict(counts)) != len(counts)
+            ):
                 raise ReleaseIdentityError(f"{label} must be uniquely keyed and sorted")
             if any(
                 not name
-                or isinstance(count, bool)
-                or not isinstance(count, int)
+                or type(name) is not str
+                or type(count) is not int
                 or count < 0
                 for name, count in counts
             ):
@@ -241,7 +245,7 @@ class OfficialReleaseDescriptor:
             raw = json.loads(payload)
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise ReleaseIdentityError(f"cannot read release descriptor {source}: {exc}") from exc
-        if not isinstance(raw, Mapping):
+        if type(raw) is not dict:
             raise ReleaseIdentityError("release descriptor root must be an object")
         # Repository JSON is one canonical JSON value followed by the normal
         # POSIX text-file newline.  No alternate whitespace is accepted.

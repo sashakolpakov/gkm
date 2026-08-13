@@ -39,15 +39,14 @@ from bongard.support_prototypes import (
     PositivePrototypeFormula,
     fit_support_prototypes,
 )
+from bongard.tests.no_tools_fixture import canonical_codex_receipt
 from bongard.transport import (
-    CODEX_ISOLATION_POLICY,
-    CODEX_RECEIPT_SCHEMA,
-    STRUCTURED_INPUT_DIGEST_SCHEMA,
     CodexReceipt,
     CodexStructuredResult,
-    semantic_panel_set_digest,
-    validate_codex_receipt,
 )
+
+
+_LAUNCHER_DIGEST = "a" * 64
 
 
 def _draw_panel(path: Path, *, positive: bool, index: int) -> None:
@@ -102,10 +101,6 @@ def _proposal_payload(observable_id: str = "prototype.topology") -> dict[str, An
     }
 
 
-def _sha_bytes(value: bytes) -> str:
-    return hashlib.sha256(value).hexdigest()
-
-
 def _receipt(
     prompt: str,
     paths: tuple[str, ...],
@@ -115,73 +110,15 @@ def _receipt(
     model: str,
     reasoning_effort: str,
 ) -> CodexReceipt:
-    identities = [
-        {
-            "name": Path(path).name,
-            "byte_count": len(Path(path).read_bytes()),
-            "content_digest": _sha_bytes(Path(path).read_bytes()),
-        }
-        for path in paths
-    ]
-    prompt_digest = _sha_bytes(prompt.encode("utf-8"))
-    schema_digest = _sha_bytes(canonical_json(dict(schema)))
-    panel_view_digest = canonical_digest(identities)
-    panel_set_digest = semantic_panel_set_digest(paths)
-    envelope = {
-        "schema": STRUCTURED_INPUT_DIGEST_SCHEMA,
-        "task": prompt,
-        "ordered_panel_identities": identities,
-        "panel_view_digest": panel_view_digest,
-        "panel_set_digest": panel_set_digest,
-        "prompt_digest": prompt_digest,
-        "output_schema_digest": schema_digest,
-    }
-    body: dict[str, Any] = {
-        "schema": CODEX_RECEIPT_SCHEMA,
-        "source": "codex-cli",
-        "requested_model": model,
-        "reported_model": model,
-        "model_identity_evidence": "jsonl-reported-model",
-        "requested_reasoning_effort": reasoning_effort,
-        "input_tokens": 1,
-        "cached_input_tokens": 0,
-        "output_tokens": 1,
-        "reasoning_output_tokens": 0,
-        "thread_id": "00000000-0000-4000-8000-000000000001",
-        "codex_cli_version": "test",
-        "codex_launcher_digest": "a" * 64,
-        "cloud_config_bundle_cache_binding": "absent",
-        "task_digest": prompt_digest,
-        "current_source_digest": "",
-        "current_log_digest": "",
-        "prompt_digest": prompt_digest,
-        "input_digest_schema": STRUCTURED_INPUT_DIGEST_SCHEMA,
-        "input_digest": canonical_digest(envelope),
-        "output_schema_digest": schema_digest,
-        "panel_view_digest": panel_view_digest,
-        "panel_set_digest": panel_set_digest,
-        "structured_output_digest": _sha_bytes(canonical_json(dict(payload))),
-        "proposed_source_digest": "",
-        "proposed_log_digest": "",
-        "event_stream_digest": "b" * 64,
-        "event_types": [
-            "thread.started",
-            "turn.started",
-            "item.completed",
-            "turn.completed",
-        ],
-        "item_types": ["agent_message"],
-        "isolation_policy": CODEX_ISOLATION_POLICY,
-        "outcome": "success",
-    }
-    body["receipt_digest"] = canonical_digest(body)
-    validate_codex_receipt(body)
-    return CodexReceipt(
-        **{
-            **body,
-            "event_types": tuple(body["event_types"]),
-            "item_types": tuple(body["item_types"]),
-        }
+    return canonical_codex_receipt(
+        prompt,
+        paths,
+        schema,
+        payload,
+        launcher_digest=_LAUNCHER_DIGEST,
+        model=model,
+        reasoning_effort=reasoning_effort,
+        command_fixture="prototype structured turn",
     )
 
 

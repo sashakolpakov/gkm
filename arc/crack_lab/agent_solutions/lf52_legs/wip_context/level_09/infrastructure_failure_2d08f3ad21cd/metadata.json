@@ -1,0 +1,21 @@
+{
+  "game": "lf52",
+  "level": 9,
+  "phase": "infrastructure_failure",
+  "reached": 8,
+  "err": "Codex rate-limit preflight failed: timed out waiting for codex app-server request 0 (WARNING: proceeding, even though we could not create PATH aliases: Operation not permitted (os error 1); Error: failed to initialize sqlite state runtime under /Users/sasha/.codex: failed to initialize state runtime at /Users/sasha/.codex)",
+  "attempt": "infrastructure_failure_2d08f3ad21cd",
+  "created_at": "2026-08-05T16:29:23.087350+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "frontier_brief.md",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

@@ -600,7 +600,7 @@ def _expected_task_and_panels(
         raise ObjectSceneAnchorTaskSupportAdapterError(
             "task support adapter accepts TRAIN only"
         )
-    verify_prepared_object_bongard_release(prepared)
+    prepared = verify_prepared_object_bongard_release(prepared)
     matches = tuple(
         item for item in prepared.plan.tasks if item.task_id == frozen_task.task_id
     )

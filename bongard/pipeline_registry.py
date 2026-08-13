@@ -81,6 +81,7 @@ LAST_DEVELOPMENT_PIPELINE_ID = (
 )
 TERMINAL_CUSTODY_GAP_PIPELINE_ID = "skeleton-graph-custody-terminal-gap-v1"
 SHARED_CUSTODY_PIPELINE_ID = "shared-custody-freeze-replay-python-v1"
+DORMANT_PROGRAM_RULE_PIPELINE_ID = "panel-program-rule-dormant-official-custody-v1"
 
 
 def _registration(
@@ -212,6 +213,28 @@ _REGISTRATIONS = (
             "exactly-once custody",
             "freeze-before-query enforcement",
             "tamper-detecting model-free replay",
+        ),
+    ),
+    _registration(
+        DORMANT_PROGRAM_RULE_PIPELINE_ID,
+        PipelineLifecycle.AUDIT_ONLY,
+        new_execution_authorized=False,
+        authorized_scope=(
+            "synthetic and temporary-store validation of hypothesis-preserving "
+            "program observations, exhaustive count-rule induction, and dormant "
+            "official release custody only; no real official panel, label, query, "
+            "benchmark, or campaign execution is authorized"
+        ),
+        entrypoints=(),
+        source_modules=(
+            "bongard.panel_program_observation",
+            "bongard.panel_program_predicate",
+            "bongard.panel_program_official_task",
+        ),
+        retained_for=(
+            "whole-formula supervaluation over complete program hypotheses",
+            "complete strict six-positive/six-contrast support matrices",
+            "exact typed freeze and commit integration with the query-release gate",
         ),
     ),
     _registration(
@@ -670,6 +693,7 @@ def pipeline_registry_data() -> dict[str, object]:
 
 __all__ = (
     "CANONICAL_PIPELINE_REGISTRY",
+    "DORMANT_PROGRAM_RULE_PIPELINE_ID",
     "LAST_DEVELOPMENT_PIPELINE_ID",
     "PipelineLifecycle",
     "PipelineRegistration",

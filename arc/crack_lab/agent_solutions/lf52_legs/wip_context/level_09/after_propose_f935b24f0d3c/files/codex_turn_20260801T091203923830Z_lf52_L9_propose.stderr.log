@@ -1,0 +1,3 @@
+Reading additional input from stdin...
+2026-08-01T11:35:38.983378Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_lf52_arc_agi3_n6_max_cumulative_xfl_67q1/probe_l8_local_symbolic.py:
+            return path, len(seen), (slots, carriers, state_bridges, state_pegs)

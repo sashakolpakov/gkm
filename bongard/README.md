@@ -75,10 +75,139 @@ Evidence remains four-valued: `present`, `certified_absent`, `indeterminate`,
 and `error`. Failure or uncertainty is never converted to Boolean false, and
 the predicate language has no negation, polarity rescue, or reroll.
 
-No current live plan is authorized. [`CONTINUATION_PLAN.md`](CONTINUATION_PLAN.md)
-defines the evidence required for a new, independently clean campaign. It is
-not permission to reuse the terminal campaign, its target family, its stores,
-or the preexposed HD program authority.
+No official- or corpus-facing live plan is authorized.
+[`CONTINUATION_PLAN.md`](CONTINUATION_PLAN.md) defines the evidence required
+for a new, independently clean campaign. It is not permission to reuse the
+terminal campaign, its target family, its stores, or the preexposed HD program
+authority.
+
+## Synthetic representation experiments
+
+### Phase 0: disconnected ordered-path control
+
+The first in-memory **synthetic-only** engineering experiment renders
+all 54 legal line/arc count pairs in each of five carrier families under four
+D4 nuisances at fixed stroke width 2 and scale 1000. Three complete families
+provide 648 training rows (641 unique PNGs); two complete families provide 432
+held-out rows (425 unique PNGs). It records per-action pixel provenance but does not use hidden
+generator history as its target.
+
+The target is a partial, PNG-only connected-component normal form. Every
+8-connected ink component must exactly equal either one finite line raster or
+one finite annular-sector raster; otherwise the target is unresolved. Thus
+identical PNG bytes always have identical target state, including when
+different histories meet in touching context. The ordered path-graph observer
+independently retains all minimum-complexity count-pair fits. Exact singleton
+raster predicates and the partial target then provide a post-fit safety gate:
+they do not select a pair, but an unresolved raster may not issue a singleton.
+Thus set/GAP behavior on unresolved stress cases is a policy guarantee, not
+independent observer evidence. It is paired against a freshly fitted, synthetic-only
+reimplementation of the old 112 pooled features on exactly the same PNGs.
+
+On the current held-out split the ordered observer is 432/432
+singleton-correct, versus 189/432 for the pooled control (+243/432). By held-out
+family the comparison is 216/216 versus 115/216 for `radial`, and 216/216
+versus 74/216 for `staggered`. This is deliberately an easy, disconnected,
+exact-component mechanistic benchmark, not a solution to connected action
+boundaries or a broad generalization claim. A bounded collision audit records
+ten exact history aliases and one near case; two touching-context exact aliases
+have unresolved targets and the post-fit gate returns a set or GAP. The experiment
+has no CLI or file input and grants no official pixel, program, label,
+calibration, target, query, production, or benchmark authority.
+The current source-bound phase-0 replay record is
+`sha256:4a2221b9b39a22ee0b60b2b3dd0ac5859c0b15de92e16a6c238cb6a5aaf774f3`.
+Its prior pre-issuer-bridge record is
+`sha256:3e48a026d3b3bc3126c7a3ee8d424c52b3e1ad837043d1b5d5da61d39ff90bb0`;
+the panels, predictions, and metrics are identical.
+
+### Phase 1: connected fixed-catalog inversion
+
+The connected phase replaces the easy component normal form with shapes whose
+line and arc masks meet at ordered `LL`, `LA`, `AL`, and `AA` boundaries. In
+each of five carrier families and two nuisance regimes it renders all 54
+single-shape count pairs plus 52 two-shape layouts, for 1,060 unique PNGs.
+Three complete families provide 636 training rows; the D4-raster-orbit-
+disjoint `radial` and `staggered` families provide 424 held-out rows. There is
+zero full-D4 orbit overlap between roles.
+
+The raw observer first verifies that the exact PNG byte string was issued by
+the process-local synthetic renderer, traces its skeleton graph, and searches
+the complete fixed primitive-mask catalog for every globally minimum exact
+cover. This SHA-256-keyed issuance check is provenance for an in-memory
+fixture, not a digital signature, external-file authentication, or official
+release authority. Every retained hypothesis must independently reconstruct
+all foreground pixels and no background pixel. Held-out targets are exhaustive
+PNG-plus-catalog exact covers constructed only after raw predictions; the raw
+API has no target input and remains unchanged when the target callback is
+replaced by a failing sentinel. The same fixed catalog, including held-family
+geometry, is nevertheless known to both raw observer and target. This tests
+catalog inversion, not induction of an unseen catalog or renderer grammar. A
+target-free ablation removes every held-family-only mask from the catalog;
+then 0/424 held-out PNGs have any exact cover (0/216 single-shape and 0/208
+two-shape).
+
+On the 424 held-out PNGs the raw exact-cover observer is 424/424 target-set
+correct and exact-reconstructing, versus 106/424 for the freshly fitted
+fixed-32, 112-feature pooled control, a lift of 318/424 (`0.75`). The layout
+comparisons are 216/216 versus 43/216 for `single_shape` and 208/208 versus
+63/208 for `two_shape`; the family comparisons are 212/212 versus 45/212 on
+`radial` and 212/212 versus 61/212 on `staggered`. A deterministic 212-pair
+pooled-feature assignment uses every held-out occurrence exactly once; both
+endpoints are correct in 212/212 raw pairs and 17/212 control pairs.
+
+All 424 exact-cover target sets happen to be singletons, so the zero-false-
+singleton ambiguity gate has no ambiguous held-out case and is not evidence
+about empirical ambiguity frequency. The result is synthetic fixed-catalog
+engineering evidence only. It tests neither official transfer nor broad
+visual generalization and creates no calibration, target, query, production,
+benchmark-promotion, or campaign authority. Its record digest is
+`sha256:0e5f711a6e686cfb9c2b1ff2cde1559a06f15542846794ce44cde57e6a368aff`.
+The dependency audit names 228 true training-family masks, four additional
+synthetic stress masks, and their 232-mask non-held complement.
+The phase-0 digest remains the distinct frozen result reported in
+[`ADVANCES.md`](ADVANCES.md).
+
+### Phase 2: hypothesis-preserving rule induction and dormant custody
+
+The next layer now converts every complete minimum decomposition hypothesis
+into a canonical, role-free program observation. Its closed count language
+contains 399 predeclared positive formulas: 32 single atoms and 367
+conjunctions across straight-count, arc-count, total-count, and primitive-mix
+axes. A formula is evaluated whole on each retained hypothesis: unanimous
+true is `present`, unanimous false is `certified_absent`, disagreement is
+`indeterminate`, and observer failure is `error`. This preserves correlations
+that marginal count sets would lose.
+
+Support induction materializes all 399 × 12 evaluations and admits only rules
+that are present on all six positive panels and certified absent on all six
+contrast panels. A typed zero-survivor record distinguishes a genuine language
+GAP from observer error or unresolved support ambiguity; otherwise it freezes
+the minimum-arity survivor with a canonical digest tie-break. A dormant custody
+adapter binds 12 already released support records, the observer sources and
+catalog fixed in the precommit, the complete matrix, the selected rule, and
+sealed query IDs. Query release requires its exact typed freeze and durable
+commit; arbitrary protocol-shaped records are rejected before any archive
+read.
+
+The end-to-end test uses locally rendered PNGs in a temporary official-shaped
+TRAIN archive. No repository official/download panel or label is read. The
+current fixed catalog is not validated for official geometry, so this wiring
+creates no live official authority and reports no official accuracy.
+
+The focused synthetic tests are:
+
+```bash
+python3 -m pytest -q \
+  bongard/tests/test_panel_action_count_synthetic_identifiability.py \
+  bongard/tests/test_panel_action_count_synthetic_pooled_control.py \
+  bongard/tests/test_panel_action_count_ordered_path_inversion.py \
+  bongard/tests/test_panel_action_count_synthetic_benchmark.py \
+  bongard/tests/test_panel_action_count_connected_synthetic.py \
+  bongard/tests/test_panel_action_count_connected_synthesizer.py \
+  bongard/tests/test_panel_action_count_connected_benchmark.py \
+  bongard/tests/test_panel_program_semantics.py \
+  bongard/tests/test_panel_program_official_task.py
+```
 
 ## Historical results
 

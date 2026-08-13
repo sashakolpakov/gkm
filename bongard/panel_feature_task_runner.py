@@ -3388,7 +3388,7 @@ def run_panel_feature_task_with_official_release(
         raise TypeError("prepared must be exact PreparedObjectBongardRelease")
     if type(archive) is not OfficialPanelArchive:
         raise TypeError("archive must be exact OfficialPanelArchive")
-    verify_prepared_object_bongard_release(prepared)
+    prepared = verify_prepared_object_bongard_release(prepared)
     matches = tuple(item for item in prepared.plan.tasks if item.task_id == task.task_id)
     if len(matches) != 1 or matches[0] != task:
         raise PanelFeatureTaskRunnerError("task differs from prepared official release")

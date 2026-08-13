@@ -1,0 +1,74 @@
+\begin{thebibliography}{10}
+
+\bibitem{baezcourser}
+John~C. Baez and Kenny Courser.
+\newblock Structured cospans.
+\newblock {\em Theory and Applications of Categories}, 35(48):1771--1822, 2020.
+\newblock \url{https://www.tac.mta.ca/tac/volumes/35/48/35-48abs.html}.
+
+\bibitem{kolmogorov}
+Andrey~N. Kolmogorov.
+\newblock Three approaches to the quantitative definition of information.
+\newblock {\em Problems of Information Transmission}, 1:1--7, 1965.
+
+\bibitem{lack}
+Stephen Lack and Pawe{\l} Soboci{\'n}ski.
+\newblock Adhesive and quasiadhesive categories.
+\newblock {\em RAIRO---Theoretical Informatics and Applications}, 39:511--545,
+  2005.
+\newblock \url{https://doi.org/10.1051/ita:2005028}.
+
+\bibitem{toposes}
+Stephen Lack and Pawe{\l} Soboci{\'n}ski.
+\newblock Toposes are adhesive.
+\newblock In {\em Graph Transformations}, volume 4178 of {\em Lecture Notes in
+  Computer Science}, pages 184--198. Springer, 2006.
+\newblock \url{https://doi.org/10.1007/11841883_14}.
+
+\bibitem{livitanyi}
+Ming Li and Paul Vit{\'a}nyi.
+\newblock {\em An Introduction to Kolmogorov Complexity and Its Applications}.
+\newblock Springer, 3 edition, 2008.
+
+\bibitem{rissanen}
+Jorma Rissanen.
+\newblock Modeling by shortest data description.
+\newblock {\em Automatica}, 14:465--471, 1978.
+\newblock \url{https://doi.org/10.1016/0005-1098(78)90005-5}.
+
+\bibitem{schmidhuber1991}
+J{\"u}rgen Schmidhuber.
+\newblock Curious model-building control systems.
+\newblock In {\em Proceedings of the International Joint Conference on Neural
+  Networks}, volume~2, pages 1458--1463, 1991.
+\newblock \url{https://doi.org/10.1109/IJCNN.1991.170605}.
+
+\bibitem{schmidhuber2004}
+J{\"u}rgen Schmidhuber.
+\newblock Optimal ordered problem solver.
+\newblock {\em Machine Learning}, 54:211--254, 2004.
+\newblock \url{https://doi.org/10.1023/B:MACH.0000015880.99707.b2}.
+
+\bibitem{steunebrink2013}
+Bas~R. Steunebrink, Jan Koutn{\'\i}k, Kristinn~R. Th{\'o}risson, Eric Nivel,
+  and J{\"u}rgen Schmidhuber.
+\newblock Resource-bounded machines are motivated to be effective, efficient,
+  and curious.
+\newblock In {\em Artificial General Intelligence}, volume 7999 of {\em Lecture
+  Notes in Computer Science}, pages 119--129. Springer, 2013.
+\newblock \url{https://doi.org/10.1007/978-3-642-39521-5_13}.
+
+\bibitem{vereshchagin}
+Nikolai~K. Vereshchagin and Paul M.~B. Vit{\'a}nyi.
+\newblock Kolmogorov's structure functions and model selection.
+\newblock {\em IEEE Transactions on Information Theory}, 50:3265--3290, 2004.
+\newblock \url{https://doi.org/10.1109/TIT.2004.838346}.
+
+\bibitem{vereshchagin2010}
+Nikolai~K. Vereshchagin and Paul M.~B. Vit{\'a}nyi.
+\newblock Rate distortion and denoising of individual data using {Kolmogorov}
+  complexity.
+\newblock {\em IEEE Transactions on Information Theory}, 56:3438--3454, 2010.
+\newblock \url{https://doi.org/10.1109/TIT.2010.2048491}.
+
+\end{thebibliography}

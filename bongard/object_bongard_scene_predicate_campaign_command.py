@@ -1225,7 +1225,7 @@ def prepare_object_bongard_scene_predicate_campaign(
         precommit=precommit,
         predecessor=predecessor,
     )
-    verify_prepared_object_bongard_release(prepared)
+    prepared = verify_prepared_object_bongard_release(prepared)
     verify_object_bongard_scene_predicate_exposure_transition(
         predecessor=predecessor, plan=plan, prepared=prepared
     )
@@ -5738,7 +5738,7 @@ def verify_object_bongard_scene_predicate_campaign(
         exposure_receipt,
         authorization_receipt,
     )
-    verify_prepared_object_bongard_release(release)
+    release = verify_prepared_object_bongard_release(release)
     verify_object_bongard_scene_predicate_exposure_transition(
         predecessor=predecessor, plan=plan, prepared=release
     )

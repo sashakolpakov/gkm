@@ -662,7 +662,7 @@ def prepare_object_bongard_rubric_campaign(
         precommit=precommit,
         predecessor=metadata.predecessor,
     )
-    verify_prepared_object_bongard_release(prepared)
+    prepared = verify_prepared_object_bongard_release(prepared)
     return prepared
 
 
@@ -1503,7 +1503,7 @@ def run_object_bongard_rubric_campaign_task(
 ) -> PersistedObjectBongardRubricTaskExecution:
     """Execute one task through the real durable support/freeze/query gate."""
 
-    verify_prepared_object_bongard_release(prepared)
+    prepared = verify_prepared_object_bongard_release(prepared)
     _verify_launch_gate_configuration(prepared.precommit.configuration)
     if (
         not isinstance(task, ObjectBongardTaskPlan)
@@ -1912,7 +1912,7 @@ def cold_replay_object_bongard_rubric_campaign_task(
         raise ObjectBongardRubricCampaignError(
             "cold task execution parent differs"
         )
-    verify_prepared_object_bongard_release(prepared)
+    prepared = verify_prepared_object_bongard_release(prepared)
     prepared.store.verify(
         execution_store_receipt, expected_data=restored.to_data()
     )
@@ -2508,7 +2508,7 @@ def run_object_bongard_rubric_campaign(
 ) -> PersistedObjectBongardRubricCampaign:
     """Execute every frozen task with bounded concurrency and one call budget."""
 
-    verify_prepared_object_bongard_release(prepared)
+    prepared = verify_prepared_object_bongard_release(prepared)
     budget = ObjectBongardPhysicalCallBudget(runtime.max_physical_model_calls)
     results: dict[str, PersistedObjectBongardRubricTaskExecution] = {}
     with ThreadPoolExecutor(max_workers=runtime.max_workers) as executor:
@@ -2619,7 +2619,7 @@ def cold_replay_object_bongard_rubric_campaign(
         exposure_receipt=restored.exposure_store_receipt,
         authorization_receipt=restored.authorization_store_receipt,
     )
-    verify_prepared_object_bongard_release(prepared)
+    prepared = verify_prepared_object_bongard_release(prepared)
     store.verify(campaign_store_receipt, expected_data=restored.to_data())
     replayed = tuple(
         cold_replay_object_bongard_rubric_campaign_task(

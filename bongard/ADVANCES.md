@@ -1,7 +1,7 @@
 # Bongard advances and current boundary
 
 This report summarizes the current source-bound engineering line through
-2026-08-10. It separates implemented capability from scientific outcome and
+2026-08-13. It separates implemented capability from scientific outcome and
 preserved historical evidence from current launch authority.
 
 ## Executive result
@@ -62,6 +62,118 @@ model-selection, novel-carrier, DEV, or TEST evidence.  Train-only
 carrier-signature-held-out diagnostics were much weaker: straight `0.44225`,
 arc `0.69254`, and joint `0.35215`.  The observer is therefore a finite-catalog
 engineering result, not a general visual action decomposer.
+
+### 1.1 Phase 0: disconnected ordered-path representation experiment
+
+The carrier-held-out failure motivated a synthetic-only analysis-by-synthesis
+experiment. It never reads a repository or official PNG: a bounded renderer
+issues the only bytes accepted by either observer. Five carrier families each
+contain all 54 legal straight/arc pairs under four D4 nuisances at fixed stroke
+width 2 and scale 1000; three complete families (648 rows, 641 unique PNGs)
+train a freshly fitted 32-tree control and two D4-orbit-disjoint families (432
+panels) are held out. The control is a neutral, frozen-vector-equivalent
+reimplementation of the historical 112 pooled features—not the retired live
+observer.
+
+The ordered observer retains skeleton incidence, traces maximal paths, fits
+line and circular-arc spans, and uses a bounded pair-keyed dynamic program to
+retain every minimum-complexity count pair. Its target is a partial pure-raster
+component normal form: every 8-connected ink component must exactly reproduce
+one finite line or one finite annular sector, or the panel target is unresolved.
+Identical PNG bytes therefore always have identical target state. The exact
+singleton predicates inspect all 4,096 pixels. Candidate fits are independent,
+but a post-fit target-resolvability gate suppresses singleton claims for
+unresolved rasters. It never selects a pair; its set/GAP safety is a policy
+guarantee rather than independent observer evidence.
+
+On the current synthetic run the ordered observer is 432/432 joint-count
+singleton-correct; the pooled control is 189/432, a paired difference of
+243/432. The held-out family breakdown is 216/216 versus 115/216 on `radial`,
+and 216/216 versus 74/216 on `staggered`.
+
+This is deliberately an easy, disconnected, exact-component mechanistic
+benchmark. It is not a broad solution to connected action boundaries. The two
+held-out carrier families do not support an inferential confidence bound or a
+generalization claim; their breakdown is descriptive. The bounded
+identifiability audit contains ten exact hidden-history alias cases and one
+near case. Two exact aliases with identical touching context have unresolved
+targets and the post-fit gate produces set/GAP. In the nine-case structural audit, eight connected
+cases are unresolved and all produce set/GAP; only the legal shallow arc is
+resolved and identified. The grammar excludes actions whose curvature or
+extent cannot survive the 64x64 raster.
+The bounded near-collision scan examines 20,000 of 572,400 different-target
+pairs, finds 20 qualifying pairs, and retains the closest 12; it is not an
+exhaustive collision count. Result record:
+`sha256:4a2221b9b39a22ee0b60b2b3dd0ac5859c0b15de92e16a6c238cb6a5aaf774f3`.
+The prior pre-issuer-bridge source-bound record is
+`sha256:3e48a026d3b3bc3126c7a3ee8d424c52b3e1ad837043d1b5d5da61d39ff90bb0`;
+the panels, predictions, and metrics are unchanged.
+No official, calibration, query, benchmark-promotion, or campaign authority is
+created.
+
+### 1.2 Connected fixed-catalog inversion experiment
+
+Phase 1 replaces phase 0's easy component normal form with actual ordered
+`LL`, `LA`, `AL`, and `AA` within-shape raster boundaries plus disconnected
+two-shape unions. Five carrier families under two nuisance regimes each
+contain all 54 single-shape count pairs and 52 two-shape layouts. Three whole
+families provide 636 training rows; two D4-raster-orbit-disjoint families
+provide 424 held-out rows. All 1,060 PNGs are distinct, and full eight-element
+D4 orbits have zero cross-role overlap.
+
+The raw observer accepts only exact PNG bytes previously issued by the
+process-local synthetic renderer and searches the complete fixed line/arc
+mask catalog for every minimum-cardinality exact cover. The SHA-256-keyed
+issuance check establishes only in-memory fixture provenance; it is not a
+digital signature, external-file authentication, or official release
+authority. Each retained hypothesis covers all foreground and no background
+pixel (XOR zero, IoU one). Held-out exact-cover targets are constructed after
+raw outputs, and the raw API is tested under a failing target-oracle
+monkeypatch. The target and raw observer nevertheless share the catalog,
+including held-family geometry; this is catalog inversion rather than
+induction of an unseen renderer grammar.
+A target-free ablation removes every held-family-only catalog mask; exact-
+cover availability then falls to 0/424 (0/216 single-shape, 0/208 two-shape).
+
+The connected raw observer is 424/424 target-set correct and exact-
+reconstructing; the freshly fitted fixed-32, 112-feature pooled control is
+106/424, for a lift of 318/424 (`0.75`). Layout results are 216/216 versus
+43/216 on `single_shape` and 208/208 versus 63/208 on `two_shape`. Family
+results are 212/212 versus 45/212 on `radial` and 212/212 versus 61/212 on
+`staggered`. The deterministic 212-pair pooled-feature assignment consumes
+each held-out occurrence exactly once; both endpoints are correct for 212/212
+raw pairs and 17/212 control pairs. All 424 targets are singleton sets, so the
+false-singleton ambiguity gate has no ambiguous held-out case.
+
+This is synthetic fixed-catalog engineering evidence only. It does not test
+official transfer, unseen-catalog induction, or broad visual generalization,
+and it creates no official, calibration, target, query, production,
+benchmark-promotion, or campaign authority. Result record:
+`sha256:0e5f711a6e686cfb9c2b1ff2cde1559a06f15542846794ce44cde57e6a368aff`.
+Its dependency inventory contains 228 true training-family masks plus four
+synthetic stress masks, not 232 training-family masks.
+The phase-0 digest above remains frozen and is not overwritten.
+
+### 1.3 Hypothesis-preserving semantic rule layer
+
+The new semantic layer serializes every retained minimum exact-cover
+hypothesis, including primitive mask digests and the correlated straight/arc
+counts. It enumerates a fixed 399-formula language (32 singleton atoms and 367
+cross-axis conjunctions), evaluates all 4,788 candidate/support cells, and
+supervaluates each whole formula across hypotheses. Strict survival requires
+`present` on 6/6 primary supports and `certified_absent` on 6/6 contrasts.
+Selection is deterministic by atom count then formula digest. A typed
+zero-survivor record binds the complete matrix and distinguishes language
+exhaustion from observer error or unresolved support ambiguity.
+
+A dormant official-task adapter now binds already released support records,
+precommitted observer/source/catalog/policy addresses, the complete version
+space, one selected rule, and sealed queries. The shared release gate now
+admits only exact production freeze/commit types and cold-reconstructs their
+family-specific commit before reading query bytes. A synthetic temporary-ZIP
+test crosses support release, observation, rule induction, freeze, durable
+commit, query release, and frozen-rule evaluation. It reads no real official
+or download data and produces no official metric or launch authority.
 
 ## 2. Passed-fit authority
 
@@ -203,10 +315,18 @@ The focused current suites passed:
 - observer, preregistration, passed-fit, and inference custody: 25 tests;
 - calibration runner: 49 tests;
 - incident, persistence, custody GAP, retirement archive, and registry: 120
-  tests; and
-- phase-4 physical-retirement/import/preimage checks: 25 tests.
+  tests;
+- phase-4 physical-retirement/import/preimage checks: 25 tests;
+- synthetic identifiability, pooled control, ordered inversion, and paired
+  benchmark: 73 tests;
+- connected fixture, exact-cover synthesizer, and paired benchmark: 25 tests;
+  and
+- hypothesis-preserving program semantics and dormant official custody: 12 tests.
 
-Total focused evidence: **219 passed**.
+Total focused evidence: **329 passed**. This is the disjoint sum of the listed
+suites (219 + 73 + 25 + 12). The broader reproduction command also runs six
+generic object-release-gate regressions as auxiliary cross-cutting checks;
+those are not included in this focused total.
 
 These checks used repository sources, canonical checked-in metadata, synthetic
 fixtures, and temporary stores. They did not inspect official/download data.

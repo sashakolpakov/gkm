@@ -10,6 +10,7 @@ import pytest
 import bongard.cli as cli
 from bongard.pipeline_registry import (
     CANONICAL_PIPELINE_REGISTRY,
+    DORMANT_PROGRAM_RULE_PIPELINE_ID,
     LAST_DEVELOPMENT_PIPELINE_ID,
     PipelineLifecycle,
     RetiredPipelineExecutionError,
@@ -107,6 +108,16 @@ def test_registry_has_terminal_gap_and_no_active_execution() -> None:
         item.successor_pipeline_id == terminal.pipeline_id for item in retired
     )
     assert all(item.retained_for for item in retired)
+
+    dormant_rule = pipeline_registration(DORMANT_PROGRAM_RULE_PIPELINE_ID)
+    assert dormant_rule.lifecycle is PipelineLifecycle.AUDIT_ONLY
+    assert dormant_rule.new_execution_authorized is False
+    assert dormant_rule.entrypoints == ()
+    assert dormant_rule.source_modules == (
+        "bongard.panel_program_observation",
+        "bongard.panel_program_predicate",
+        "bongard.panel_program_official_task",
+    )
 
     removed_by_id = {
         "panel-feature-exposed-support-smoke-v1": (

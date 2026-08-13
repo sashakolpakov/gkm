@@ -46,6 +46,74 @@ work may continue on synthetic fixtures, checked-in canonical metadata, and
 already exposed engineering evidence, but it cannot create a benchmark
 claim.
 
+The phase-0 synthetic ordered-path experiment is such safe work. It must keep
+all 54 legal count pairs in each role, split whole carrier families before
+evaluation, compare the ordered inverter and pooled-feature control on the
+same locally generated PNG bytes, and report ambiguity/GAP in the fixed
+denominator. Its partial pure-raster target resolves a panel only when every
+8-connected component is exactly one finite line or annular-sector raster;
+other connected components are unresolved. Ordered candidate fits remain
+independent of that target, but a post-fit target-resolvability gate forbids a
+singleton in the unresolved state. This set/GAP safety is policy-enforced, not
+independent observer evidence.
+
+Across four D4 nuisances at fixed stroke width 2 and scale 1000, the current
+paired result is 432/432 joint-count singleton-correct for the ordered observer
+and 189/432 for the pooled control across two held-out carrier families. The
+family breakdown—216/216 versus 115/216 on `radial`, and 216/216 versus 74/216
+on `staggered`—is descriptive engineering evidence, not a confidence bound or
+an official generalization claim. This is an easy disconnected
+exact-component benchmark, not evidence that connected action boundaries are
+solved. Its historical `0.352149` joint figure is only a cross-corpus anchor
+from the separate-marginal carrier-CV diagnostic—not the selected direct-pair
+head and not a promotion threshold. Synthetic improvement cannot satisfy any
+re-entry gate in this document.
+
+The current source-bound phase-0 replay record is
+`sha256:4a2221b9b39a22ee0b60b2b3dd0ac5859c0b15de92e16a6c238cb6a5aaf774f3`.
+Its prior pre-issuer-bridge record is
+`sha256:3e48a026d3b3bc3126c7a3ee8d424c52b3e1ad837043d1b5d5da61d39ff90bb0`;
+the panels, predictions, and metrics are unchanged. Neither record satisfies
+a re-entry gate.
+
+The phase-1 connected experiment strengthens only that safe synthetic
+engineering evidence. It renders all 54 single-shape count pairs and 52
+two-shape layouts for every carrier/nuisance cell, then holds out two complete
+carrier families (424 rows) with zero full-D4 raster-orbit overlap from the
+636 training rows. Its raw observer accepts only exact PNG bytes previously
+issued by the process-local synthetic renderer, then performs minimum exact
+cover against a fixed line/arc mask catalog. That SHA-256-keyed issuance check
+is in-memory fixture provenance, not a digital signature, external-file
+authentication, or official release authority. Held-out targets are
+constructed after raw predictions, and the raw API cannot call the target
+oracle. On this grid it is 424/424 target-set correct and exact-reconstructing
+versus 106/424 for the
+fixed-32, 112-feature pooled control. The layout results are 216/216 versus
+43/216 and 208/208 versus 63/208; family results are 212/212 versus 45/212 on
+`radial` and 212/212 versus 61/212 on `staggered`. A matched 212-pair
+assignment uses each held-out row once and has both endpoints correct in
+212/212 raw pairs versus 17/212 pooled pairs.
+
+This does not establish unseen-grammar induction: raw observer and target
+share the complete fixed catalog, including held-family geometry. All held-out
+PNGs lose exact-cover availability (0/424) when held-family-only masks are
+removed. All held-out target sets are singleton, so its false-singleton
+ambiguity gate has no ambiguous held-out case. The connected result is therefore synthetic
+fixed-catalog inversion evidence, not official transfer, broad visual
+generalization, or satisfaction of any re-entry gate. Its result digest is
+`sha256:0e5f711a6e686cfb9c2b1ff2cde1559a06f15542846794ce44cde57e6a368aff`;
+the phase-0 digest is preserved as the distinct earlier result.
+
+The phase-2 semantic/custody implementation is also safe work, not re-entry.
+It fixes a 399-formula singleton/pair count language, preserves complete
+decomposition hypotheses through whole-formula supervaluation, constructs the
+complete strict 6+6 support matrix, and can freeze one deterministic rule. A
+dormant adapter proves support-to-freeze-to-query mechanics only with locally
+rendered PNGs in a temporary official-shaped archive. It cannot authenticate
+or fit real official geometry with the synthetic fixed catalog, and it does
+not authorize official pixels or labels. A future clean preregistration must
+bind a scientifically applicable observer before this adapter may be used.
+
 ## Re-entry gate 2: new preregistration and stores
 
 Before any pixel callback exists, freeze:

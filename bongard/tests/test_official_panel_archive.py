@@ -375,6 +375,123 @@ def test_archive_constructor_binding_and_predecompression_bound(
     assert reads == 0
 
 
+def test_forged_exact_archive_cannot_redirect_to_a_different_valid_zip(
+    official_zip,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive = _load(official_zip)
+    alternate_directory = tmp_path / "alternate"
+    alternate_directory.mkdir()
+    alternate_path = alternate_directory / "ShapeBongard_V2.zip"
+    alternate_image = Image.new("RGB", (32, 32), "white")
+    ImageDraw.Draw(alternate_image).ellipse(
+        [(4, 4), (28, 28)], outline="black", width=2
+    )
+    alternate_output = BytesIO()
+    alternate_image.save(alternate_output, format="PNG", optimize=False)
+    with zipfile.ZipFile(
+        alternate_path, "w", compression=zipfile.ZIP_DEFLATED
+    ) as bundle:
+        bundle.writestr(MEMBER, alternate_output.getvalue())
+        bundle.writestr(FF_MEMBER, alternate_output.getvalue())
+        bundle.writestr(HD_MEMBER, alternate_output.getvalue())
+        bundle.writestr("ShapeBongard_V2/README.txt", b"different fixture\n")
+    assert zipfile.is_zipfile(alternate_path)
+
+    alternate_stat = alternate_path.stat()
+    alternate_identity = (
+        alternate_stat.st_dev,
+        alternate_stat.st_ino,
+        alternate_stat.st_size,
+        alternate_stat.st_mtime_ns,
+        alternate_stat.st_ctime_ns,
+    )
+    redirected = object.__new__(OfficialPanelArchive)
+    for name in OfficialPanelArchive.__dataclass_fields__:
+        object.__setattr__(redirected, name, getattr(archive, name))
+    object.__setattr__(redirected, "archive_path", alternate_path)
+    object.__setattr__(redirected, "archive_identity", alternate_identity)
+    assert type(redirected) is OfficialPanelArchive
+
+    reads = 0
+
+    def forbidden_read(*args, **kwargs):
+        nonlocal reads
+        reads += 1
+        raise AssertionError("redirected archive must not return panel bytes")
+
+    monkeypatch.setattr(zipfile.ZipFile, "read", forbidden_read)
+    with pytest.raises(
+        OfficialPanelArchiveError,
+        match="bytes differ from the pinned release",
+    ):
+        redirected.read_panel(PANEL_ID)
+    assert reads == 0
+
+
+def test_archive_and_receipt_reject_str_subclass_addresses(
+    official_zip,
+) -> None:
+    class AddressSubclass(str):
+        pass
+
+    archive = _load(official_zip)
+    for field in (
+        "release_descriptor_digest",
+        "archive_digest",
+        "central_directory_digest",
+        "record_digest",
+    ):
+        changed_archive = object.__new__(OfficialPanelArchive)
+        for name in OfficialPanelArchive.__dataclass_fields__:
+            object.__setattr__(changed_archive, name, getattr(archive, name))
+        object.__setattr__(
+            changed_archive,
+            field,
+            AddressSubclass(getattr(changed_archive, field)),
+        )
+        with pytest.raises(
+            OfficialPanelArchiveError, match="must be a sha256: address"
+        ):
+            changed_archive.__post_init__()
+
+    _payload, receipt = archive.read_panel(PANEL_ID)
+    for field in (
+        "sha256",
+        "release_descriptor_digest",
+        "archive_digest",
+        "central_directory_digest",
+        "record_digest",
+    ):
+        changed_receipt = receipt.to_data()
+        changed_receipt[field] = AddressSubclass(changed_receipt[field])
+        with pytest.raises(
+            OfficialPanelArchiveError, match="must be a sha256: address"
+        ):
+            OfficialPanelReceipt.from_data(changed_receipt)
+
+
+def test_archive_load_rejects_release_descriptor_subclass(official_zip) -> None:
+    descriptor = official_zip[0]
+
+    class DescriptorSubclass(OfficialReleaseDescriptor):
+        @property
+        def digest(self) -> str:
+            return descriptor.digest
+
+    counterfeit = DescriptorSubclass(**{
+        field: getattr(descriptor, field)
+        for field in OfficialReleaseDescriptor.__dataclass_fields__
+    })
+    with pytest.raises(TypeError, match="exact OfficialReleaseDescriptor"):
+        OfficialPanelArchive.load(
+            counterfeit,
+            official_zip[1],
+            expected_release_descriptor_digest=descriptor.digest,
+        )
+
+
 def test_module_imports_no_lean_or_historical_runner() -> None:
     source_path = Path(__file__).parents[1] / "official_panel_archive.py"
     tree = ast.parse(source_path.read_text(encoding="utf-8"))

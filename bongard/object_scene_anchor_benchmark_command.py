@@ -1537,7 +1537,7 @@ def prepare_object_scene_anchor_benchmark(
     release = prepare_object_bongard_release(
         store=store, plan=plan, precommit=precommit, predecessor=predecessor
     )
-    verify_prepared_object_bongard_release(release)
+    release = verify_prepared_object_bongard_release(release)
 
     bootstrap_body = {
         "schema": BOOTSTRAP_SCHEMA,
@@ -1716,7 +1716,7 @@ def load_prepared_object_scene_anchor_benchmark_for_replay(
         store, plan, precommit, predecessor, successor, authorization,
         plan_receipt, precommit_receipt, exposure_receipt, authorization_receipt,
     )
-    verify_prepared_object_bongard_release(release)
+    release = verify_prepared_object_bongard_release(release)
     return PreparedObjectSceneAnchorBenchmark(
         root, plan, descriptor, archive, split, predecessor, historical, runtime,
         runtime_raw, runtime_receipt, source_manifest, source_manifest_receipt,
