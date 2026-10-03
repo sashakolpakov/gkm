@@ -451,8 +451,11 @@ def run_transducer(
     primitives: PrimitiveSet,
     max_steps: int = 64,
     max_output_length: int = 64,
+    entry_state: int = 0,
 ) -> PatternRun:
-    state = 0
+    if not 0 <= entry_state < genome.state_count:
+        raise ValueError("entry state outside transducer")
+    state = entry_state
     cursor = 0
     output: List[Symbol] = []
     steps = 0
