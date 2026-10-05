@@ -6,9 +6,7 @@
 \usepackage{hyperref}
 \usepackage{url}
 
-\newcommand{\F}{F_\lambda}
-
-\title{Which Primitives Suffice? Free-Energy Synthesis of\\ Sparse Register Transducers over Opaque Alphabets}
+\title{Growing Transducers by Verified Program Attachment}
 \author{Alexander Kolpakov}
 \date{}
 
@@ -16,156 +14,195 @@
 \maketitle
 
 \begin{abstract}
-We study whether an evolutionary meta-process selecting under the loss-complexity free
-energy $\F = R + \lambda C$ can synthesise \emph{compact deterministic solvers} for
-pattern-transduction tasks, and use the synthesised solvers to measure \emph{which
-primitive tier a task family actually requires}. The substrate is a sparse deterministic
-register transducer whose rule keys never see literal token identities --- only finite
-control and relational observations (\textsc{token}, \textsc{eos}, \textsc{bos},
-current-token-equals-register) --- so train, validation, and hidden-test splits can use
-\emph{disjoint object pools} and success cannot come from memorising symbols. Selection
-minimises training free energy within a $\lambda$ sweep; the reported solver is then
-chosen from the \emph{validation} loss-complexity Pareto frontier (simplest within
-tolerance of the best), and the hidden test is evaluated only afterwards. Across a task
-matrix (copy, swap, duplicate, rotate, reverse, dedupe) the primitive tiers separate
-cleanly and interpretably: streaming primitives suffice for copying and local
-duplication; registers are necessary and sufficient for positional rearrangement;
-equality observations are necessary for content-conditional behaviour; bidirectional
-head motion turns the input tape into external read-only memory and yields the
-length-general reversal motif. The synthesised solvers are small enough to read, and
-their motifs are the textbook algorithms.
+We compare mechanical search and a language model as methods for building
+reusable programs from small token-processing machines. An initial register
+transducer benchmark examines which elementary operations suffice for short
+sequence tasks. Later experiments hold those operations fixed within each
+comparison and allow richer compositions, recursive control and procedure
+interfaces. Both proposers use the same graph pushout construction and execution
+checks. Mechanical search is faster on the simpler composition families. On a
+harder recursive task, the language model solves acquisition and a subsequent
+task on both tested data seeds; the mechanical baseline times out on both
+acquisitions after twenty minutes each. One model transition reuses an unchanged
+helper. The other extends its interface, with the old program recovered exactly
+by fixing the new argument. A separate retention experiment shows that two
+earlier interface extensions enable cheaper later solutions. The original
+benchmark uses an explicit loss-plus-size objective; the growth experiments
+instead accept the first proposal that passes their checks and record size
+afterwards. The results distinguish finding a useful interface from searching
+its bindings, without establishing a general advantage of language models over
+mechanical synthesis.
 \end{abstract}
 
 \section{Introduction}
-A recurring ambition behind program-synthesis benchmarks is not merely to solve tasks
-but to \emph{measure} something about them: what machinery does a task family demand?
-We operationalise this question with a deliberately austere substrate --- sparse
-deterministic register transducers --- and a single selection principle, the
-loss-complexity free energy
-\begin{equation}
-  \F \;=\; R \;+\; \lambda\, C ,
-  \label{eq:fe}
-\end{equation}
-where $R$ is a task loss and $C$ a description length of the solver
-\cite{losscomplexity,rissanen1978}. The $C$ term is the practical stand-in for
-Kolmogorov complexity \cite{kolmogorov1965,live2008}, and preferring low-$\F$ solvers is
-the computable shadow of Solomonoff's simplicity prior \cite{solomonoff1964}. Because
-the substrate's \emph{primitive set is tiered}, the synthesis process doubles as an
-instrument: if a task is solved exactly at tier $k$ but provably mis-solved at tier
-$k-1$, the tier difference names the capability the task requires. This echoes
-Chollet's position that intelligence should be measured by skill-acquisition efficiency
-over tasks with controlled priors \cite{chollet2019measure}, here reduced to a setting
-small enough to be exhaustive about.
 
-\section{Substrate}
-\subsection{Opaque objects and relational rule keys}
-A task instance is a pair of token sequences over a finite alphabet. The solver is a
-deterministic transducer: a sparse map from \emph{rule keys} to bounded action
-sequences plus a next state,
-\[
-  (\text{state},\ \text{observation}) \;\longmapsto\; (\text{actions},\ \text{state}') .
-\]
-The observation is \emph{relational only}: \textsc{token} (a token is under the head),
-\textsc{eos}, \textsc{bos}, or a match mask (the current token equals register $R_i$).
-The rule key never contains a token's identity, so a lookup table over literal symbols
-is not expressible. Correspondingly, the benchmark draws train, validation, and hidden
-test from \emph{disjoint object pools}: a solver that succeeds on the hidden split has
-learned the object-level operation (``swap the two things''), not the alphabet.
+Building a small program and building a useful library are different problems.
+A program may solve its present task yet fix a choice that the next task needs
+to vary. Conversely, a larger helper may earn its cost when later programs can
+call it with different arguments. We study this distinction using transducers
+over opaque tokens: programs can move, copy and compare tokens, but cannot
+refer to their literal identities.
 
-\subsection{Tiered primitives}
-Actions are grouped in nested tiers, each a strict extension of the last capability:
+The experiments address two questions. First, which elementary operations are
+needed for short sequence transformations? Second, once those operations are
+available, how can a solver discover reusable control and interfaces? The first
+study uses evolutionary search with a loss-plus-size objective. The later
+studies compare mechanical construction with proposals from
+\texttt{gpt-5.6-sol}, a large language model (LLM). The two methods share the
+same acceptance checks and retain complete successful additions to their
+libraries.
+
+Description size connects the studies, but plays different roles in them.
+The original objective follows the preference for concise explanations found
+in minimum description length and loss--complexity methods
+\cite{rissanen1978,losscomplexity}. The later studies ask whether reuse emerges
+from program organisation and proposal preferences, without ranking successful
+programs by a scalar score. All reported sizes are counts in a chosen syntax,
+not measurements of Kolmogorov complexity \cite{kolmogorov1965,live2008}.
+
+\section{The initial register-transducer benchmark}
+\label{sec:register}
+
+\subsection{Representation and selection}
+
+A transducer maps a control state and an observation to a short instruction
+sequence and a next state. Observations report a token, the end of input, or,
+where permitted, the beginning of input and equality with stored registers.
+A missing rule halts execution. The tested instruction sets are:
 \begin{center}
+\small
 \begin{tabular}{ll}
 \toprule
-tier & actions / observations added \\
+Set & Available operations \\
 \midrule
-\texttt{stream} & \textsc{move\_right}, \textsc{write\_current}, \textsc{halt} \\
-\texttt{register} & $+$ \textsc{store\_$R_i$}, \textsc{write\_$R_i$} \\
-\texttt{compare} & $+$ current-token/register equality observations \\
-\texttt{bidirectional} & \texttt{stream} $+$ \textsc{move\_left} and the \textsc{bos} observation \\
+\texttt{stream} & Move right, emit current token, halt \\
+\texttt{register} & Stream operations plus register storage and emission \\
+\texttt{compare} & Register operations plus token/register equality tests \\
+\texttt{bidirectional} & Stream operations plus move left and beginning-of-input test \\
 \bottomrule
 \end{tabular}
 \end{center}
-Complexity $C$ counts the rules and the actions they carry, so each tier's extra
-machinery is \emph{paid for} in Eq.~\eqref{eq:fe} --- a task solvable by streaming will
-not gratuitously acquire registers.
+These are supplied alternatives, not capabilities discovered by the search.
+In particular, bidirectional motion is a separate branch rather than an
+extension of the register sets.
 
-\subsection{Selection protocol}
-Within each $\lambda$ of a sweep, a population of transducers evolves by rule edits,
-additions, and deletions under training $\F$. Model selection then moves to the
-\emph{validation} split: over the sweep's loss-complexity Pareto frontier, the simplest
-solver within a small tolerance of the best validation loss is kept --- parsimony as a
-selection pressure, not a post-hoc tie-break. The hidden split is evaluated only after
-this choice; no hidden information flows back. This validation-elbow selection is the
-loss-complexity landscape of \cite{losscomplexity} applied to program synthesis.
+Evolution ranks candidates by
+\begin{equation}
+ F_\lambda = R + \lambda C,
+ \qquad C=\sum_{r\in\mathcal R}(1+|a_r|),
+ \label{eq:fe}
+\end{equation}
+where $R$ is mean normalised edit distance between output and target,
+$\mathcal R$ is the stored rule map, and $|a_r|$ is the number of instructions
+in rule $r$. Unused rules still count. Available registers, unused states and
+the instruction vocabulary have no separate charge. Thus $C$ discourages
+extra code; it does not choose the primitive set or price all machine resources.
 
-\section{Results}
-\begin{table}[h]
+The runner uses four values of $\lambda$ between zero and 0.01, or 0.006 for
+the register rotation and bidirectional reversal conditions. It takes the final
+training winner from each run, forms their validation loss--size Pareto set,
+and chooses the smallest candidate within 0.075 of the best validation loss.
+Lower validation loss breaks a size tie. Despite the function name
+\texttt{validation\_elbow}, this is a tolerance rule, not an estimated geometric
+knee or a global minimum over programs.
+
+Each condition uses one fixed data seed, with ten training, six validation and
+six hidden examples. Token pools are disjoint and contain ten symbols each.
+The search budgets vary by condition. Evaluation is capped at 32 primitive
+instructions; its exact-match score compares the resulting output with the
+target without requiring that the program halted. This older metric must be
+distinguished from the normal return and complete input consumption required
+in the later procedure experiments.
+
+\subsection{Results and their scope}
+
+\begin{table}[htbp]
 \centering
 \small
-\begin{tabular}{llcccl}
+\begin{tabular}{llrrr}
 \toprule
-task & tier & hidden exact & $C$ & rules & observation \\
+Task & Instruction set & Length & Hidden correct & $C$ \\
 \midrule
-copy (len 3) & \texttt{stream} & 1.00 & 3 & 1 & streaming suffices \\
-swap (len 2) & \texttt{stream} & 0.00 & 3 & 1 & \emph{fails}: no memory for first token \\
-swap (len 2) & \texttt{register} & 1.00 & 7 & 3 & store, skip, write, recall \\
-duplicate first & \texttt{stream} & 1.00 & 5 & 2 & macro-rule writes current twice \\
-rotate left (len 3) & \texttt{stream} & 0.00 & 3 & 1 & \emph{fails}: cannot delay first token \\
-rotate left (len 3) & \texttt{register} & 1.00 & 8 & 3 & one register suffices \\
-reverse (len 3) & \texttt{register} (2 regs) & 1.00 & 10 & 3 & fixed-length reverse \\
-reverse (len 5) & \texttt{bidirectional} & 1.00 & 7 & 3 & scan to \textsc{eos}, emit leftward \\
-dedupe pair & \texttt{register} & 0.50 & 2 & 1 & \emph{half-solves}: cannot branch on equality \\
-dedupe pair & \texttt{compare} & 1.00 & 4 & 1 & conditional-halt motif \\
+Copy & \texttt{stream} & 3 & 6/6 & 3 \\
+Swap pair & \texttt{stream} & 2 & 0/6 & 3 \\
+Swap pair & \texttt{register}, one register & 2 & 6/6 & 7 \\
+Duplicate first & \texttt{stream} & 2 & 6/6 & 5 \\
+Rotate left & \texttt{stream} & 3 & 0/6 & 3 \\
+Rotate left & \texttt{register}, one register & 3 & 6/6 & 8 \\
+Reverse & \texttt{register}, two registers & 3 & 6/6 & 10 \\
+Reverse & \texttt{bidirectional} & 5 & 6/6 & 7 \\
+Deduplicate pair & \texttt{register}, one register & 2 & 3/6 & 2 \\
+Deduplicate pair & \texttt{compare}, one register & 2 & 6/6 & 4 \\
 \bottomrule
 \end{tabular}
-\caption{Benchmark matrix (hidden-test splits use disjoint object pools; hidden exact
-is exact-match accuracy). Failures are as informative as successes: they localise the
-missing capability.}
+\caption{The original matrix, reproduced with saved programs and execution
+records. Deduplication removes one copy from an equal pair and otherwise
+leaves the pair unchanged. These are short, fixed-length tests under the older
+output-only metric, not estimates of success across repeated synthesis runs.}
 \label{tab:matrix}
 \end{table}
 
-Three readings of Table~\ref{tab:matrix}:
+On 4 October 2026 we repeated all ten conditions with the original seeds,
+budgets and selection code. Hidden accuracy, loss and size matched every
+reported row. The new archive contains all forty lambda winners, their
+generation histories, selected programs and execution records. This is a
+documented reproduction, not a recovered copy of the original run.
 
-\paragraph{Tiers separate cleanly.} Streaming handles copying and local duplication and
-\emph{provably} cannot delay a token (swap, rotate fail at exact $0.00$); one register
-repairs exactly that; equality observations repair exactly the content-conditional
-failure of dedupe; bidirectional motion repairs the fixed-length limitation of
-register-based reversal. Each capability boundary in the matrix is crossed by exactly
-the tier that names it.
+The representation explains some failures independently of search. Without
+registers or a way to move left, a program cannot recover a token after passing
+it. It therefore cannot swap an arbitrary pair of distinct opaque tokens.
+Without an equality observation, control follows the same path for equal and
+unequal pairs of the same length, so it cannot implement the required change
+in output length for deduplication. These arguments concern these instruction
+sets, not a general necessity for registers in every implementation.
 
-\paragraph{The synthesised motifs are the textbook algorithms.} The selected solvers
-are small enough to read. Swap at the \texttt{register} tier is literally
-\emph{store first, move, write second, write stored}. Reverse at the
-\texttt{bidirectional} tier is the length-general motif: \textsc{move\_right} until
-\textsc{eos}, then \textsc{write\_current}, \textsc{move\_left} until \textsc{bos}
-halts it --- the input tape used as external read-only memory. Dedupe at the
-\texttt{compare} tier is a one-rule conditional halt: the \textsc{match\_$R_0$}
-observation simply has \emph{no rule}, so a repeated token halts the machine.
-Sparsity (absent rules halt) is itself used as a branch.
+The successful motifs reported with the matrix are simple: store the first
+token while emitting the second, or scan to the right end and emit while
+moving left. The reversal loop suggests a solution for longer inputs when
+execution limits are raised; the six length-five tests do not by themselves
+establish that claim. Nor does the size of a selected solver demonstrate that
+it is minimal. This benchmark motivates the later study of shared programs,
+but provides no evidence of library growth on its own.
 
-\paragraph{Parsimony does the model selection.} Because reused structure is what the
-$\lambda$ sweep's validation elbow rewards, the selected solvers sit at the knee of the
-loss-complexity landscape: e.g.\ dedupe-with-compare is admitted at $C=4$ with one
-rule, not at some baroque equivalent. The free energy is doing double duty ---
-selection pressure during evolution and model selection across the sweep.
+\input{machine_growth}
 
-\section{Discussion and limitations}
-The result is deliberately modest in scope and sharp in interpretation: for
-\emph{deterministic} pattern families over opaque alphabets, free-energy synthesis
-yields compact, human-readable solvers, and the tier at which a task first becomes
-solvable is a meaningful measurement of the capability the task requires. Honest
-bounds: (1) tasks are short, fixed-length or nearly so; the length-general claims rest
-on the motif structure (e.g.\ the bidirectional reverse loop), not on testing long
-inputs exhaustively. (2) The tier ladder is hand-designed; a natural next rung is a
-stack for one-way streams, whose depth should be priced in $C$. (3) Search is
-evolutionary and budgeted; failures at a tier are certain only where the tier is
-provably insufficient (memory-free streaming cannot swap), elsewhere ``not found within
-budget'' and ``not expressible'' must be kept distinct. The continuation of this
-programme in the spirit of PowerPlay \cite{schmidhuber2013powerplay} --- letting the
-task generator and the solver grow together, with the same free energy pricing both ---
-is left open.
+\section{Discussion}
 
+The experiments separate two practical difficulties. Once a useful interface
+exists, mechanical binding search is often enough: it was fast in the simpler
+comparisons and supplied every transfer in the retention assay. Discovering
+new recursive control was harder for the tested search policy. The LLM reached
+further there, but sometimes overfit the examples or chose an interface that
+had to be extended on the next task.
+
+The categorical construction is common to both methods. The LLM's flexibility
+lies in proposing the attaching program, not in passing a weaker verifier.
+Retaining a successful attachment changes the library from which the next
+proposal is built. Reuse preferences can therefore influence the sequence of
+retained programs even though no scalar complexity score decides admission.
+We did not ablate those preferences, and the observed size drops do not prove
+that they alone caused reuse or that free energy was minimised.
+
+The distinction between direct reuse and interface extension matters here.
+A small new call is strong evidence of reuse when the old helper is unchanged,
+executes and is necessary. A costly extension can also be productive: the
+retention assay shows later savings that an immediate size-drop criterion would
+miss. Neither outcome follows merely from making a mathematically valid
+attachment.
+
+These are bounded experiments with supplied languages, types, memory conventions
+and curricula. The recursive interface studies also start with three supplied
+source programs. The mechanical baseline searches only a subset of the accepted
+language; its timeouts do not rule out better mechanical algorithms. The model
+has pretrained knowledge and remote compute, so equal deadlines are not equal
+compute budgets. Finally, the data seeds share task rules, and many executions
+reuse the same learned program. They support the reported constructions, not a
+population-wide success rate. Discovering useful interfaces across unrelated
+tasks, or combining several independently learned parsers, remains untested.
+
+\begingroup
+\small
 \bibliographystyle{plain}
 \bibliography{references}
+\endgroup
 \end{document}

@@ -105,3 +105,33 @@ python3 transduction/run_register_transducer_benchmark.py
 
 The script prints a CSV summary and selected sparse rules. It uses deterministic
 seeds, but future substrate changes may alter exact solver forms.
+
+## Complete reproduction: 4 October 2026
+
+All ten conditions were rerun with the unchanged original runner and substrate,
+including the same seeds, budgets, lambda sweep and validation selection.
+Every historical row matched on hidden accuracy, hidden loss and complexity.
+This is a new recorded reproduction, not a recovered original execution.
+
+Artifacts are in `output/transduction_register/20261004-reproduction-v1` and in
+the [unified reproduction package](REPRODUCIBILITY.md). They contain:
+
+- the frozen plan and exact sources;
+- all 40 final lambda candidates and their generation histories;
+- all ten selected executable programs and the validation selection records;
+- complete training, validation and hidden examples, with selected-program
+  outputs, halting flags, executed rule keys and step counts;
+- the CSV matrix and an explicit comparison with the historical report.
+
+The original evaluator scores exact output without requiring halting. That
+semantics was preserved, not silently strengthened during reproduction.
+The measured lambda searches took 218.1 seconds in aggregate across two workers;
+peak worker resident memory was 33.7 MiB. No model calls were made.
+
+```sh
+python transduction/register_artifacts.py --output output/transduction_register/20261004-reproduction-v1 --replay
+```
+
+For a new search run, follow the prepare/run/finalize commands in the package
+instructions. Replay checks candidate execution and selection without repeating
+the evolutionary search; a new output directory is required to regenerate it.

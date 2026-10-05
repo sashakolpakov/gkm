@@ -13,12 +13,16 @@ on the supplied primitive vocabulary and finite search budget.
 
 ## Entry Points
 
+- [Complete evidence and reproduction package](REPRODUCIBILITY.md): original
+  register results regenerated with full records and united with the later
+  experiments; offline replay needs no model access.
 - [`TRANSDUCTION.md`](TRANSDUCTION.md): full subject guide.
 - [`pattern_fsa.py`](pattern_fsa.py): transducer representation and search.
 - [`run_register_transducer_benchmark.py`](run_register_transducer_benchmark.py):
   benchmark matrix.
 - [`register_transducer_benchmark.md`](register_transducer_benchmark.md): report.
-- [`manuscript/transduction.tex`](manuscript/transduction.tex): subject manuscript.
+- [`manuscript/transduction.tex`](manuscript/transduction.tex): subject manuscript,
+  including the machine-growth experiments; [build and evidence map](manuscript/README.md).
 - [`COFIBRATION_EXPERIMENT_20261003.md`](COFIBRATION_EXPERIMENT_20261003.md):
   new machine-growth experiment with exact graph pushouts, mechanical glue,
   and `gpt-5.6-sol` proposals through existing Codex access. This separate
@@ -39,6 +43,19 @@ on the supplied primitive vocabulary and finite search budget.
   arguments and return values under a shared cumulative library contract,
   followed by transfer through unchanged helpers. Both methods use the same
   reuse probe and verifier; no desired interfaces are supplied.
+- [`CONTROL_FRONTIER.md`](CONTROL_FRONTIER.md): harder control structures with
+  additional actions around recursive calls, comparing LLM proposals with a
+  broader mechanical search that can express every tested task.
+- [`FRONTIER_RETRIES.md`](FRONTIER_RETRIES.md): fixed repeated trials with a
+  longer feedback loop and larger budgets for both proposers.
+- [`TRANSFER_VALUE.md`](TRANSFER_VALUE.md): prospective library-removal controls
+  and fresh-library comparisons measuring whether interface extensions repay
+  their description cost on subsequent tasks.
+- [`COFIBRATION_AB.md`](COFIBRATION_AB.md): direct cumulative comparison in
+  which the LLM authors every attachment in its arm and mechanical search
+  independently authors every attachment in the other.
+- [`HARD_COFIBRATION_AB.md`](HARD_COFIBRATION_AB.md): harder recursive structure
+  with returned information, using the same proposers and 20-minute task budgets.
 
 Run from the repository root:
 

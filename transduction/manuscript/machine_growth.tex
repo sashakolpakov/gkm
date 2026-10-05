@@ -1,0 +1,444 @@
+\section{Programs, attachments and acceptance}
+\label{sec:attachment}
+
+The growth studies keep elementary token operations fixed within each paired
+comparison. Across studies, the supplied control language becomes richer:
+first a sequence entering an old machine, then returning calls, nested
+compositions, recursion, and chosen argument and return interfaces.
+
+\subsection{The exact construction}
+
+Programs are represented by finite directed multigraphs with observation and
+action labels. Maps preserve endpoints and labels. We designate maps injective
+on states and transitions as cofibrations. An attachment combines a retained
+library $\mathcal L$ and a new program cell $B$ along their declared interface
+$A$:
+\[
+\begin{array}{ccc}
+ A & \hookrightarrow & B \\
+ \big\downarrow & & \big\downarrow \\
+ \mathcal L & \hookrightarrow & \mathcal L\amalg_A B .
+\end{array}
+\]
+Both maps from $A$ are injective. The pushout takes the disjoint union and
+identifies exactly the interface images. The implementation records the four
+maps and content hashes, reconstructs the quotient on replay, and constructs
+the unique mediating map for compatible maps out of $\mathcal L$ and $B$.
+This is an ordinary graph pushout; no Quillen model structure is asserted.
+
+The initial experiment permits only entry into old control, without a return.
+Later boundaries include typed procedure entry and return ports. The retained
+body is shared, not copied into each call. The interpreter decodes expressions
+and call targets from the quotient graph. Old bodies and dependency hashes
+cannot be changed. Several new helpers and a task entry procedure, called the
+root, may be attached successively as one proposal.
+
+A graph certificate establishes the attachment, not the new task's correctness.
+For the later interface studies, a proposal must also typecheck, produce exact
+outputs, return without error, consume all input, and preserve earlier tasks.
+Search stops at its first exact training fit. Withheld validation then accepts
+or rejects that proposal; a failure does not provide another training example.
+In the cumulative A/B studies it ends the sequence, leaving later tasks blocked.
+The whole accepted proposal is retained. Size does not rank successful proposals
+or decide which helpers survive.
+
+\subsection{Starting machines and permitted programs}
+
+The returning-call study acquires five instruction fragments by bounded word
+search: copy, skip and duplicate one token, swap a pair, and reverse a triple.
+They use cursor advance, emission and two local registers. The nested-composition
+study freezes those fragments and six whole-input procedures acquired in that
+curriculum, then tests new arrangements of them.
+
+The later interface studies begin with nine acquired fragments and three
+\emph{supplied} recursive programs. Those programs have no arguments and differ
+in their local token operations. They offer examples of related code from which
+an abstraction can be drawn. Each proposer receives the same basis; learned
+helpers are not exchanged between the independent arms or data seeds.
+
+Helpers in these studies may have up to four Boolean or procedure arguments,
+and return a Boolean or unit (no returned value). Procedure arguments name
+procedures that take no arguments and return unit. Available constructs are
+calls, recursion, sequencing,
+conditionals, lexical bindings, Boolean operations and equality of the next
+two tokens. There is no token literal, rewind or subtree instruction.
+The root binds and composes helpers; input inspection and recursion belong
+inside helpers. Proposals contain at most four definitions of at most 180
+expression nodes each. Execution is limited to 60,000 steps and call depth 150,
+with input progress required before recursive reentry. The finite program graph
+therefore runs with a supplied call stack; it is not a finite-state machine
+without auxiliary memory.
+
+\subsection{The two proposal methods}
+
+The mechanical algorithm changes with the language. The instruction comparison
+uses breadth-first word search with output-prefix rejection and merging of
+equal training configurations. The nested-composition comparison enumerates
+normalised expression trees by call count and caches exact procedure results.
+The first recursive comparison uses bounded counterexample-guided constraint
+solving over control graphs.
+
+For the later interface and control tasks, mechanical search first tries calls
+to retained procedures. It then compares concrete source programs, replaces
+differing calls to procedures without arguments with procedure parameters, and
+checks that the abstraction can recover each source. Typed transformations add
+Boolean arguments, return values and their uses. The expanded search also
+inserts up to three effects before or after expressions, preserving returned
+values through lexical bindings.
+
+This search is not exhaustive over the accepted language. It rotates in batches
+of sixteen among argument fillings and at most 512 edited templates. Unedited
+templates receive at least one third of the batches and are never evicted;
+edited templates can be evicted after 256 fillings. Candidates are screened
+with a 12,000-step limit before the common 60,000-step execution check. The
+recorded best training prefix does not guide enumeration, and parameterised
+helpers are callable but are not all reused as new control templates. Private
+reference programs confirm that each frontier task has a solution in this
+mechanical grammar; they are withheld from both proposers.
+
+The LLM is \texttt{gpt-5.6-sol}, with medium reasoning. It receives the language,
+retained code, public training pairs and earlier public tasks, without task
+names, target algorithms, future examples or desired signatures. Each retry
+receives the last proposal and a compiler error or two public counterexamples.
+Calls use the existing Codex access with tools disabled; the host accepts only
+structured replies and does not repair them. The feedback is explicitly carried
+between calls rather than relying on hidden session state.
+
+Both methods work under a library-growth objective: try retained helpers,
+factor common code, expose useful differences as arguments, and keep new glue
+small without sacrificing a useful interface. Mechanical construction encodes
+these preferences in search order; the LLM receives them as instructions.
+They are preferences, not a hard size gate.
+
+\subsection{What counts as reuse}
+
+Direct reuse requires an unchanged helper hash, actual execution on the new
+task, and a loss of correctness when its body is disabled. Recursive reuse
+additionally requires recursive reentry in the execution trace. Merely keeping
+a helper, or invoking only its leaf branch, is insufficient.
+
+An interface extension is a different result. Here a new helper exposes choices
+that the old one fixed internally. We check whether fixing the added arguments
+recovers the old abstract syntax tree, including recursive bindings and effect
+order. This post hoc check neither changes admission nor turns replacement of
+an old cell into direct execution of it.
+
+For the interface studies, the size diagnostic is
+\begin{equation}
+ \Delta d_k=\sum_{b\in\mathcal N_k} n(\operatorname{body}(b)),
+ \label{eq:growth-size}
+\end{equation}
+where $\mathcal N_k$ contains every new helper and root accepted at task $k$,
+and $n$ counts expression nodes. Parameter declarations are excluded. A drop
+means less new code, not a smaller total library. This measure differs from
+the rules-plus-instructions count in Eq.~\eqref{eq:fe} and the earlier modular
+language's instruction, constructor and interface units.
+
+\section{Where mechanical search was sufficient}
+\label{sec:growth-ladder}
+
+The earliest attachment pilot improved on cold evolutionary synthesis, but its
+model arm allowed richer glue than its mechanical arm. It did not establish
+an LLM advantage. The following comparisons matched the accepted language
+and progressively broadened the compositions (Table~\ref{tab:growth-ladder}).
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{p{0.39\linewidth}rr}
+\toprule
+Experiment & Mechanical & LLM with harness \\
+\midrule
+Instruction glue: accepted conditions & 12/12 & 12/12 \\
+\quad Total proposal time & 0.99 s & 125.75 s \\
+Returning calls: accepted conditions & 24/24 & 24/24 \\
+\quad Total proposal time & 20.63 s & 673.96 s \\
+Nested composition: accepted tasks & 10/10 & 7/10 \\
+\quad Total proposal time & 14.55 s & 674.79 s \\
+Recursive control: acquisition & 95.88 s & 156.62 s \\
+\quad Subsequent direct reuse & 0.28 s & 132.21 s \\
+Chosen interfaces: accepted tasks & 6/6 & 6/6 \\
+\quad Direct helper transfers & 3/3 & 3/3 \\
+\bottomrule
+\end{tabular}
+\caption{Earlier comparisons. Counts are task/seed conditions, not independent
+families. Times include proposal generation and training checks but exclude
+later verification. Budgets differ between studies. In the chosen-interface
+study, a shared mechanical search supplied every transfer binding, including
+those in the LLM arm.}
+\label{tab:growth-ladder}
+\end{table}
+
+Both methods passed all hidden cases in the matched instruction study and the
+study of returning calls. The latter grew five fragments through twelve tasks
+on two seeds. The final machine called fourteen procedures, including its root, with
+seven procedure levels observed. Its seventeen stored entries used 98 term
+units, versus 618 when each entry was separately inlined. Outputs and work
+counts agreed with the inlined execution: sharing saved storage, not runtime.
+
+Broader nested pipelines and branches still favoured enumeration. The hardest
+tested composition took 4,053,996 candidates and 11.07 seconds. Three model
+conditions timed out at 120 seconds; all seven accepted model programs passed
+their withheld tests. Some long generating expressions also had shorter correct
+solutions, so generating size alone was not a reliable difficulty measure.
+
+Both methods learned a recursive traversal and rebound it on the next task,
+but that study supplied the context bit and callback slots. An earlier pilot
+had failed through mechanical memory limits and model timeouts. The successful
+follow-up changed both the symbolic execution bound and the deadline, from
+120 to 300 seconds.
+
+The next study let proposers choose helper signatures in three families. Both
+solved all six tasks. The common host search then found every transfer binding;
+the model was responsible for its acquired helpers, not those later bindings.
+A preceding trial with unequal library-growth objectives was discarded and is
+not included in these results.
+
+\subsection{Changes in recursive layout}
+
+With generic effect insertion added to mechanical search, a 180-second pilot
+tested four layouts. Both methods acquired the two easier layouts. Only the
+model acquired one with token pairs before, between and after two recursive
+children, in 65.34 seconds; a host-selected binding then transferred it.
+Both failed the layout requiring information returned from a child. On a
+fresh data seed neither method repeated the three-payload acquisition.
+
+A fixed follow-up used seeds 2, 3 and 4, two model starts per seed, and one
+deterministic mechanical run per seed. Each task allowed 600 seconds, six
+model replies or eight million mechanical candidates. The model solved both
+tasks in all six runs; mechanical search timed out on all three acquisitions.
+Four model libraries supported direct recursive reuse through host-selected
+bindings. The other two required interface extensions. No successful stage
+needed a third reply, and five acquisitions fit the earlier 180-second limit.
+The stronger evidence came mainly from repeated starts, not from showing that
+more conversational turns were necessary. This still tested a model plus a
+mechanical binder, motivating the independent proposal processes below.
+
+\section{Independent mechanical and LLM proposals}
+\label{sec:direct-ab}
+
+In the direct A/B study each arm starts from its own copy of the original
+basis and authors every attachment. The LLM gets no host-generated binding.
+Both arms use the same accepted language, compiler, graph verifier and examples.
+On seeds 31 and 32 they attempt six successive tasks: copy then duplicate leaves
+in a layout with a middle payload; repeat for a layout with leading, middle
+and trailing payloads; then repeat when a payload operation depends on a
+child's returned information. A payload here is an ordinary token pair placed
+beside the recursive children.
+
+Each task has 26 training and 26 withheld validation examples, with 40 hidden
+and thirteen stress cases evaluated after all choices freeze. Token pools are
+disjoint; stress trees reach 128 leaves. The allowance is 300 seconds per task,
+at most four model replies or eight million mechanical candidates. Failure
+blocks later tasks in that arm without importing a solution.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Method & Accepted & Failed attempts & Blocked & Added nodes per seed \\
+\midrule
+Mechanical & 4 & 2 & 6 & $36,6$ \\
+LLM & 8 & 2 & 2 & $27,6,35,6$ \\
+\bottomrule
+\end{tabular}
+\caption{Direct A/B: twelve scheduled outcomes per arm. Both seeds have the
+displayed size sequence. Blocked tasks are unattempted, not independent failures
+or zero-cost solutions.}
+\label{tab:direct-ab}
+\end{table}
+
+Mechanical search acquired the first parser in 36.1 and 38.0 seconds and its
+transfer binding in about 0.28 seconds. The model took 67.6 and 109.3 seconds
+for acquisition and 223.6 and 131.5 seconds for transfer. At task 3 the result
+reversed: search timed out after 1,888,660 and 2,005,511 candidates, while the
+model acquired the larger parser in 61.6 and 44.8 seconds, then supplied its
+reuse calls in 13.6 and 12.4 seconds.
+
+The two mechanical and four model transfers all used unchanged recursive
+helpers on every hidden case. Traces confirm recursive reentry, and disabling
+each helper reduced correctness from 40/40 to 0/40. Task 3 did, however, add
+a new parser rather than reuse the task 1 parser. The repeated size drops
+describe reuse within task pairs, not transfer across every change in format.
+
+The model failed task 5 on both seeds. On seed 31 a structural shortcut passed
+21/26 training examples, and the next reply timed out. On seed 32 a syntax
+repair achieved 26/26 training but only 23/26 validation; all four old tasks
+still passed. Its graph certificates were valid, but its new behaviour was
+wrong. No withheld counterexample was returned to the proposer.
+
+\section{A harder task with twenty-minute budgets}
+\label{sec:hard-ab}
+
+The next comparison combined three payload positions with information returned
+from both children. An internal region consists of an equal-token marker pair,
+a leading payload, a left child, a middle payload, a right child and a trailing
+payload. Leaves and payloads are unequal pairs. The target swaps the leading
+pair. It swaps the middle pair when the left child has an odd leaf count,
+otherwise keeping only its first token. It keeps the trailing pair's first
+token when the whole region has an odd leaf count, otherwise swapping it.
+Task 1 copies leaves; task 2 duplicates their tokens. Proposers see examples,
+not this rule or its parity interpretation.
+
+Both arms start afresh on seeds 41 and 42. Each task has 44 training and 44
+withheld validation examples, covering every binary shape through five leaves
+plus combs and random trees with up to ten leaves. Forty hidden cases have 12--96
+leaves; thirteen stress cases include 128-leaf trees. The deadline is 1,200
+seconds per task, with ten model replies or 32 million mechanical candidates.
+The model, prompt, search policy and acceptance rules are unchanged. The task,
+examples and allowance all changed, so this is not an isolated test of extra
+time on the preceding task.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{rllrl}
+\toprule
+Seed & LLM acquisition & LLM task 2 & Added nodes & Mechanical acquisition \\
+\midrule
+41 & 709.9 s; 7 replies & 45.3 s; 1 reply & $77,84$ & 9,261,328; timeout \\
+42 & 591.7 s; 5 replies & 70.9 s; 2 replies & $100,12$ & 10,377,878; timeout \\
+\bottomrule
+\end{tabular}
+\caption{Hard A/B. Mechanical entries count synthesis candidates before the
+twenty-minute limit. Both mechanical acquisitions failed, so neither dependent
+task ran. All four model tasks passed acceptance and the later tests.}
+\label{tab:hard-ab}
+\end{table}
+
+The model's successive acquisition scores were $2,2,6,2,6,37,44$ out of 44 on
+seed 41, and a syntax error followed by $2,6,33,44$ on seed 42. Both winning
+proposals exceeded the previous time and reply limits and passed all 44
+validation cases.
+
+\begin{samepage}
+\paragraph{Seed 42: direct reuse.}
+The acquisition introduced \texttt{Walk5Cut}, a recursive helper with procedure
+arguments. The successful task 2 root was
+\begin{verbatim}
+(seq (call Walk5Cut (ref C02) (ref C02) (ref F004) (ref C03)) unit)
+\end{verbatim}
+\end{samepage}
+Here \texttt{C02} duplicates a pair, \texttt{F004} swaps it and \texttt{C03}
+keeps its first token. The helper's hash was unchanged; it recursed on all
+forty hidden cases, and disabling it gave 0/40 correct results. The model
+corrected an initially wrong binding after public feedback. Another acquired
+helper, \texttt{FirstPair}, duplicated an existing fragment and was unused on
+task 2. The $100\to12$ drop therefore shows reuse, not minimal acquisition.
+
+\paragraph{Seed 41: interface extension.}
+The first helper, \texttt{walk6}, had two Boolean arguments but fixed copying
+at leaves. Its replacement, \texttt{walk6f}, adds a procedure argument
+\texttt{emit}. Setting \texttt{emit} to the old copy fragment \texttt{C01}
+and specialising the recursive calls recovers the old syntax tree exactly,
+including lexical bindings and effect order. A separate auditor checked this
+after selection; neither proposer nor the acceptance code used it. All 564
+comparisons across four Boolean settings and 141 original-task inputs agreed
+on output, cursor and returned value. Argument passing can still change the
+interpreter step cost.
+
+The old helper executed on zero task-2 hidden cases. This is verified interface
+extension, not direct reuse or an extra pushout certificate. Its $77\to84$
+size sequence has no immediate drop. The two-task protocol did not test whether
+later calls would repay that extension.
+
+\section{The later value of an extended interface}
+\label{sec:transfer-value}
+
+A separate retention assay followed all six model libraries from the
+600-second repeated study, including its two extensions. It was not another
+proposer A/B. Three unused leaf operations---swap, keep first and keep
+second---were tested on data seeds 21, 22 and 23, without changing the recursive
+format. The same mechanical adapter search ran on snapshots before and after
+task 2. It could choose a retained procedure and bind its arguments, but could
+not synthesise a new helper. Each search allowed ten seconds and 10,000
+candidates. Nine fresh LLM controls started from the original basis, with
+300 seconds and four replies per task.
+
+Before their extensions, the two affected libraries solved 0/18 future tasks;
+afterwards they solved 18/18. The failures exhausted the allowed adapters,
+not every possible composition. Four libraries with already useful interfaces
+solved 36/36 from either snapshot, and all nine fresh controls succeeded.
+The extended helpers kept their hashes and were necessary in every corresponding
+hidden case under body elision. All these transfer bindings came from search.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+Library history & Task 1 & Task 2 & Task 3 & Task 4 & Task 5 \\
+\midrule
+Extension to \texttt{P6} & 31 & 45 & 7 & 7 & 7 \\
+Extension to \texttt{L1} & 33 & 47 & 8 & 8 & 8 \\
+Direct reuse (two histories) & 42 & 8 & 8 & 8 & 8 \\
+Direct reuse & 45 & 7 & 7 & 7 & 7 \\
+Direct reuse & 35 & 6 & 6 & 6 & 6 \\
+\bottomrule
+\end{tabular}
+\caption{New expression nodes per task. Tasks 1--2 are the six frozen
+histories; tasks 3--5 were chosen before the follow-up ran. Counts agree across
+the three new data seeds, which do not represent new interface discoveries.}
+\label{tab:extension-cost}
+\end{table}
+
+Fresh solutions used 24--61 nodes, versus 6--8 for adapters. Charging the
+entire task-2 addition, including its root, later savings covered the 45-node
+\texttt{P6} extension after one, two and two tasks on the three seeds. The
+47-node \texttt{L1} extension was covered after one, three and two. This payback
+is relative to the observed fresh solutions, not a minimum description bound.
+The before/after comparison gives the size curves a behavioural interpretation:
+the added interface made those cheap calls possible. The evidence concerns
+new leaf operations in one format, not repeated discovery across unrelated tasks.
+
+\section{Verification and reproducibility}
+\label{sec:growth-records}
+
+For the two direct comparisons, all scheduled outcomes were frozen before
+hidden evaluation. Fresh processes checked proposal provenance, separate
+library histories, graph certificates and failed prefixes. Each accepted
+program also ran on all binary shapes through seven leaves with two token
+assignments, and on 81 pairs of concatenated regions to test return at an
+internal boundary. Table~\ref{tab:growth-audit} gives the recorded totals.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{lrrr}
+\toprule
+Check & Direct A/B & Hard A/B & Retention assay \\
+\midrule
+Accepted task instances & 12 & 4 & 99 \\
+Hidden cases correct & 480/480 & 160/160 & 3,960/3,960 \\
+Stress cases correct & 156/156 & 52/52 & 1,287/1,287 \\
+Shape checks correct & 4,728/4,728 & 1,576/1,576 & 39,006/39,006 \\
+Continuation checks correct & 972/972 & 324/324 & 8,019/8,019 \\
+Accepted attachment certificates & 18 & 8 & 109 \\
+\bottomrule
+\end{tabular}
+\caption{Finite verification of accepted programs, not independent discovery
+trials or a proof for all inputs. The retention assay also records eighteen
+adapter failures. Two further graph certificates in the direct A/B belonged
+to a behaviourally rejected proposal and are excluded from its accepted count.}
+\label{tab:growth-audit}
+\end{table}
+
+Total proposal time was 675.1 seconds mechanically and 1,250.8 seconds for
+the model in the direct A/B; the hard A/B used 2,400.6 and 1,417.8 seconds.
+The latter tested 19,639,206 synthesis candidates and completed fifteen model
+replies. Neither hard-trial arm hit its sampled 640 MiB local process-group
+limit. These resource measures cover different amounts of completed work and
+do not include remote model hardware. Detailed usage and earlier study budgets
+are given in the individual reports.
+
+The unified reproduction package is described in
+\path{transduction/REPRODUCIBILITY.md}; the study-to-evidence map is in
+\path{transduction/manuscript/README.md}. It includes the register rerun and
+the later studies, with sources, data, proposals, receipts, program histories,
+certificates and replay commands. Historical records are preserved unchanged.
+Two early auxiliary audits whose source copies were missing were regenerated;
+every previously reported result was required to match. Their new reports are
+separate from the originals. Replay checks the recorded source versions and
+runs without model access. The package is a local deliverable, not yet a public
+archival deposit.

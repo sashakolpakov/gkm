@@ -132,14 +132,18 @@ def witness(library, family, stage, root):
         definition(helper, ps, ret, ("if", "eq", core, leaf)), definition(root, [], "U", main)])
 
 
-def model_search(library, pairs, root, folder, seconds, reuse=None, history=None):
+def model_search(library, pairs, root, folder, seconds, reuse=None, history=None,
+                 *, max_replies=2, log_progress=False):
+    if type(max_replies) is not int or max_replies < 1:
+        raise ValueError("max_replies must be a positive integer")
     started, attempts, feedback, winner = time.monotonic(), [], None, None
-    for number in range(1, 3):
+    for number in range(1, max_replies + 1):
         remaining = seconds - (time.monotonic() - started)
         if remaining < 2:
             break
         attempt = {}
         attempts.append(attempt)
+        attempt_started = time.monotonic()
         try:
             raw = propose(prompt(library, pairs, root, feedback, reuse, history), folder / f"proposal-{number}",
                           timeout=remaining, memory_mib=MEMORY_MIB, response_schema=schema(library))
@@ -149,13 +153,26 @@ def model_search(library, pairs, root, folder, seconds, reuse=None, history=None
             attempt["training"] = brief(result)
             if result["exact"]:
                 winner = raw
-                break
-            feedback = dict(proposal=raw, counterexamples=[r for r in result["records"] if not r["exact"]][:2])
+            else:
+                feedback = dict(proposal=raw, counterexamples=[r for r in result["records"] if not r["exact"]][:2])
         except (RuntimeError, ValueError) as exc:
             attempt["error"] = str(exc)
             feedback = dict(proposal=attempt.get("payload"), error=str(exc))
-        attempt["feedback"] = feedback
-    return winner, dict(seconds=time.monotonic() - started, attempts=attempts)
+        if winner is None:
+            attempt["feedback"] = feedback
+        attempt.update(seconds=time.monotonic() - attempt_started,
+                       elapsed_seconds=time.monotonic() - started)
+        if log_progress:
+            save(folder / "progress.json", dict(attempts=attempts, max_replies=max_replies,
+                                                elapsed_seconds=attempt["elapsed_seconds"]))
+            print(json.dumps(dict(event="model_reply", root=root, number=number,
+                training=attempt.get("training"), error=attempt.get("error"),
+                elapsed_seconds=attempt["elapsed_seconds"])), flush=True)
+        if winner is not None:
+            break
+    return winner, dict(seconds=time.monotonic() - started, attempts=attempts,
+        max_replies=max_replies, stopped="solved" if winner else
+        "reply_limit" if len(attempts) == max_replies else "time_limit")
 
 
 def search_process(library, pairs, root, folder, seconds, *, phase, history=None, reuse=None):
