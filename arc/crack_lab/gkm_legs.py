@@ -10,15 +10,15 @@ solver (see FINDINGS R-LEGS). So the discipline is enforced by the harness here:
   * Per level K the loop runs: PROPOSE (compose legs + minimal new) -> VERIFY on the
     real game (does solve.py reach level K, replay-validated?) -> DEBRIEF (refactor any
     repeated code into shared legs; log the recurring composition).
-  * Admission/scoring uses MARGINAL free energy  F = R + lambda * C_marginal , where
-    C_marginal is the NEW structure introduced this level (LOC added to legs.py +
-    players.py). A REUSED leg adds zero, so parsimony directly rewards transfer: later
-    levels should show near-zero marginal C. This is F=R+lambda*C with C = novelty.
+  * Admission is operational: promote the first exact next-boundary candidate that
+    passes independent replay, taint, and provenance checks. ``marginal_C`` and the
+    derived ``F_diag`` are recorded only after that winner is fixed. They describe
+    retained novelty and reuse; they do not rank candidates or control admission.
 
 The proposer and verifier are INJECTABLE (`propose_fn`, `verify_fn`) so the control
-loop + marginal-C accounting can be unit-tested offline; the defaults call the real
-Claude Code agent (with tools) and run the real game. Requires credits only for the
-default proposer.
+loop + marginal-C accounting can be unit-tested offline. The live adapters support
+the configured Claude, OpenCode, Codex, or Anthropic-API proposer, while the verifier
+independently runs the real game.
 """
 from __future__ import annotations
 import importlib.machinery

@@ -5,6 +5,7 @@ MARGINAL free-energy accounting can be checked without credits. The point being
 tested is the load-bearing property: reusing a leg is free, so later levels that add
 no new legs have lower marginal novelty than early rule-learning levels.
 """
+import ast
 import os
 import importlib.machinery
 import inspect
@@ -1814,6 +1815,46 @@ def test_free_energy_rewards_levels_and_penalises_novelty():
     assert L.free_energy(3, 100, lam=0.02) == -3.0 + 2.0
     # more levels for the same novelty is always lower F
     assert L.free_energy(4, 50) < L.free_energy(3, 50)
+
+
+def test_free_energy_is_diagnostic_only_in_the_acquisition_harness():
+    """Fail if F starts ranking or admitting candidates in ``gkm_legs``."""
+    tree = ast.parse(Path(L.__file__).read_text(encoding="utf-8"))
+    parents = {
+        child: parent
+        for parent in ast.walk(tree)
+        for child in ast.iter_child_nodes(parent)
+    }
+
+    displayed_properties = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and isinstance(node.ctx, ast.Load)
+        and node.attr == "free_energy"
+    ]
+    assert displayed_properties
+    assert all(
+        isinstance(parents[node], ast.FormattedValue)
+        for node in displayed_properties
+    )
+
+    direct_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "free_energy"
+    ]
+    assert len(direct_calls) == 1
+    owner = parents[direct_calls[0]]
+    while not isinstance(owner, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        owner = parents[owner]
+    assert owner.name == "free_energy"
+    class_owner = parents[owner]
+    while not isinstance(class_owner, ast.ClassDef):
+        class_owner = parents[class_owner]
+    assert class_owner.name == "Report"
 
 
 def test_level_record_upsert_and_legacy_checkpoint_deduplication(tmp_path):

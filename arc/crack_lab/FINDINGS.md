@@ -1,5 +1,12 @@
 # Cracking local ARC-AGI-3 games with the colimit construction (scratch lab)
 
+> **Terminology note.** Dated entries below sometimes call free energy an
+> “admission” or “selection” score because that was the intended research design.
+> The frozen campaign implementation did something simpler: it promoted the first
+> exact-boundary candidate that passed replay, taint, and provenance checks, then
+> computed and printed marginal complexity and free energy as diagnostics. Those
+> quantities did not rank competing candidates in the submitted release.
+
 ## Current promoted artifacts (2026-07-04 cleanup)
 
 `gkm_legs.py` now promotes every replay-validated leg-library state into

@@ -77,6 +77,15 @@ sum of positive net description-size changes in `legs.py` and `players.py`, incl
 a surcharge for container-literal elements. Same-size replacement can receive zero.
 Use source provenance and replay, not the scalar alone, to assess reuse.
 
+The frozen campaign mechanically tried incumbent legs first, then asked the proposer
+for missing objects, maps, and minimal glue. The first candidate that passed the exact
+replay, taint, and provenance gates was promoted, and its complete solver tree became
+the starting diagram for the next level. `F_diag = -levels + 0.02*cumulative_C` was
+reported only after a win had been established. It did not rank candidates. Allocation
+among games instead used clean retry history and a retained core source byte-count
+heuristic. The campaign set `--debrief-policy=never`, so the generic adaptive refactor
+facility did not select the frozen lineage.
+
 ## Solved-Checkpoint Comparator Audit
 
 The cross-system audit excludes interim synthesis revisions, repeated same-level
@@ -97,6 +106,13 @@ manifest link, and core-file hashes. Their canonical ledgers are respectively
 `40, 54, 86, 114, 138, 170, 158` (760 total). Earlier `wa30` work was informed by
 human play and mechanic-specific priors; it is preserved only as explicitly
 superseded provenance and is not spliced into the uniform reacquisition.
+
+The Community Leaderboard version numbers mark that boundary. Version 1.0 contains
+the older `wa30` history and is excluded from the source-free, observation-only
+mechanic-discovery claim. Version 2.0 replaces it with the fresh, separately rooted
+frame/clone L1--L9 reacquisition described above. The clone-enabled local discovery
+interface remains stronger than the official scoring interface, where neither clone
+lookahead nor an LLM is used.
 
 Passing the source/environment taint audit does not turn these into official
 interaction-efficiency evaluations: both reacquisitions still use the stronger
