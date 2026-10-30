@@ -5,7 +5,7 @@ fecf508feffd471b5f51ea859c6d1fce9b0031f6d2d818ffdf4ed79865be59de  ../../REPRODUC
 ab3bcdeb2179462acf39274947cc72a61e803ed57a05fe1cc046176f9d4aa786  ../../docs/generated/marginal_complexity_by_level.rst
 f9c11a170f664cd878a30c2545b6e4ab6234254d061a1900e102c6c51a46e2c9  ../../docs/self_improving_agent.rst
 747a0ea10c6c13353cdacc78686d468db6d65267f23881fc955ba35292946d38  ../ARC.md
-dbf5701c70de9dab05996ddf4d8e6bd95574a150008a88d81d4a50ceb05d80a1  ../README.md
+eea10ecd6bda03240bca8733924238e7d713c38ed993989d115542cd31738e92  ../README.md
 dfb9d2002f3fcdd24356141b6ebbb62fb52cf127f905e3b301d2aee4f2e03834  ../audit_results/README.md
 d6181d932e1d22b5609634c130944f1f6837c8e799ce478fd63779eee9b76d10  ../audit_results/marginal-literal-reuse.json
 3a6ca9c97f0c288c6a560d7053d3be1596c9c2a227f8fb8dc04b4cf41d4e1c61  ../build_artifact_docs.py
