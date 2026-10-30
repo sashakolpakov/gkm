@@ -50,9 +50,13 @@ GAME_SOURCE_NAMES = {
         "r11l re86 s5i5 sb26 sc25 sk48 sp80 su15 tn36 tr87 tu93 vc33 wa30"
     ).split()
 }
+GAME_SOURCE_NAME_PATTERN = "|".join(
+    re.escape(name) for name in sorted(GAME_SOURCE_NAMES)
+)
 HIDDEN_SOURCE_RE = re.compile(
     r"environment_files/|/environment_files/|agent_solutions/|/agent_solutions/|"
-    + "|".join(re.escape(name) for name in sorted(GAME_SOURCE_NAMES)),
+    rf"(?<![a-z0-9_])(?:{GAME_SOURCE_NAME_PATTERN})"
+    r"(?![a-z0-9_])",
     re.IGNORECASE,
 )
 NETWORK_RE = re.compile(

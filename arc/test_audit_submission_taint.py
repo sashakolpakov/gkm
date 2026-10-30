@@ -57,6 +57,39 @@ def test_agent_authored_private_runtime_command_remains_taint(tmp_path):
     assert "direct_private_runtime" in A.scan_file(path)
 
 
+def test_workspace_probe_filename_is_not_hidden_game_source_taint(tmp_path):
+    path = tmp_path / "turn.jsonl"
+    path.write_text(
+        _event({
+            "type": "command_execution",
+            "command": "python probe_tn36.py",
+            "aggregated_output": (
+                "saved /workspace/tn36_legs/wip_context/probe_tn36.py"
+            ),
+        }) + "\n"
+    )
+    assert "hidden_source_or_prior_solution" not in A.scan_file(path)
+
+
+def test_exact_game_source_filename_remains_taint(tmp_path):
+    commands = (
+        "python tn36.py",
+        "python /workspace/tn36.py",
+        "sed -n '1,40p' tn36.py:12",
+        "cat /workspace/archive/tn36.py.bak",
+    )
+    for index, command in enumerate(commands):
+        path = tmp_path / f"turn-{index}.jsonl"
+        path.write_text(
+            _event({
+                "type": "command_execution",
+                "command": command,
+                "aggregated_output": "",
+            }) + "\n"
+        )
+        assert "hidden_source_or_prior_solution" in A.scan_file(path)
+
+
 def test_repro_audit_binds_filesystem_boundary_for_source_and_transcript(
     tmp_path,
 ):
