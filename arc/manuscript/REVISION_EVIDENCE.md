@@ -146,3 +146,26 @@ case alongside the direct and indirect retained-helper cases. The suite-wide
 The manuscript reports these specific findings in place of generic doubt about
 reuse at the dc22/wa30 troughs. The case audit records source call structure; it does
 not add runtime call counts or a matched discovery-efficiency experiment.
+
+## Shared code-only accounting
+
+`arc/executable_reuse.py` replaces the five-case traversal as the shared source
+engine. It processes all 144 GKM adjacent source pairs, following imports, aliases,
+wrappers, callbacks, closures, dispatch tables and methods. It finds retained
+paths in 115 pairs, including 61 with only indirect paths and 18 sharp marginal
+drops. It considers all supplied retained Python definitions. The original
+conditional marginals and every legacy row field are unchanged.
+
+`source_reuse` binds the source bundles and stores paths, definition hashes and
+unresolved bindings. `generated/reuse_accounting.{json,md,tex}` reports coverage.
+The raw GKM, OPINE and baseline1 adapters share the engine; cached non-GKM rows
+are kept as earlier direct audits until raw sources are provided. The case table
+now delegates its path calculation to the same engine, with no star-import
+requirement or separate game-specific traversal.
+
+`ReplayCalls` and `arc/record_replay_calls.py` account for actual runtime choices
+in an independent replay without changing solver code. Source, compiler and
+entrypoint bindings are checked before observations can be attached. The observer
+is tested with runtime dispatch, closures, lambdas, decorated/callable entries,
+generated glue, threads and async tasks. No historical runtime events have been
+inferred from source. No game/harness/admission changes or LLM calls are introduced.

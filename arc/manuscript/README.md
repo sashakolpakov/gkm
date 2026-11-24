@@ -76,8 +76,8 @@ make -C arc/manuscript arxiv-check
 ```
 
 The canonical, versioned submission source ZIP is
-`arc/manuscript/build/arxiv/arc_agi3_arxiv.zip`. Its ten files are the main TeX
-source, the BibTeX database, the four included generated TeX tables, and the four included
+`arc/manuscript/build/arxiv/arc_agi3_arxiv.zip`. Its eleven files are the main TeX
+source, the BibTeX database, the five included generated TeX inputs, and the four included
 PNG figures. It excludes companion documents, repository evidence, scripts, caches,
 and all LaTeX output/intermediate files.
 
@@ -218,3 +218,18 @@ exact frozen winning states, checks the hashes of unchanged functions, follows t
 intervening level routine, and recognizes the literal-action case structurally.
 It honors the effective final player definition when a source file contains duplicate
 stubs. Its five cases supplement the existing suite-wide direct-call counts.
+
+## Generalized accounting
+
+The shared accountant is `../executable_reuse.py`; it follows new glue rather than
+requiring a particular call spelling or modifying solver code. The GKM, OPINE and
+baseline1 source adapters use it. Source hashes and static paths are reported
+separately from optional actual replay call events. Current coverage is published
+in `generated/reuse_accounting.{json,md,tex}`. The GKM analysis covers 144 pairs,
+finds retained paths in 115 (61 beyond direct-only detection), and associates 18
+sharp marginal drops with such paths. Cached comparator rows retain their original
+direct statistics and are not silently given generalized classifications.
+
+`../record_replay_calls.py` can observe an existing trusted replay driver in the
+process executing solver code. See [the protocol](../REUSE_ACCOUNTING.md). The
+historical GPT-5.6 source statistics do not claim that observer data existed then.

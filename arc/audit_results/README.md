@@ -13,9 +13,9 @@ reproducibility.
 
 - `gkm-solved-checkpoints.{csv,json}` measures the exact winning
   `legs.py + players.py + solve.py` bundle. Ordinary clears use the preserved
-  pre-debrief source; four auto-solve sources are deterministically
-  reconstructed from the prior retained source plus the harness's one-call
-  player stub. This raw audit can advance while the campaign is running.
+  pre-debrief source; no-debrief auto-solve sources retain the complete
+  winning workspace. A later paid-debrief snapshot alone does not authenticate
+  the earlier winning source. This raw audit can advance while the campaign is running.
 - `baseline1_gpt55_xhigh_solved_checkpoints.{csv,json}` measures the three
   core world-model modules and the complete Python authored relative to the
   fixed scaffold. It distinguishes post-solve retained snapshots from exact
@@ -32,14 +32,15 @@ reproducibility.
 - `marginal-literal-reuse.json` applies one cross-system test at exact winning
   checkpoints. Its conditional AST marginal is the compressed normalized
   top-level AST in the current winning program that is not a literal member of
-  the preceding winning program. A reuse witness requires the winning entry
-  point to call an unchanged named definition directly. The frozen GKM source
-  audit admits 174 exact winning-source checkpoints, 149 exact adjacent
-  transitions, 57 hard direct-call witnesses, and 14 sharp/direct-call
-  intersections. These are a strict subset of the 181 replay-verified endpoint
-  wins: `ft09` L2 and `tr87` L1--L6 are replay-valid deterministic
-  reconstructions and are excluded from historical source-complexity
-  denominators. OPINE has four hard witnesses and two sharp intersections;
+  the preceding winning program. The legacy direct-call criterion is preserved alongside generalized
+  source accounting through new glue. The frozen GKM source audit admits
+  171 exact winning-source checkpoints, 144 exact adjacent transitions,
+  54 direct-call cases and 13 sharp/direct-call intersections. The generalized
+  account finds retained-definition paths in 115 pairs, including 18 sharp
+  drops; 61 pairs require an intermediate routine beyond direct-call detection. These are a strict subset of the 181 replay-verified endpoint
+  wins: `ft09` L2 and `tr87` L1--L6 reconstructions, plus
+  `g50t` L3/L4 and `r11l` L3 paid-debrief-only sources, are excluded
+  from historical source-complexity denominators. OPINE has four hard witnesses and two sharp intersections;
   baseline1 has zero among its 18 exact adjacent transitions; Retrodict releases
   no executable winning entry point. The complete witness enumeration is
   generated in `arc/manuscript/generated/comparator_stats.md`.
@@ -50,8 +51,8 @@ fresh action programs—four direct commands, six inline plans, and eight plans
 passed to the generic executor—and none invokes a retained world-model
 definition.
 
-All compressed lengths use zlib level 9 and are computable description-length
-upper bounds, not estimates of machine-independent Kolmogorov complexity.
+Compressed novelty uses zlib level 9. It is a representation-dependent proxy,
+not a complete prefix code or a calibrated Kolmogorov estimate.
 Normalized-AST fields remove comments and formatting. A contraction is
 interpreted only between adjacent solved levels.
 
@@ -87,3 +88,13 @@ The source analyzers are:
 - `arc/audit_opine_solved_checkpoints.py`
 - `arc/audit_retrodict_artifacts.py`
 - `arc/audit_marginal_literal_reuse.py`
+
+## General source and actual-call accounting
+
+`source_reuse` stores the new common source-account fields: source SHA-256 maps,
+entrypoint bindings, direct/indirect paths, unchanged-definition hashes and unresolved
+sites. Missing raw comparator source is explicitly unavailable for the new pass.
+Optional replay observations are source-bound and recorded separately; historical
+source-path counts are never relabelled as observed runtime calls. The tools invoke
+no LLM and impose no new candidate syntax or admission requirement. See
+[REUSE_ACCOUNTING.md](../REUSE_ACCOUNTING.md).

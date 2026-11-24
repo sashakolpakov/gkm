@@ -204,27 +204,30 @@
     "canonical-taint-audit.json": "7a6432185959f9b3cdbdcb77767d878a5b8bf5a8f0dd6a55e630ddec1d1c81d8",
     "comparator_stats.md": "1e3bdaf19018fbc1dd8da15bb60fca804f49a1ba8f67fcf5e3922bc5f4eba4ab",
     "comparator_stats.tex": "cba29e02d35302b6add03baadd18358981733488ba7ba2ef4c885a04189b1998",
-    "ls20_sawtooth.pdf": "582cc2b2ec4126a0c41b73007e84f59763138bb21e99574ff7dd1e0d81eef676",
-    "ls20_sawtooth.png": "c7d66e67e4fdc3bf2a3e150128f5e59e4f26162087a013c752e6ac9e14005dff",
+    "ls20_sawtooth.pdf": "3646fc87441175ddcf15bcb24008dcf066bda91227328c4c8c77fdb6842c7b0f",
+    "ls20_sawtooth.png": "54d3071beb0b71c4d5abe2fb35099a03c17f16c2f1281cfe8147c731bae7d9ca",
     "marginal_complexity_by_level.json": "9c5c089aa85ed27cd54bf68823fbe61007caf53d59c502a77ff7e99196f20836",
     "marginal_complexity_by_level.md": "7f01e7bc7ccda1767406b7ec41f9746e7767be256774d31f7efabe92d5637096",
     "marginal_complexity_by_level.rst": "0184b4d3576a4bfcbad900b795c22dcb9d63fc46514cbd41613bc776d43a5a42",
     "marginal_complexity_by_level.tex": "797e08757c55a72fd38a462e220ee0904d9167b4cc2e0ae9bde58097b76d4d50",
-    "marginal_complexity_profiles.pdf": "4c705475b4f18b908d4c7235feb1053809821b840e5cf1966d72cf21778c664c",
-    "marginal_complexity_profiles.png": "5fa7e62f36614e079eabfe500ed203db6b36be32ccea42ea4128a13baf89e5fb",
-    "revision_source_audit.json": "39f8c2523be1d1eee67b2a38d44a7d9e477065b409fbbf1a7b474837047cc01f",
+    "marginal_complexity_profiles.pdf": "500bbc356a5f99fe51980e5b7452eb30f3f27d6f3b53e30d713d32f65de91375",
+    "marginal_complexity_profiles.png": "bd2233068c73efc1c43be31a4908280aa7c7b986fceee3a7b1c39497eb7176c2",
+    "revision_source_audit.json": "931025e6534704bd2ddfe525011bed16393bbad3c666a8fec5f66315def68281",
     "source_charge_comparison.json": "1f804bc4f1581edce95c225e01b7e98f138b431509a654ff88f975febefa376e",
     "source_charge_comparison.md": "fb7a5bd89f715f10194533126aa38195f11e404fc4399ed93bef61cb0e2f9992",
     "source_charge_comparison.tex": "5b56e6be76a3562693a8ff9a83ce48024ef94b73aa349645fff38f1f8a5c98fa",
     "source_charge_comparison.png": "834e94e14f7e0f965f55e520b4ef0662aaf2a4b68ae0ade78f45c54fa5325b6a",
     "source_charge_comparison.pdf": "6c8d8ba0ff12984214bb0a6fe931a6dbde55ec655867e75d7c0f32fafa6581a5",
-    "conditional_marginal_profiles.json": "8c5fb4e6b18411f9925b8cfa34ee61a7878e38b5dde797bd657b6e9b7e1f4c04",
-    "conditional_marginal_profiles.md": "601cfa66c56555886bbd0eec42bb1ef4cb0a724d867eadc8dadb0690fc7bfd43",
-    "marginal_complexity_all_games.png": "7cdbfa038c6752cf3c5a8842f4e4e313a782528c120008ad011e20422d3dc3d2",
-    "marginal_complexity_all_games.pdf": "a256bc9fddd88273099b09887855c506260e52711d13cbc67b4e64bd857b9ad0",
-    "reuse_case_audit.json": "bcbdaea601e41514bb3bcf4617790f41a3a4d071ccfa0e5ea45ec35f049bd044",
-    "reuse_case_audit.md": "12a0b93673e14dcef39c4b1c54fc3e3c524c91aba574e7dbf74d63b1e0ff3f9a",
-    "reuse_case_audit.tex": "4d09232e66afb6760655218acbf0b9bb760c302f5454fe76f7b70036e6152136"
+    "conditional_marginal_profiles.json": "7aafe1441ae804930758ea29818c0aa0e220cf0e32d080dac0377f48b60bf40d",
+    "conditional_marginal_profiles.md": "0e8d2e838422593c0f938f693f9b8accc2d35a8593b974428c8363de59452f90",
+    "marginal_complexity_all_games.png": "4835a7f63887d8472083dec3604a715d98b9990beff20c1b8bfa8d60db7827c5",
+    "marginal_complexity_all_games.pdf": "6925a8cdb655f42890277d70c0d98492c7de66bec0e4fdaaba0847bf7c1c1b01",
+    "reuse_case_audit.json": "bf29a4f993f900f98234a6e6c0167487cb0dd9f922b61a4cb211c6f312e2c4c6",
+    "reuse_case_audit.md": "20e9e3cc52892570330a6d7475ac1ff5552bf98b46dcf0cac76fcd31e0bf3023",
+    "reuse_case_audit.tex": "4d09232e66afb6760655218acbf0b9bb760c302f5454fe76f7b70036e6152136",
+    "reuse_accounting.json": "04e4def28cdb18076be4bcf11f01ab3af446750a39b95a9bcc223be5bb68bb05",
+    "reuse_accounting.md": "d496dc9c9446437915897e7002ee8eaaf663ce099b43c2bf8a43acf3f7d34fa3",
+    "reuse_accounting.tex": "772ab8c70d8e54e90d52e4752c568215cb8abf9883e5bf9fbeec9a46575e1e36"
   },
   "revision_validation": {
     "date": "2026-11-24",
@@ -233,8 +236,8 @@
     "frozen_acquisition_tables_and_figures_regenerated": true,
     "endpoint_gates_rerun": false,
     "endpoint_evidence": "Previously verified frozen release receipt; preserved without new replay.",
-    "comparator_evidence": "Previously pinned non-GKM source rows retained.",
-    "runtime_call_execution": "unmeasured",
+    "comparator_evidence": "Pinned original direct-call comparator rows retained. New generalized paths require raw sources; cached rows are explicitly unavailable for that pass.",
+    "runtime_call_execution": "Historical campaign unmeasured. New observer validated on independent example programs, not retroactive campaign observations.",
     "reason": "Corrected workspace-versus-promotion baseline interpretation and incomplete dc22 source reconstruction; unauthenticated paid-debrief reconstructions excluded; static calls distinguished from execution.",
     "legacy_field_names": "hard_literal_world_model_reuse_witnesses and sharp_drops_with_literal_reuse name static AST tests, not measured executed calls.",
     "receipt_schema": "1, checked against the immutable publication blob and its SHA-256",
@@ -266,14 +269,15 @@
       "sharp_half_or_more_marginal_drops": 21,
       "hard_literal_world_model_reuse_witnesses": 54,
       "sharp_drops_with_static_call": 13,
+      "sharp_drops_with_retained_source_path": 18,
       "games_with_direction_reversals": 22,
       "direction_reversals": 62
     },
     "conditional_profile_inputs": {
-      "source_audit": "8e1305eb382f1429fc3ea1904686e979a942f5bc664b89f67215dc824d2a5aac",
+      "source_audit": "f85900c115e2d73a6d36dd0eb0ae3383b668d680d407aee7b10f484470aebb0c",
       "release_table": "9c5c089aa85ed27cd54bf68823fbe61007caf53d59c502a77ff7e99196f20836"
     },
-    "targeted_tests_passed": 69,
+    "targeted_tests_passed": 119,
     "all_game_figures_preserve_unknown_boundaries": true,
     "admission_policy_changed": false,
     "concrete_reuse_cases": {
@@ -293,6 +297,65 @@
       },
       "suite_wide_direct_call_counts_changed": false,
       "source_hashes_independently_checked": true
+    },
+    "legacy_M_and_direct_row_fields_equal_published_a4545536": true,
+    "generalized_reuse_accounting": {
+      "GKM": {
+        "exact_pairs_analysed": 144,
+        "pairs_with_retained_call_path": 115,
+        "pairs_with_direct_path": 54,
+        "pairs_with_indirect_path": 77,
+        "pairs_with_only_indirect_paths": 61,
+        "sharp_drops_with_retained_call_path": 18,
+        "pairs_with_unresolved_sites": 128,
+        "cached_or_unavailable_pairs": 0,
+        "runtime_call_observations": "separate replay evidence; not inferred from static paths",
+        "source_bound_replay_observations": 0
+      },
+      "OPINE": {
+        "exact_pairs_analysed": 0,
+        "pairs_with_retained_call_path": 0,
+        "pairs_with_direct_path": 0,
+        "pairs_with_indirect_path": 0,
+        "pairs_with_only_indirect_paths": 0,
+        "sharp_drops_with_retained_call_path": 0,
+        "pairs_with_unresolved_sites": 0,
+        "cached_or_unavailable_pairs": 121,
+        "runtime_call_observations": "separate replay evidence; not inferred from static paths",
+        "source_bound_replay_observations": 0
+      },
+      "baseline1": {
+        "exact_pairs_analysed": 0,
+        "pairs_with_retained_call_path": 0,
+        "pairs_with_direct_path": 0,
+        "pairs_with_indirect_path": 0,
+        "pairs_with_only_indirect_paths": 0,
+        "sharp_drops_with_retained_call_path": 0,
+        "pairs_with_unresolved_sites": 0,
+        "cached_or_unavailable_pairs": 18,
+        "runtime_call_observations": "separate replay evidence; not inferred from static paths",
+        "source_bound_replay_observations": 0
+      },
+      "Retrodict": {
+        "exact_pairs_analysed": 0,
+        "pairs_with_retained_call_path": 0,
+        "pairs_with_direct_path": 0,
+        "pairs_with_indirect_path": 0,
+        "pairs_with_only_indirect_paths": 0,
+        "sharp_drops_with_retained_call_path": 0,
+        "pairs_with_unresolved_sites": 0,
+        "cached_or_unavailable_pairs": 0,
+        "runtime_call_observations": "separate replay evidence; not inferred from static paths",
+        "source_bound_replay_observations": 0
+      }
+    },
+    "generalized_accounting_method": "Finite code-only possible-call analysis through new glue, with separately source-bound replay observations; no imposed solver grammar or admission change.",
+    "source_audit_recomputed_sha256": "f85900c115e2d73a6d36dd0eb0ae3383b668d680d407aee7b10f484470aebb0c",
+    "strict_sphinx": "Passed with warnings treated as errors; 10 documentation sources.",
+    "source_zip": {
+      "files": 11,
+      "sha256": "a133cb42ab698d61f3d9ec8b71578f54d68dc1c97bcdc96542d95ac5e65f21d1",
+      "isolated_compilation": "passed"
     }
   }
 }

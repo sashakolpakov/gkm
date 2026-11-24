@@ -70,9 +70,9 @@ literal matches to the preceding exact winning program. It is representation-dep
 omits complete decoding metadata and is not a calibrated estimate of ideal $K$.
 
 The exact-source audit admits 171 winning checkpoints and 141 comparable marginals:
-64 decrease, including 21 half-or-more drops. Thirteen sharp drops coincide with
-static calls to unchanged earlier legs; runtime call execution is unmeasured. Missing
-sources are not bridged. The main figure plots three cases and the appendix all 25 games.
+64 decrease, including 21 half-or-more drops. Generalized source accounting finds
+retained paths in 115 of 144 adjacent pairs, including 18 sharp drops. Sixty-one
+pairs require intermediate glue beyond direct calls. Missing sources are not bridged. The main figure plots three cases and the appendix all 25 games.
 
 \textbf{\texttt{dc22}.} Conditional novelty is
 $1058,604,716,885,828,1379$ bytes: two dips despite increasing promoted-source growth.
@@ -93,7 +93,9 @@ repairing the valid solver, counters or replay. These counters neither replace
 conditional complexity nor reconstruct all failed discovery work.
 
 \section*{Limits and next evaluation}
-Actual calls need instrumentation. Causal search savings require a matched-model,
+The shared code-only accountant follows aliases, callbacks, wrappers and methods.
+Its separate replay observer records actual dispatch without changing candidate
+code or admission. Historical runtime calls were not collected. Causal search savings require a matched-model,
 matched-budget library ablation. Historical discovery logs do not support a full token
 bill. The companion \texttt{REVISION\_EVIDENCE.md} records frozen commits, snapshots,
 reconciliation, and source-only reproduction; \texttt{RESPONSE\_TO\_REVIEWS.md} records

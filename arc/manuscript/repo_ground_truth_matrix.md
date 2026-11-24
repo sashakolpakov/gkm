@@ -54,3 +54,10 @@ and L5 despite increasing G. Both dc22 dips and both wa30 troughs have source pa
 through new routines to unchanged helpers, as documented by the five-case audit.
 cn04 L3 instead has a 23-action player calling only env.step. The direct-call
 statistic excludes the intermediate wrappers and retains its fixed scope.
+
+The generalized common accountant follows new glue in every available source pair:
+115 of 144 GKM pairs have retained paths, including 18 sharp marginal drops.
+Sixty-one pairs require indirect paths beyond the original direct criterion.
+All legacy marginal/direct fields are unchanged; cached comparator rows remain
+explicitly outside the new source pass. Actual replay call events are separately
+bound to snapshot hashes, without a change to proposal or admission.

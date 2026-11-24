@@ -13,12 +13,16 @@ It omits complete decoding metadata, such as statement order and dictionary
 references, and is not by itself a prefix-code length.  Unlike a signed total-size
 difference, it charges same-size rewrites.
 
-A drop in that marginal is only a search cue.  A static source-reuse candidate
-requires a call site in the winning entry point to a named definition whose
-normalized AST is literally unchanged from the preceding winning checkpoint.
-The audit deliberately reports the two tests separately.  It does not instrument
-runtime calls: an AST call site can occur in an unexecuted branch.  Historical JSON
-field names containing ``hard_literal_reuse_witness`` describe this static test.
+Generalized accounting is stored in ``source_reuse``. A deterministic source
+points-to analysis follows imports, aliases, new wrappers, callbacks, closures,
+dispatch tables and methods to retained definitions. Source hashes, paths and
+unresolved sites are explicit. Independently observed replay calls can be attached
+to the same source pair. No candidate syntax or admission policy is changed.
+
+The older direct-name fields remain available for the published cross-system
+comparison; they do not exclude indirect reuse from the generalized account.
+Historical names containing ``hard_literal_reuse_witness`` refer to that fixed
+static test, not runtime call counts.
 
 System-specific evidence boundaries:
 
@@ -41,10 +45,13 @@ import collections
 import hashlib
 import json
 import re
+import shlex
 import zlib
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
+
+from executable_reuse import analyse_reuse, attach_replay
 
 from audit_baseline1_artifacts import (
     commit_files,
@@ -82,6 +89,7 @@ class MarginalReuseRow:
     sharp_drop_with_literal_reuse: bool
     winning_command_zlib_bytes: int | None
     evidence: str
+    source_reuse: dict | None = None
 
 
 def normalized_top_level_units(files: dict[str, bytes]) -> list[tuple[str, bytes]]:
@@ -295,6 +303,8 @@ def gkm_rows(root: Path) -> list[MarginalReuseRow]:
                         if hard_reuse
                         else "no direct static call site to an unchanged named leg in the winning player"
                     ),
+                    source_reuse=(analyse_reuse(previous_files, files,
+                        [f"players.py:{entrypoint}"]) if adjacent else None),
                 )
             )
             previous_level = level
@@ -388,6 +398,10 @@ def opine_rows(root: Path, audit_json: Path) -> list[MarginalReuseRow]:
                             else "no unchanged engine definition is reachable from the winning planner"
                         )
                     ),
+                    source_reuse=(analyse_reuse(previous_files, files,
+                        ["game_engine.py:planner"], target_files={"game_engine.py"})
+                        if synthesized and adjacent else {"status": "unavailable", "reason":
+                        "winning analyzer source is not in the released engine" if not synthesized else "no exact adjacent source pair"}),
                 )
             )
             previous_level = level
@@ -426,6 +440,36 @@ def imported_world_model_names(command: str) -> list[tuple[str, str]]:
         for name in re.findall(r"\b[A-Za-z_]\w*\b", names):
             if name != "as":
                 result.append((f"{module}.py", name))
+    return result
+
+
+def command_reuse(previous, current, command):
+    """Resolve Python winning commands without executing shell or solver code."""
+    sources = dict(current)
+    roots = []
+    # The source is exactly the heredoc body, never an LLM reconstruction.
+    pattern = r"(?:python(?:3(?:\.\d+)?)?)\s+[^\n]*?<<\s*(['\"]?)([A-Za-z_]\w*)\1[^\n]*\n(.*?)^\2\s*$"
+    for index, match in enumerate(re.finditer(pattern, command, re.M | re.S)):
+        filename = f"__winning_command_{index}.py"
+        sources[filename] = match.group(3).encode()
+        roots.append(filename + ":<module>")
+    if not roots:
+        try:
+            words = shlex.split(command)
+        except ValueError:
+            words = []
+        if words and re.fullmatch(r"(?:.*/)?python(?:3(?:\.\d+)?)?", words[0]):
+            if "-c" in words and words.index("-c") + 1 < len(words):
+                sources["__winning_command.py"] = words[words.index("-c") + 1].encode()
+                roots.append("__winning_command.py:<module>")
+            else:
+                candidates = [name for name in current if name in words[1:]]
+                if len(candidates) == 1:roots.append(candidates[0] + ":<module>")
+    if not roots:
+        return {"status": "unavailable", "reason": "winning command is not a supplied Python entry program",
+                "winning_command_sha256": hashlib.sha256(command.encode()).hexdigest()}
+    result = analyse_reuse(previous, sources, roots, target_files=set(current))
+    result["winning_command_sha256"] = hashlib.sha256(command.encode()).hexdigest()
     return result
 
 
@@ -555,6 +599,7 @@ def baseline_rows(
                             else "no unchanged retained world-model definition is invoked by the winning command"
                         )
                     ),
+                    source_reuse=(command_reuse(previous_files, files, command) if adjacent else None),
                 )
             )
             previous_level = level
@@ -575,6 +620,8 @@ def system_summary(rows: list[MarginalReuseRow]) -> dict[str, object]:
     measurable_drops = [
         row for row in exact if row.previous_level_marginal_ast_zlib_bytes is not None
     ]
+    source_rows = [row for row in exact if row.source_reuse and row.source_reuse.get("status") in
+                   {"resolved_source_graph", "partially_resolved_source_graph"}]
     return {
         "retained_or_winning_checkpoints": len(rows),
         "exact_winning_checkpoints": sum(
@@ -620,6 +667,18 @@ def system_summary(rows: list[MarginalReuseRow]) -> dict[str, object]:
             for row in exact
             if row.hard_literal_reuse_witness
         ],
+        "source_reuse_accounting": {
+            "exact_pairs_analysed": len(source_rows),
+            "pairs_with_retained_call_path": sum(bool(row.source_reuse.get("paths")) for row in source_rows),
+            "pairs_with_direct_path": sum(bool(row.source_reuse.get("direct_targets")) for row in source_rows),
+            "pairs_with_indirect_path": sum(bool(row.source_reuse.get("indirect_targets")) for row in source_rows),
+            "pairs_with_only_indirect_paths": sum(bool(row.source_reuse.get("paths")) and all(len(path) > 2 for path in row.source_reuse["paths"].values()) for row in source_rows),
+            "sharp_drops_with_retained_call_path": sum(row.sharp_marginal_drop and bool(row.source_reuse.get("paths")) for row in source_rows),
+            "pairs_with_unresolved_sites": sum(bool(row.source_reuse.get("unresolved_calls")) for row in source_rows),
+            "cached_or_unavailable_pairs": len(exact) - len(source_rows),
+            "runtime_call_observations": "separate replay evidence; not inferred from static paths",
+            "source_bound_replay_observations": sum(bool(row.source_reuse and row.source_reuse.get("observed_replay_calls")) for row in exact),
+        },
     }
 
 
@@ -653,6 +712,8 @@ def main() -> int:
         ),
     )
     parser.add_argument("--json", type=Path)
+    parser.add_argument("--replay-observations", type=Path,
+                        help="JSON index of independent observer reports, keyed by system/game/completed_level with path and sha256")
     parser.add_argument(
         "--reuse-non-gkm-from-json",
         type=Path,
@@ -694,6 +755,21 @@ def main() -> int:
                 args.baseline_audit_json,
             ),
         }
+    if args.replay_observations:
+        index = json.loads(args.replay_observations.read_text())
+        lookup = {(row.system, row.game, row.completed_level): row for rows in by_system.values() for row in rows}
+        seen = set()
+        for item in index["observations"]:
+            key = (item["system"], item["game"], item["completed_level"])
+            if key in seen:raise ValueError("duplicate replay observation boundary")
+            seen.add(key)
+            row = lookup[key]
+            if row.source_reuse is None:raise ValueError("replay observation has no exact source accounting")
+            path = (args.replay_observations.parent / item["path"]).resolve()
+            raw = path.read_bytes()
+            if hashlib.sha256(raw).hexdigest() != item["sha256"]:raise ValueError("replay report hash mismatch")
+            row.source_reuse = attach_replay(row.source_reuse, json.loads(raw))
+            row.source_reuse["observation_report_sha256"] = item["sha256"]
     retrodict_audit = json.loads(args.retrodict_audit_json.read_text())["summary"]
     summary = {
         "measurement": (
@@ -710,6 +786,7 @@ def main() -> int:
             "named definition whose normalized AST is identical at the preceding winning "
             "checkpoint; runtime call execution is not measured"
         ),
+        "general_reuse_rule": "finite source points-to analysis follows wrappers, aliases, imports, callbacks and method calls; unresolved sites are explicit; replay calls are independently observable without changing solver syntax",
         "systems": {
             system: system_summary(rows) for system, rows in by_system.items()
         },

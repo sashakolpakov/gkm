@@ -174,11 +174,13 @@ removing literal matches to the preceding exact winning program; it is not a
 calibrated estimate of ideal complexity or a complete decoding code.
 
 The frozen GPT-5.6 source audit finds 64 decreases in 141 comparable marginals,
-including 21 half-or-more drops. Thirteen sharp drops coincide with static calls
-to unchanged earlier legs. Runtime call execution remains unmeasured.
+including 21 half-or-more drops. The generalized source account finds retained
+paths in 115 of 144 adjacent source pairs, including 18 sharp drops; 61 pairs
+require following intermediate glue beyond a direct call. These historical totals
+are source measurements; independently observed replay calls have a separate field.
 
 .. image:: ../arc/manuscript/figures/marginal_complexity_profiles.png
-   :alt: Conditional marginal novelty for dc22, wa30 and ls20, with decreases and static call-site cases marked
+   :alt: Conditional marginal novelty for dc22, wa30 and ls20, with decreases and retained-definition paths marked
    :width: 100%
 
 For ``dc22``, M is ``1058, 604, 716, 885, 828, 1379`` compressed bytes: two dips,
@@ -320,3 +322,20 @@ documented in ``REPRODUCE_ARC.md``.
 The replay procedure tests endpoint behavior. Reproducing the stochastic proposer
 history, cloned exploration budget, and externally hosted model calls is a separate
 experiment not supplied by the current artifact replay.
+
+Code-only Accounting Through Glue
+---------------------------------
+
+``arc/executable_reuse.py`` follows aliases, imports, callback parameters, closures,
+returned functions, tables and methods using a finite source points-to analysis.
+The GKM, OPINE and baseline1 adapters use the same engine when raw source is
+available. The earlier direct-call fields are retained for the cached comparison;
+the generalized coverage table is ``generated/reuse_accounting.md`` in the manuscript.
+
+A runtime choice such as ``handlers[mode](env)`` is accounted for by observing the
+function the interpreter actually invokes. ``ReplayCalls`` wraps the existing
+independent replay, binds function code to snapshot hashes, and records call events
+without changing source or admission. It preserves profiler hooks, scopes related
+threads/asynchronous tasks, and rejects mismatched or unseen entrypoint evidence.
+No LLM is called by the accounting tools. The source and replay interfaces and
+command-line wrapper are documented in ``arc/REUSE_ACCOUNTING.md``.

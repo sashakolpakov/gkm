@@ -32,4 +32,4 @@ M is compressed normalized-AST novelty, in bytes. Dashes are unknown; gaps are n
 | vc33 | 1307, 1456, 1506, 1722, 1868, 1392, 3437 | 2 | none |
 | wa30 | 899, 339, 503, 521, 534, 343, 386, 684, 1313 | 3 | none |
 
-Summary: {"direction_reversals": 62, "exact_winning_checkpoints": 171, "games_with_direction_reversals": 22, "hard_literal_world_model_reuse_witnesses": 54, "marginal_decreases": 64, "sharp_drops_with_static_call": 13, "sharp_half_or_more_marginal_drops": 21, "transitions_with_level_to_level_marginal_comparison": 141}
+Summary: {"direction_reversals": 62, "exact_winning_checkpoints": 171, "games_with_direction_reversals": 22, "hard_literal_world_model_reuse_witnesses": 54, "marginal_decreases": 64, "sharp_drops_with_retained_source_path": 18, "sharp_drops_with_static_call": 13, "sharp_half_or_more_marginal_drops": 21, "transitions_with_level_to_level_marginal_comparison": 141}

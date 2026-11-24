@@ -1,0 +1,4870 @@
+{
+  "schema": 1,
+  "method": "code-only source points-to analysis and separately bound replay observations",
+  "summaries": {
+    "GKM": {
+      "exact_pairs_analysed": 144,
+      "pairs_with_retained_call_path": 115,
+      "pairs_with_direct_path": 54,
+      "pairs_with_indirect_path": 77,
+      "pairs_with_only_indirect_paths": 61,
+      "sharp_drops_with_retained_call_path": 18,
+      "pairs_with_unresolved_sites": 128,
+      "cached_or_unavailable_pairs": 0,
+      "runtime_call_observations": "separate replay evidence; not inferred from static paths",
+      "source_bound_replay_observations": 0
+    },
+    "OPINE": {
+      "exact_pairs_analysed": 0,
+      "pairs_with_retained_call_path": 0,
+      "pairs_with_direct_path": 0,
+      "pairs_with_indirect_path": 0,
+      "pairs_with_only_indirect_paths": 0,
+      "sharp_drops_with_retained_call_path": 0,
+      "pairs_with_unresolved_sites": 0,
+      "cached_or_unavailable_pairs": 121,
+      "runtime_call_observations": "separate replay evidence; not inferred from static paths",
+      "source_bound_replay_observations": 0
+    },
+    "baseline1": {
+      "exact_pairs_analysed": 0,
+      "pairs_with_retained_call_path": 0,
+      "pairs_with_direct_path": 0,
+      "pairs_with_indirect_path": 0,
+      "pairs_with_only_indirect_paths": 0,
+      "sharp_drops_with_retained_call_path": 0,
+      "pairs_with_unresolved_sites": 0,
+      "cached_or_unavailable_pairs": 18,
+      "runtime_call_observations": "separate replay evidence; not inferred from static paths",
+      "source_bound_replay_observations": 0
+    },
+    "Retrodict": {
+      "exact_pairs_analysed": 0,
+      "pairs_with_retained_call_path": 0,
+      "pairs_with_direct_path": 0,
+      "pairs_with_indirect_path": 0,
+      "pairs_with_only_indirect_paths": 0,
+      "sharp_drops_with_retained_call_path": 0,
+      "pairs_with_unresolved_sites": 0,
+      "cached_or_unavailable_pairs": 0,
+      "runtime_call_observations": "separate replay evidence; not inferred from static paths",
+      "source_bound_replay_observations": 0
+    }
+  },
+  "rows": [
+    {
+      "system": "GKM",
+      "game": "ar25",
+      "level": 2,
+      "M": 175,
+      "sharp_drop": true,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:repeat_action"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:repeat_action"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 1,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "ar25",
+      "level": 3,
+      "M": 196,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:repeat_action"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:repeat_action"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 1,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "ar25",
+      "level": 4,
+      "M": 181,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:repeat_action"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:repeat_action"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 1,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "ar25",
+      "level": 5,
+      "M": 189,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:repeat_action"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:repeat_action"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 1,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "ar25",
+      "level": 6,
+      "M": 199,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:repeat_action"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:repeat_action"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 1,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "ar25",
+      "level": 7,
+      "M": 198,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:repeat_action"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:repeat_action"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 1,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "ar25",
+      "level": 8,
+      "M": 198,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:repeat_action"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:repeat_action"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 1,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "bp35",
+      "level": 2,
+      "M": 3707,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:avatar_column",
+        "legs.py:band_grid",
+        "legs.py:cell_symbol",
+        "legs.py:moves_used"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:avatar_column",
+        "legs.py:band_grid",
+        "legs.py:cell_symbol",
+        "legs.py:moves_used"
+      ],
+      "unresolved_sites": 91,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "bp35",
+      "level": 3,
+      "M": 1940,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:avatar_column",
+        "legs.py:band_grid",
+        "legs.py:band_shift",
+        "legs.py:cell_symbol",
+        "legs.py:click_action",
+        "legs.py:moves_used",
+        "legs.py:run_actions"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:avatar_column",
+        "legs.py:band_grid",
+        "legs.py:band_shift",
+        "legs.py:cell_symbol",
+        "legs.py:click_action",
+        "legs.py:moves_used",
+        "legs.py:run_actions"
+      ],
+      "unresolved_sites": 65,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "bp35",
+      "level": 4,
+      "M": 1786,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:moves_used",
+        "legs.py:run_actions"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:moves_used",
+        "legs.py:run_actions"
+      ],
+      "unresolved_sites": 51,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "bp35",
+      "level": 5,
+      "M": 2418,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_cell_shape",
+        "legs.py:band_shift",
+        "legs.py:gravity_room_search.avatar_cell",
+        "legs.py:gravity_room_search.reconstruct",
+        "legs.py:moves_used",
+        "legs.py:run_actions"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:_cell_shape",
+        "legs.py:band_shift",
+        "legs.py:gravity_room_search.avatar_cell",
+        "legs.py:gravity_room_search.reconstruct",
+        "legs.py:moves_used",
+        "legs.py:run_actions"
+      ],
+      "unresolved_sites": 86,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "bp35",
+      "level": 6,
+      "M": 568,
+      "sharp_drop": true,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:click_action",
+        "legs.py:run_actions"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:click_action",
+        "legs.py:run_actions"
+      ],
+      "unresolved_sites": 2,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "bp35",
+      "level": 7,
+      "M": 2895,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:act",
+        "legs.py:click_action"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:act",
+        "legs.py:click_action"
+      ],
+      "unresolved_sites": 24,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "bp35",
+      "level": 8,
+      "M": 1554,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:act",
+        "legs.py:click_action"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:act",
+        "legs.py:click_action"
+      ],
+      "unresolved_sites": 20,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "bp35",
+      "level": 9,
+      "M": 1418,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_lowest_gravity_switch",
+        "legs.py:act",
+        "legs.py:run_action_route"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:_lowest_gravity_switch",
+        "legs.py:act",
+        "legs.py:run_action_route"
+      ],
+      "unresolved_sites": 47,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "cd82",
+      "level": 2,
+      "M": 344,
+      "sharp_drop": false,
+      "status": "resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "cd82",
+      "level": 3,
+      "M": 511,
+      "sharp_drop": false,
+      "status": "resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "cd82",
+      "level": 4,
+      "M": 486,
+      "sharp_drop": false,
+      "status": "resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "cd82",
+      "level": 5,
+      "M": 498,
+      "sharp_drop": false,
+      "status": "resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "cd82",
+      "level": 6,
+      "M": 520,
+      "sharp_drop": false,
+      "status": "resolved_source_graph",
+      "retained_targets": [
+        "legs.py:apply_west_north_east_north_layers_then_payload"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:apply_west_north_east_north_layers_then_payload"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "cn04",
+      "level": 2,
+      "M": 337,
+      "sharp_drop": true,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:rotate_quarter_turns",
+        "legs.py:walk"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:rotate_quarter_turns",
+        "legs.py:walk"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 1,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "cn04",
+      "level": 3,
+      "M": 245,
+      "sharp_drop": false,
+      "status": "resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "cn04",
+      "level": 4,
+      "M": 250,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:rotate_quarter_turns",
+        "legs.py:select_figure",
+        "legs.py:walk"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:rotate_quarter_turns",
+        "legs.py:select_figure",
+        "legs.py:walk"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 1,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "cn04",
+      "level": 5,
+      "M": 376,
+      "sharp_drop": false,
+      "status": "resolved_source_graph",
+      "retained_targets": [
+        "legs.py:select_figure",
+        "legs.py:walk"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:select_figure",
+        "legs.py:walk"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "cn04",
+      "level": 6,
+      "M": 243,
+      "sharp_drop": false,
+      "status": "resolved_source_graph",
+      "retained_targets": [
+        "legs.py:rotate_quarter_turns",
+        "legs.py:select_figure",
+        "legs.py:walk"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:rotate_quarter_turns",
+        "legs.py:select_figure",
+        "legs.py:walk"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "dc22",
+      "level": 2,
+      "M": 604,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:toggle_control",
+        "legs.py:walk_segments"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:toggle_control",
+        "legs.py:walk_segments"
+      ],
+      "unresolved_sites": 1,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "dc22",
+      "level": 3,
+      "M": 716,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:toggle_control",
+        "legs.py:walk_segments"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:toggle_control",
+        "legs.py:walk_segments"
+      ],
+      "unresolved_sites": 1,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "dc22",
+      "level": 4,
+      "M": 885,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:toggle_control",
+        "legs.py:walk_segments"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:toggle_control",
+        "legs.py:walk_segments"
+      ],
+      "unresolved_sites": 1,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "dc22",
+      "level": 5,
+      "M": 828,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:toggle_control",
+        "legs.py:walk_segments"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:toggle_control",
+        "legs.py:walk_segments"
+      ],
+      "unresolved_sites": 1,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "dc22",
+      "level": 6,
+      "M": 1379,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:toggle_control",
+        "legs.py:walk_segments"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:toggle_control",
+        "legs.py:walk_segments"
+      ],
+      "unresolved_sites": 2,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "ft09",
+      "level": 4,
+      "M": 2672,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_click_xy",
+        "legs.py:_grid_of_blocks",
+        "legs.py:commit_plan",
+        "legs.py:discover_multistate_key_clicks.cell3",
+        "legs.py:plan_and_commit"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:_click_xy",
+        "legs.py:_grid_of_blocks",
+        "legs.py:commit_plan",
+        "legs.py:discover_multistate_key_clicks.cell3",
+        "legs.py:plan_and_commit"
+      ],
+      "unresolved_sites": 98,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "ft09",
+      "level": 5,
+      "M": 5008,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_click_xy",
+        "legs.py:_grid_of_blocks",
+        "legs.py:commit_plan",
+        "legs.py:plan_and_commit",
+        "legs.py:solve_click_board"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:_click_xy",
+        "legs.py:_grid_of_blocks",
+        "legs.py:commit_plan",
+        "legs.py:plan_and_commit",
+        "legs.py:solve_click_board"
+      ],
+      "unresolved_sites": 140,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "ft09",
+      "level": 6,
+      "M": 3730,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_click_xy",
+        "legs.py:_gf2_solution",
+        "legs.py:_grid_of_blocks",
+        "legs.py:block_center_color",
+        "legs.py:block_click_xy",
+        "legs.py:commit_plan",
+        "legs.py:plan_and_commit",
+        "legs.py:read_mini_key",
+        "legs.py:solve_click_board",
+        "legs.py:solve_coupled_key_board"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:solve_coupled_key_board"
+      ],
+      "indirect_targets": [
+        "legs.py:_click_xy",
+        "legs.py:_gf2_solution",
+        "legs.py:_grid_of_blocks",
+        "legs.py:block_center_color",
+        "legs.py:block_click_xy",
+        "legs.py:commit_plan",
+        "legs.py:plan_and_commit",
+        "legs.py:read_mini_key",
+        "legs.py:solve_click_board"
+      ],
+      "unresolved_sites": 136,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "g50t",
+      "level": 2,
+      "M": 3297,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_components",
+        "legs.py:run_path"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:_components",
+        "legs.py:run_path"
+      ],
+      "unresolved_sites": 90,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "g50t",
+      "level": 6,
+      "M": 2528,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_reach_bfs",
+        "legs.py:_special_frontier",
+        "legs.py:clone_after",
+        "legs.py:fast_reach",
+        "legs.py:plan_and_commit",
+        "legs.py:run_path"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:_reach_bfs",
+        "legs.py:_special_frontier",
+        "legs.py:clone_after",
+        "legs.py:fast_reach",
+        "legs.py:plan_and_commit",
+        "legs.py:run_path"
+      ],
+      "unresolved_sites": 70,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "g50t",
+      "level": 7,
+      "M": 1091,
+      "sharp_drop": true,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_reach_bfs",
+        "legs.py:clone_after",
+        "legs.py:fast_reach",
+        "legs.py:plan_and_commit",
+        "legs.py:run_path"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:_reach_bfs",
+        "legs.py:clone_after",
+        "legs.py:fast_reach",
+        "legs.py:plan_and_commit",
+        "legs.py:run_path"
+      ],
+      "unresolved_sites": 47,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "ka59",
+      "level": 2,
+      "M": 301,
+      "sharp_drop": true,
+      "status": "resolved_source_graph",
+      "retained_targets": [
+        "legs.py:move_steps",
+        "legs.py:select_at"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:move_steps",
+        "legs.py:select_at"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "ka59",
+      "level": 3,
+      "M": 227,
+      "sharp_drop": false,
+      "status": "resolved_source_graph",
+      "retained_targets": [
+        "legs.py:move_steps"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:move_steps"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "ka59",
+      "level": 4,
+      "M": 275,
+      "sharp_drop": false,
+      "status": "resolved_source_graph",
+      "retained_targets": [
+        "legs.py:move_steps",
+        "legs.py:select_at"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:move_steps",
+        "legs.py:select_at"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "ka59",
+      "level": 5,
+      "M": 189,
+      "sharp_drop": false,
+      "status": "resolved_source_graph",
+      "retained_targets": [
+        "legs.py:move_steps"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:move_steps"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "ka59",
+      "level": 6,
+      "M": 239,
+      "sharp_drop": false,
+      "status": "resolved_source_graph",
+      "retained_targets": [
+        "legs.py:move_steps"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:move_steps"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "ka59",
+      "level": 7,
+      "M": 376,
+      "sharp_drop": false,
+      "status": "resolved_source_graph",
+      "retained_targets": [
+        "legs.py:move_steps",
+        "legs.py:select_at"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:move_steps",
+        "legs.py:select_at"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "lf52",
+      "level": 2,
+      "M": 1602,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 33,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "lf52",
+      "level": 3,
+      "M": 157,
+      "sharp_drop": true,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:solve_peg_solitaire_with_carrier",
+        "legs.py:solve_peg_solitaire_with_carrier.key"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:solve_peg_solitaire_with_carrier"
+      ],
+      "indirect_targets": [
+        "legs.py:solve_peg_solitaire_with_carrier.key"
+      ],
+      "unresolved_sites": 33,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "lf52",
+      "level": 4,
+      "M": 2196,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_lattice_step",
+        "legs.py:_peg_board"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:_lattice_step",
+        "legs.py:_peg_board"
+      ],
+      "unresolved_sites": 95,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "lf52",
+      "level": 5,
+      "M": 3028,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_lattice_step"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:_lattice_step"
+      ],
+      "unresolved_sites": 138,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "lf52",
+      "level": 6,
+      "M": 1992,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 69,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "lf52",
+      "level": 7,
+      "M": 3708,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 7,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "lf52",
+      "level": 8,
+      "M": 576,
+      "sharp_drop": true,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:play_action",
+        "legs.py:play_actions",
+        "legs.py:play_lattice_moves"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:play_action",
+        "legs.py:play_actions",
+        "legs.py:play_lattice_moves"
+      ],
+      "unresolved_sites": 7,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "lp85",
+      "level": 2,
+      "M": 189,
+      "sharp_drop": true,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:repeat_click"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:repeat_click"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 3,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "lp85",
+      "level": 3,
+      "M": 186,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:repeat_click"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:repeat_click"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 3,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "lp85",
+      "level": 4,
+      "M": 177,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:repeat_click"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:repeat_click"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 3,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "lp85",
+      "level": 5,
+      "M": 192,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:repeat_click"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:repeat_click"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 3,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "lp85",
+      "level": 6,
+      "M": 213,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:repeat_click"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:repeat_click"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 3,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "lp85",
+      "level": 7,
+      "M": 193,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:repeat_click"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:repeat_click"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 3,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "lp85",
+      "level": 8,
+      "M": 195,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:repeat_click"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:repeat_click"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 3,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "ls20",
+      "level": 2,
+      "M": 247,
+      "sharp_drop": true,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:follow_cardinal_runs"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:follow_cardinal_runs"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 2,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "ls20",
+      "level": 3,
+      "M": 259,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:follow_cardinal_runs"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:follow_cardinal_runs"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 2,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "ls20",
+      "level": 4,
+      "M": 270,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:follow_cardinal_runs"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:follow_cardinal_runs"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 2,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "ls20",
+      "level": 5,
+      "M": 289,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:follow_cardinal_runs"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:follow_cardinal_runs"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 2,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "ls20",
+      "level": 6,
+      "M": 299,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:follow_cardinal_runs"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:follow_cardinal_runs"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 2,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "ls20",
+      "level": 7,
+      "M": 292,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:follow_cardinal_runs"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:follow_cardinal_runs"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 2,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "m0r0",
+      "level": 2,
+      "M": 265,
+      "sharp_drop": true,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:follow_action_sequence"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:follow_action_sequence"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 1,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "m0r0",
+      "level": 3,
+      "M": 584,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 3,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "m0r0",
+      "level": 4,
+      "M": 868,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:follow_action_sequence"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:follow_action_sequence"
+      ],
+      "unresolved_sites": 3,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "m0r0",
+      "level": 5,
+      "M": 574,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:follow_action_sequence",
+        "legs.py:reunite_mirrored_pair"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:reunite_mirrored_pair"
+      ],
+      "indirect_targets": [
+        "legs.py:follow_action_sequence"
+      ],
+      "unresolved_sites": 3,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "m0r0",
+      "level": 6,
+      "M": 314,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:follow_action_sequence",
+        "legs.py:reunite_mirrored_pair"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:reunite_mirrored_pair"
+      ],
+      "indirect_targets": [
+        "legs.py:follow_action_sequence"
+      ],
+      "unresolved_sites": 3,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "r11l",
+      "level": 2,
+      "M": 4565,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_arr"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:_arr"
+      ],
+      "unresolved_sites": 36,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "r11l",
+      "level": 5,
+      "M": 6193,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_arr",
+        "legs.py:_centroid",
+        "legs.py:marker_endpoints",
+        "legs.py:multicolor_rings"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:_arr",
+        "legs.py:_centroid",
+        "legs.py:marker_endpoints",
+        "legs.py:multicolor_rings"
+      ],
+      "unresolved_sites": 148,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "r11l",
+      "level": 6,
+      "M": 3404,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_arr",
+        "legs.py:_carrier_patterns",
+        "legs.py:_centroid",
+        "legs.py:_execute_assembly",
+        "legs.py:_ring_outline_cells",
+        "legs.py:assembly_pieces",
+        "legs.py:marker_endpoints",
+        "legs.py:multicolor_rings"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:_arr",
+        "legs.py:_carrier_patterns",
+        "legs.py:_centroid",
+        "legs.py:_execute_assembly",
+        "legs.py:_ring_outline_cells",
+        "legs.py:assembly_pieces",
+        "legs.py:marker_endpoints",
+        "legs.py:multicolor_rings"
+      ],
+      "unresolved_sites": 125,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "re86",
+      "level": 2,
+      "M": 1853,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_most_common",
+        "legs.py:_move_on_lattice"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:_most_common",
+        "legs.py:_move_on_lattice"
+      ],
+      "unresolved_sites": 76,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "re86",
+      "level": 3,
+      "M": 2687,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_most_common",
+        "legs.py:_move_on_lattice"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:_most_common",
+        "legs.py:_move_on_lattice"
+      ],
+      "unresolved_sites": 125,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "re86",
+      "level": 4,
+      "M": 3408,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_most_common",
+        "legs.py:_move_on_lattice"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:_most_common",
+        "legs.py:_move_on_lattice"
+      ],
+      "unresolved_sites": 124,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "re86",
+      "level": 5,
+      "M": 4196,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_most_common",
+        "legs.py:_move_on_lattice"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:_most_common",
+        "legs.py:_move_on_lattice"
+      ],
+      "unresolved_sites": 159,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "re86",
+      "level": 6,
+      "M": 1737,
+      "sharp_drop": true,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_move_on_lattice"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:_move_on_lattice"
+      ],
+      "unresolved_sites": 80,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "re86",
+      "level": 7,
+      "M": 1649,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_move_on_lattice"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:_move_on_lattice"
+      ],
+      "unresolved_sites": 68,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "re86",
+      "level": 8,
+      "M": 2870,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_move_on_lattice"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:_move_on_lattice"
+      ],
+      "unresolved_sites": 67,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "s5i5",
+      "level": 2,
+      "M": 1941,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:click_coordinate"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:click_coordinate"
+      ],
+      "unresolved_sites": 91,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "s5i5",
+      "level": 3,
+      "M": 1051,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:click_coordinate"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:click_coordinate"
+      ],
+      "unresolved_sites": 17,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "s5i5",
+      "level": 4,
+      "M": 1073,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:click_coordinate"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:click_coordinate"
+      ],
+      "unresolved_sites": 24,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "s5i5",
+      "level": 5,
+      "M": 952,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:click_coordinate"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:click_coordinate"
+      ],
+      "unresolved_sites": 18,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "s5i5",
+      "level": 6,
+      "M": 958,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:click_coordinate"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:click_coordinate"
+      ],
+      "unresolved_sites": 24,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "s5i5",
+      "level": 7,
+      "M": 1160,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:click_coordinate"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:click_coordinate"
+      ],
+      "unresolved_sites": 22,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "s5i5",
+      "level": 8,
+      "M": 1099,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:click_coordinate"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:click_coordinate"
+      ],
+      "unresolved_sites": 26,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sb26",
+      "level": 2,
+      "M": 1796,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 72,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sb26",
+      "level": 3,
+      "M": 158,
+      "sharp_drop": true,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:copy_visible_color_code_into_diagram",
+        "legs.py:copy_visible_color_code_into_diagram.find_assignment"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:copy_visible_color_code_into_diagram"
+      ],
+      "indirect_targets": [
+        "legs.py:copy_visible_color_code_into_diagram.find_assignment"
+      ],
+      "unresolved_sites": 72,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sb26",
+      "level": 4,
+      "M": 158,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:copy_visible_color_code_into_diagram",
+        "legs.py:copy_visible_color_code_into_diagram.find_assignment"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:copy_visible_color_code_into_diagram"
+      ],
+      "indirect_targets": [
+        "legs.py:copy_visible_color_code_into_diagram.find_assignment"
+      ],
+      "unresolved_sites": 72,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sb26",
+      "level": 5,
+      "M": 2080,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 89,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sb26",
+      "level": 6,
+      "M": 2297,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:factor_visible_code_into_parallel_diagrams.place_and_submit"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:factor_visible_code_into_parallel_diagrams.place_and_submit"
+      ],
+      "unresolved_sites": 107,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sb26",
+      "level": 7,
+      "M": 5655,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 130,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sb26",
+      "level": 8,
+      "M": 3904,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:read_consumable_palette_and_target"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:read_consumable_palette_and_target"
+      ],
+      "unresolved_sites": 121,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sc25",
+      "level": 2,
+      "M": 279,
+      "sharp_drop": true,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:move_until_level_progress",
+        "legs.py:select_grid_cells_of_color"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:move_until_level_progress",
+        "legs.py:select_grid_cells_of_color"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 6,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sc25",
+      "level": 3,
+      "M": 295,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:move_until_level_progress",
+        "legs.py:select_grid_cells_of_color"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:move_until_level_progress",
+        "legs.py:select_grid_cells_of_color"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 6,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sc25",
+      "level": 4,
+      "M": 325,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:move_until_level_progress",
+        "legs.py:select_grid_cells_of_color"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:move_until_level_progress",
+        "legs.py:select_grid_cells_of_color"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 6,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sc25",
+      "level": 5,
+      "M": 352,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:move_until_level_progress",
+        "legs.py:select_grid_cells_of_color"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:move_until_level_progress",
+        "legs.py:select_grid_cells_of_color"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 6,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sc25",
+      "level": 6,
+      "M": 358,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:move_until_level_progress",
+        "legs.py:select_grid_cells_of_color"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:move_until_level_progress",
+        "legs.py:select_grid_cells_of_color"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 6,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sk48",
+      "level": 2,
+      "M": 900,
+      "sharp_drop": true,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 4,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sk48",
+      "level": 3,
+      "M": 512,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:extend_tether",
+        "legs.py:move_vertical_lanes",
+        "legs.py:retract_tether"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:extend_tether",
+        "legs.py:move_vertical_lanes",
+        "legs.py:retract_tether"
+      ],
+      "unresolved_sites": 3,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sk48",
+      "level": 4,
+      "M": 573,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:extend_tether",
+        "legs.py:move_vertical_lanes",
+        "legs.py:retract_tether"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:extend_tether",
+        "legs.py:move_vertical_lanes",
+        "legs.py:retract_tether"
+      ],
+      "unresolved_sites": 3,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sk48",
+      "level": 5,
+      "M": 807,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:extend_tether",
+        "legs.py:move_vertical_lanes",
+        "legs.py:retract_tether"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:extend_tether",
+        "legs.py:move_vertical_lanes",
+        "legs.py:retract_tether"
+      ],
+      "unresolved_sites": 3,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sk48",
+      "level": 6,
+      "M": 1526,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:extend_tether",
+        "legs.py:move_vertical_lanes",
+        "legs.py:retract_tether"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:extend_tether",
+        "legs.py:move_vertical_lanes",
+        "legs.py:retract_tether"
+      ],
+      "unresolved_sites": 16,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sk48",
+      "level": 7,
+      "M": 1056,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:extend_tether",
+        "legs.py:move_vertical_lanes",
+        "legs.py:repeat_action",
+        "legs.py:retract_tether",
+        "legs.py:select_live_collector"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:extend_tether",
+        "legs.py:move_vertical_lanes",
+        "legs.py:repeat_action",
+        "legs.py:retract_tether",
+        "legs.py:select_live_collector"
+      ],
+      "unresolved_sites": 22,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sk48",
+      "level": 8,
+      "M": 1073,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 3,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sp80",
+      "level": 2,
+      "M": 1450,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:play_fixed_sequence"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:play_fixed_sequence"
+      ],
+      "indirect_targets": [],
+      "unresolved_sites": 1,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sp80",
+      "level": 3,
+      "M": 1288,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:click_select",
+        "legs.py:play_fixed_sequence"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:play_fixed_sequence"
+      ],
+      "indirect_targets": [
+        "legs.py:click_select"
+      ],
+      "unresolved_sites": 3,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sp80",
+      "level": 4,
+      "M": 2011,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:click_select",
+        "legs.py:grab_and_move",
+        "legs.py:play_fixed_sequence"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:click_select",
+        "legs.py:grab_and_move",
+        "legs.py:play_fixed_sequence"
+      ],
+      "unresolved_sites": 6,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sp80",
+      "level": 5,
+      "M": 486,
+      "sharp_drop": true,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:click_select",
+        "legs.py:drive_objects",
+        "legs.py:grab_and_move",
+        "legs.py:play_fixed_sequence"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:drive_objects"
+      ],
+      "indirect_targets": [
+        "legs.py:click_select",
+        "legs.py:grab_and_move",
+        "legs.py:play_fixed_sequence"
+      ],
+      "unresolved_sites": 8,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "sp80",
+      "level": 6,
+      "M": 274,
+      "sharp_drop": false,
+      "status": "resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "su15",
+      "level": 2,
+      "M": 1517,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 56,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "su15",
+      "level": 3,
+      "M": 1433,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:merge_equal_squares_and_deliver_to_ring",
+        "legs.py:merge_equal_squares_and_deliver_to_ring.anchor",
+        "legs.py:merge_equal_squares_and_deliver_to_ring.click",
+        "legs.py:merge_equal_squares_and_deliver_to_ring.playfield_squares"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:merge_equal_squares_and_deliver_to_ring"
+      ],
+      "indirect_targets": [
+        "legs.py:merge_equal_squares_and_deliver_to_ring.anchor",
+        "legs.py:merge_equal_squares_and_deliver_to_ring.click",
+        "legs.py:merge_equal_squares_and_deliver_to_ring.playfield_squares"
+      ],
+      "unresolved_sites": 117,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "su15",
+      "level": 4,
+      "M": 3143,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:merge_equal_squares_around_moving_cutter.anchor"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:merge_equal_squares_around_moving_cutter.anchor"
+      ],
+      "unresolved_sites": 131,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "su15",
+      "level": 5,
+      "M": 3486,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:merge_equal_squares_around_moving_cutter.anchor",
+        "legs.py:merge_equal_squares_around_moving_cutter.pieces",
+        "legs.py:merge_equal_squares_around_moving_cutter.rings",
+        "legs.py:merge_equal_squares_around_moving_cutter.target_for"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:merge_equal_squares_around_moving_cutter.anchor",
+        "legs.py:merge_equal_squares_around_moving_cutter.pieces",
+        "legs.py:merge_equal_squares_around_moving_cutter.rings",
+        "legs.py:merge_equal_squares_around_moving_cutter.target_for"
+      ],
+      "unresolved_sites": 136,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "su15",
+      "level": 6,
+      "M": 1246,
+      "sharp_drop": true,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 49,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "su15",
+      "level": 7,
+      "M": 161,
+      "sharp_drop": true,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:merge_equal_squares_around_moving_cutter",
+        "legs.py:merge_equal_squares_around_moving_cutter.anchor",
+        "legs.py:merge_equal_squares_around_moving_cutter.avatar_centers",
+        "legs.py:merge_equal_squares_around_moving_cutter.candidate_actions",
+        "legs.py:merge_equal_squares_around_moving_cutter.pieces",
+        "legs.py:merge_equal_squares_around_moving_cutter.priority",
+        "legs.py:merge_equal_squares_around_moving_cutter.rings",
+        "legs.py:merge_equal_squares_around_moving_cutter.state",
+        "legs.py:merge_equal_squares_around_moving_cutter.target_for"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:merge_equal_squares_around_moving_cutter"
+      ],
+      "indirect_targets": [
+        "legs.py:merge_equal_squares_around_moving_cutter.anchor",
+        "legs.py:merge_equal_squares_around_moving_cutter.avatar_centers",
+        "legs.py:merge_equal_squares_around_moving_cutter.candidate_actions",
+        "legs.py:merge_equal_squares_around_moving_cutter.pieces",
+        "legs.py:merge_equal_squares_around_moving_cutter.priority",
+        "legs.py:merge_equal_squares_around_moving_cutter.rings",
+        "legs.py:merge_equal_squares_around_moving_cutter.state",
+        "legs.py:merge_equal_squares_around_moving_cutter.target_for"
+      ],
+      "unresolved_sites": 136,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "su15",
+      "level": 8,
+      "M": 2364,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 119,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "su15",
+      "level": 9,
+      "M": 5316,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 148,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "tn36",
+      "level": 2,
+      "M": 923,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 24,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "tn36",
+      "level": 3,
+      "M": 2028,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 78,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "tn36",
+      "level": 4,
+      "M": 2203,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 96,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "tn36",
+      "level": 5,
+      "M": 4968,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:encode_route_resize_rotate_and_acquire_socket.walkable"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:encode_route_resize_rotate_and_acquire_socket.walkable"
+      ],
+      "unresolved_sites": 162,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "tn36",
+      "level": 6,
+      "M": 5533,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:click_largest_color_9_submit_disc",
+        "legs.py:find_lattice_route.walkable",
+        "legs.py:find_right_segment_panel",
+        "legs.py:route_to_socket_via_reacquisition_checkpoints.snap_to_lattice"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:click_largest_color_9_submit_disc",
+        "legs.py:find_lattice_route.walkable",
+        "legs.py:find_right_segment_panel",
+        "legs.py:route_to_socket_via_reacquisition_checkpoints.snap_to_lattice"
+      ],
+      "unresolved_sites": 194,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "tn36",
+      "level": 7,
+      "M": 5378,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:click_largest_color_9_submit_disc",
+        "legs.py:find_lattice_route",
+        "legs.py:find_lattice_route.walkable",
+        "legs.py:find_upper_right_board_objects",
+        "legs.py:find_upper_right_board_tiles",
+        "legs.py:find_upper_right_components"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:click_largest_color_9_submit_disc",
+        "legs.py:find_lattice_route",
+        "legs.py:find_lattice_route.walkable",
+        "legs.py:find_upper_right_board_objects",
+        "legs.py:find_upper_right_board_tiles",
+        "legs.py:find_upper_right_components"
+      ],
+      "unresolved_sites": 216,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "tu93",
+      "level": 2,
+      "M": 3613,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 10,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "tu93",
+      "level": 3,
+      "M": 1792,
+      "sharp_drop": true,
+      "status": "resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "tu93",
+      "level": 4,
+      "M": 1302,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 35,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "tu93",
+      "level": 5,
+      "M": 186,
+      "sharp_drop": true,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_bounded_visible_path",
+        "legs.py:_bounded_visible_path.key",
+        "legs.py:_bounded_visible_path.replay",
+        "legs.py:drive_dynamic_maze_via_color"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:drive_dynamic_maze_via_color"
+      ],
+      "indirect_targets": [
+        "legs.py:_bounded_visible_path",
+        "legs.py:_bounded_visible_path.key",
+        "legs.py:_bounded_visible_path.replay"
+      ],
+      "unresolved_sites": 35,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "tu93",
+      "level": 6,
+      "M": 1440,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_bounded_visible_path",
+        "legs.py:_bounded_visible_path.key",
+        "legs.py:_bounded_visible_path.replay",
+        "legs.py:_least_color",
+        "legs.py:_mode_color",
+        "legs.py:parse_block_maze",
+        "legs.py:parse_block_maze.block_cells",
+        "legs.py:parse_block_maze.center"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:_bounded_visible_path",
+        "legs.py:_bounded_visible_path.key",
+        "legs.py:_bounded_visible_path.replay",
+        "legs.py:_least_color",
+        "legs.py:_mode_color",
+        "legs.py:parse_block_maze",
+        "legs.py:parse_block_maze.block_cells",
+        "legs.py:parse_block_maze.center"
+      ],
+      "unresolved_sites": 145,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "tu93",
+      "level": 7,
+      "M": 212,
+      "sharp_drop": true,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_bounded_visible_path",
+        "legs.py:_bounded_visible_path.key",
+        "legs.py:_bounded_visible_path.replay",
+        "legs.py:_least_color",
+        "legs.py:_mode_color",
+        "legs.py:drive_dynamic_directional_waypoints",
+        "legs.py:drive_dynamic_directional_waypoints.blocks",
+        "legs.py:drive_dynamic_directional_waypoints.remaining",
+        "legs.py:parse_block_maze",
+        "legs.py:parse_block_maze.block_cells",
+        "legs.py:parse_block_maze.center"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:drive_dynamic_directional_waypoints"
+      ],
+      "indirect_targets": [
+        "legs.py:_bounded_visible_path",
+        "legs.py:_bounded_visible_path.key",
+        "legs.py:_bounded_visible_path.replay",
+        "legs.py:_least_color",
+        "legs.py:_mode_color",
+        "legs.py:drive_dynamic_directional_waypoints.blocks",
+        "legs.py:drive_dynamic_directional_waypoints.remaining",
+        "legs.py:parse_block_maze",
+        "legs.py:parse_block_maze.block_cells",
+        "legs.py:parse_block_maze.center"
+      ],
+      "unresolved_sites": 145,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "tu93",
+      "level": 8,
+      "M": 210,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_bounded_visible_path",
+        "legs.py:_bounded_visible_path.key",
+        "legs.py:_bounded_visible_path.replay",
+        "legs.py:_least_color",
+        "legs.py:_mode_color",
+        "legs.py:drive_dynamic_directional_waypoints",
+        "legs.py:drive_dynamic_directional_waypoints.blocks",
+        "legs.py:drive_dynamic_directional_waypoints.remaining",
+        "legs.py:parse_block_maze",
+        "legs.py:parse_block_maze.block_cells",
+        "legs.py:parse_block_maze.center"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:drive_dynamic_directional_waypoints"
+      ],
+      "indirect_targets": [
+        "legs.py:_bounded_visible_path",
+        "legs.py:_bounded_visible_path.key",
+        "legs.py:_bounded_visible_path.replay",
+        "legs.py:_least_color",
+        "legs.py:_mode_color",
+        "legs.py:drive_dynamic_directional_waypoints.blocks",
+        "legs.py:drive_dynamic_directional_waypoints.remaining",
+        "legs.py:parse_block_maze",
+        "legs.py:parse_block_maze.block_cells",
+        "legs.py:parse_block_maze.center"
+      ],
+      "unresolved_sites": 145,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "tu93",
+      "level": 9,
+      "M": 210,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:_bounded_visible_path",
+        "legs.py:_bounded_visible_path.key",
+        "legs.py:_bounded_visible_path.replay",
+        "legs.py:_least_color",
+        "legs.py:_mode_color",
+        "legs.py:drive_dynamic_directional_waypoints",
+        "legs.py:drive_dynamic_directional_waypoints.blocks",
+        "legs.py:drive_dynamic_directional_waypoints.remaining",
+        "legs.py:parse_block_maze",
+        "legs.py:parse_block_maze.block_cells",
+        "legs.py:parse_block_maze.center"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:drive_dynamic_directional_waypoints"
+      ],
+      "indirect_targets": [
+        "legs.py:_bounded_visible_path",
+        "legs.py:_bounded_visible_path.key",
+        "legs.py:_bounded_visible_path.replay",
+        "legs.py:_least_color",
+        "legs.py:_mode_color",
+        "legs.py:drive_dynamic_directional_waypoints.blocks",
+        "legs.py:drive_dynamic_directional_waypoints.remaining",
+        "legs.py:parse_block_maze",
+        "legs.py:parse_block_maze.block_cells",
+        "legs.py:parse_block_maze.center"
+      ],
+      "unresolved_sites": 145,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "vc33",
+      "level": 2,
+      "M": 1456,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 35,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "vc33",
+      "level": 3,
+      "M": 1506,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 61,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "vc33",
+      "level": 4,
+      "M": 1722,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 71,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "vc33",
+      "level": 5,
+      "M": 1868,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 87,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "vc33",
+      "level": 6,
+      "M": 1392,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:cross_pressure_gates_then_align_height",
+        "legs.py:cross_pressure_gates_then_align_height.actions",
+        "legs.py:cross_pressure_gates_then_align_height.improved",
+        "legs.py:cross_pressure_gates_then_align_height.marker_pair",
+        "legs.py:cross_pressure_gates_then_align_height.progress"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:cross_pressure_gates_then_align_height"
+      ],
+      "indirect_targets": [
+        "legs.py:cross_pressure_gates_then_align_height.actions",
+        "legs.py:cross_pressure_gates_then_align_height.improved",
+        "legs.py:cross_pressure_gates_then_align_height.marker_pair",
+        "legs.py:cross_pressure_gates_then_align_height.progress"
+      ],
+      "unresolved_sites": 122,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "vc33",
+      "level": 7,
+      "M": 3437,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:align_marker_pair_with_pressure_controls",
+        "legs.py:align_marker_pair_with_pressure_controls.actions",
+        "legs.py:align_marker_pair_with_pressure_controls.marker_gap",
+        "legs.py:cross_pressure_gates_then_align_height",
+        "legs.py:cross_pressure_gates_then_align_height.actions",
+        "legs.py:cross_pressure_gates_then_align_height.improved",
+        "legs.py:cross_pressure_gates_then_align_height.marker_pair",
+        "legs.py:cross_pressure_gates_then_align_height.progress"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [
+        "legs.py:align_marker_pair_with_pressure_controls",
+        "legs.py:cross_pressure_gates_then_align_height"
+      ],
+      "indirect_targets": [
+        "legs.py:align_marker_pair_with_pressure_controls.actions",
+        "legs.py:align_marker_pair_with_pressure_controls.marker_gap",
+        "legs.py:cross_pressure_gates_then_align_height.actions",
+        "legs.py:cross_pressure_gates_then_align_height.improved",
+        "legs.py:cross_pressure_gates_then_align_height.marker_pair",
+        "legs.py:cross_pressure_gates_then_align_height.progress"
+      ],
+      "unresolved_sites": 291,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "wa30",
+      "level": 2,
+      "M": 339,
+      "sharp_drop": true,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:interact",
+        "legs.py:walk"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:interact",
+        "legs.py:walk"
+      ],
+      "unresolved_sites": 3,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "wa30",
+      "level": 3,
+      "M": 503,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:interact",
+        "legs.py:walk"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:interact",
+        "legs.py:walk"
+      ],
+      "unresolved_sites": 5,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "wa30",
+      "level": 4,
+      "M": 521,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:interact",
+        "legs.py:walk"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:interact",
+        "legs.py:walk"
+      ],
+      "unresolved_sites": 5,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "wa30",
+      "level": 5,
+      "M": 534,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:interact",
+        "legs.py:walk"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:interact",
+        "legs.py:walk"
+      ],
+      "unresolved_sites": 5,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "wa30",
+      "level": 6,
+      "M": 343,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:interact",
+        "legs.py:walk"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:interact",
+        "legs.py:walk"
+      ],
+      "unresolved_sites": 3,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "wa30",
+      "level": 7,
+      "M": 386,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:interact",
+        "legs.py:walk"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:interact",
+        "legs.py:walk"
+      ],
+      "unresolved_sites": 3,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "wa30",
+      "level": 8,
+      "M": 684,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:interact",
+        "legs.py:walk"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:interact",
+        "legs.py:walk"
+      ],
+      "unresolved_sites": 5,
+      "observed_replay": false
+    },
+    {
+      "system": "GKM",
+      "game": "wa30",
+      "level": 9,
+      "M": 1313,
+      "sharp_drop": false,
+      "status": "partially_resolved_source_graph",
+      "retained_targets": [
+        "legs.py:interact",
+        "legs.py:walk"
+      ],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [
+        "legs.py:interact",
+        "legs.py:walk"
+      ],
+      "unresolved_sites": 3,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "ar25",
+      "level": 2,
+      "M": 3380,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "ar25",
+      "level": 3,
+      "M": 9388,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "ar25",
+      "level": 4,
+      "M": 5751,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "ar25",
+      "level": 5,
+      "M": 6659,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "ar25",
+      "level": 6,
+      "M": 6630,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "ar25",
+      "level": 7,
+      "M": 10050,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "bp35",
+      "level": 2,
+      "M": 6626,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "cd82",
+      "level": 2,
+      "M": 1164,
+      "sharp_drop": true,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "cd82",
+      "level": 3,
+      "M": 9017,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "cd82",
+      "level": 4,
+      "M": 7246,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "cd82",
+      "level": 5,
+      "M": 3164,
+      "sharp_drop": true,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "cn04",
+      "level": 2,
+      "M": 6708,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "cn04",
+      "level": 3,
+      "M": 10034,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "cn04",
+      "level": 4,
+      "M": 6196,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "cn04",
+      "level": 5,
+      "M": 7605,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "cn04",
+      "level": 6,
+      "M": 15833,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "dc22",
+      "level": 2,
+      "M": 7982,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "dc22",
+      "level": 3,
+      "M": 6270,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "dc22",
+      "level": 4,
+      "M": 11650,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "dc22",
+      "level": 5,
+      "M": 11275,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "dc22",
+      "level": 6,
+      "M": 21893,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "ft09",
+      "level": 4,
+      "M": 3161,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "ft09",
+      "level": 5,
+      "M": 7088,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "ft09",
+      "level": 6,
+      "M": 5474,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "g50t",
+      "level": 2,
+      "M": 5951,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "g50t",
+      "level": 3,
+      "M": 7053,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "g50t",
+      "level": 4,
+      "M": 6056,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "g50t",
+      "level": 5,
+      "M": 3565,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "g50t",
+      "level": 6,
+      "M": 10299,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "g50t",
+      "level": 7,
+      "M": 5663,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "ka59",
+      "level": 2,
+      "M": 9186,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "ka59",
+      "level": 3,
+      "M": 8264,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "ka59",
+      "level": 4,
+      "M": 8419,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "ka59",
+      "level": 5,
+      "M": 5778,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "ka59",
+      "level": 6,
+      "M": 7582,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "lf52",
+      "level": 3,
+      "M": 6358,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "lp85",
+      "level": 3,
+      "M": 5818,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "lp85",
+      "level": 4,
+      "M": 2550,
+      "sharp_drop": true,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "lp85",
+      "level": 5,
+      "M": 2715,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "lp85",
+      "level": 6,
+      "M": 5926,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "lp85",
+      "level": 7,
+      "M": 4954,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "ls20",
+      "level": 2,
+      "M": 5684,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "ls20",
+      "level": 3,
+      "M": 9188,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "ls20",
+      "level": 4,
+      "M": 5316,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "ls20",
+      "level": 5,
+      "M": 7332,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "ls20",
+      "level": 6,
+      "M": 11877,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "ls20",
+      "level": 7,
+      "M": 8973,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "m0r0",
+      "level": 2,
+      "M": 5220,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "m0r0",
+      "level": 3,
+      "M": 7794,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "m0r0",
+      "level": 4,
+      "M": 5007,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "m0r0",
+      "level": 5,
+      "M": 7409,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "m0r0",
+      "level": 6,
+      "M": 6892,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "r11l",
+      "level": 3,
+      "M": 7577,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "r11l",
+      "level": 4,
+      "M": 8829,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "r11l",
+      "level": 5,
+      "M": 16589,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "re86",
+      "level": 2,
+      "M": 8016,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "re86",
+      "level": 3,
+      "M": 10842,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "re86",
+      "level": 4,
+      "M": 13956,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "re86",
+      "level": 5,
+      "M": 6814,
+      "sharp_drop": true,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "re86",
+      "level": 6,
+      "M": 12874,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "re86",
+      "level": 7,
+      "M": 18404,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "re86",
+      "level": 8,
+      "M": 7844,
+      "sharp_drop": true,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "s5i5",
+      "level": 2,
+      "M": 7743,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "s5i5",
+      "level": 3,
+      "M": 8321,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "s5i5",
+      "level": 4,
+      "M": 11597,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "sb26",
+      "level": 2,
+      "M": 7814,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "sb26",
+      "level": 3,
+      "M": 2416,
+      "sharp_drop": true,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "sb26",
+      "level": 4,
+      "M": 3919,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "sb26",
+      "level": 5,
+      "M": 3812,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "sb26",
+      "level": 6,
+      "M": 4461,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "sb26",
+      "level": 7,
+      "M": 2142,
+      "sharp_drop": true,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "sc25",
+      "level": 2,
+      "M": 1538,
+      "sharp_drop": true,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "sc25",
+      "level": 3,
+      "M": 7186,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "sc25",
+      "level": 4,
+      "M": 8219,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "sc25",
+      "level": 5,
+      "M": 3284,
+      "sharp_drop": true,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "sc25",
+      "level": 6,
+      "M": 7082,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "sk48",
+      "level": 2,
+      "M": 7138,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "sk48",
+      "level": 3,
+      "M": 5722,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "sk48",
+      "level": 4,
+      "M": 6306,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "sp80",
+      "level": 3,
+      "M": 10162,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "sp80",
+      "level": 4,
+      "M": 10432,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "sp80",
+      "level": 5,
+      "M": 8247,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "sp80",
+      "level": 6,
+      "M": 9671,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "su15",
+      "level": 2,
+      "M": 9188,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "su15",
+      "level": 3,
+      "M": 5097,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "su15",
+      "level": 4,
+      "M": 12319,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "su15",
+      "level": 5,
+      "M": 7198,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "su15",
+      "level": 6,
+      "M": 8499,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "su15",
+      "level": 7,
+      "M": 3462,
+      "sharp_drop": true,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "su15",
+      "level": 8,
+      "M": 12818,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "su15",
+      "level": 9,
+      "M": 17007,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "tn36",
+      "level": 2,
+      "M": 5619,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "tn36",
+      "level": 3,
+      "M": 3986,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "tn36",
+      "level": 4,
+      "M": 7570,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "tn36",
+      "level": 5,
+      "M": 7042,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "tn36",
+      "level": 6,
+      "M": 5563,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "tn36",
+      "level": 7,
+      "M": 5236,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "tr87",
+      "level": 2,
+      "M": 5764,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "tr87",
+      "level": 3,
+      "M": 8081,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "tr87",
+      "level": 4,
+      "M": 7971,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "tr87",
+      "level": 5,
+      "M": 5308,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "tr87",
+      "level": 6,
+      "M": 0,
+      "sharp_drop": true,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "tu93",
+      "level": 2,
+      "M": 7091,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "tu93",
+      "level": 3,
+      "M": 2608,
+      "sharp_drop": true,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "tu93",
+      "level": 4,
+      "M": 5811,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "tu93",
+      "level": 5,
+      "M": 6538,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "tu93",
+      "level": 6,
+      "M": 4256,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "tu93",
+      "level": 7,
+      "M": 6343,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "tu93",
+      "level": 8,
+      "M": 0,
+      "sharp_drop": true,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "vc33",
+      "level": 3,
+      "M": 4957,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "vc33",
+      "level": 4,
+      "M": 8729,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "vc33",
+      "level": 5,
+      "M": 15904,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "vc33",
+      "level": 6,
+      "M": 7471,
+      "sharp_drop": true,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "wa30",
+      "level": 2,
+      "M": 9057,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "wa30",
+      "level": 3,
+      "M": 8974,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "wa30",
+      "level": 4,
+      "M": 11313,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "wa30",
+      "level": 5,
+      "M": 7957,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "wa30",
+      "level": 6,
+      "M": 8387,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "wa30",
+      "level": 7,
+      "M": 6048,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "wa30",
+      "level": 8,
+      "M": 14979,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "OPINE",
+      "game": "wa30",
+      "level": 9,
+      "M": 14968,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "baseline1",
+      "game": "ar25",
+      "level": 5,
+      "M": 8274,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "baseline1",
+      "game": "bp35",
+      "level": 6,
+      "M": 6883,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "baseline1",
+      "game": "cd82",
+      "level": 5,
+      "M": 4753,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "baseline1",
+      "game": "cd82",
+      "level": 6,
+      "M": 4097,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "baseline1",
+      "game": "lp85",
+      "level": 6,
+      "M": 5265,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "baseline1",
+      "game": "lp85",
+      "level": 7,
+      "M": 5537,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "baseline1",
+      "game": "lp85",
+      "level": 8,
+      "M": 3864,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "baseline1",
+      "game": "ls20",
+      "level": 3,
+      "M": 6715,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "baseline1",
+      "game": "m0r0",
+      "level": 2,
+      "M": 3064,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "baseline1",
+      "game": "m0r0",
+      "level": 3,
+      "M": 9553,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "baseline1",
+      "game": "m0r0",
+      "level": 4,
+      "M": 8465,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "baseline1",
+      "game": "sb26",
+      "level": 7,
+      "M": 5230,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "baseline1",
+      "game": "sb26",
+      "level": 8,
+      "M": 5159,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "baseline1",
+      "game": "tr87",
+      "level": 3,
+      "M": 6404,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "baseline1",
+      "game": "tu93",
+      "level": 3,
+      "M": 4435,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "baseline1",
+      "game": "vc33",
+      "level": 7,
+      "M": 8343,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "baseline1",
+      "game": "wa30",
+      "level": 6,
+      "M": 9787,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    },
+    {
+      "system": "baseline1",
+      "game": "wa30",
+      "level": 7,
+      "M": 12344,
+      "sharp_drop": false,
+      "status": "cached_direct_audit_only",
+      "retained_targets": [],
+      "retained_entrypoint_targets": [],
+      "direct_targets": [],
+      "indirect_targets": [],
+      "unresolved_sites": 0,
+      "observed_replay": false
+    }
+  ],
+  "scope": "Full source hashes and call paths are stored once in the joint audit. Cached comparator rows are not silently reclassified. No solver/harness grammar is imposed.",
+  "joint_audit_sha256": "f85900c115e2d73a6d36dd0eb0ae3383b668d680d407aee7b10f484470aebb0c"
+}

@@ -46,6 +46,7 @@ def build_profiles(audit: dict, release_table: dict) -> dict:
         game, reached, total = metadata["game"], metadata["reached"], metadata["total_levels"]
         levels = list(range(1, total + 1))
         values, exact, calls, coupled_levels = [], [], [], []
+        retained_levels, sharp_path_levels = [], []
         for level in levels:
             row = boundaries.get((game, level))
             exact.append(row is not None)
@@ -78,11 +79,17 @@ def build_profiles(audit: dict, release_table: dict) -> dict:
                     raise ValueError(f"invalid coupled source case: {game} L{level}")
                 coupled_levels.append(level)
                 coupled += 1
+            source = row.get("source_reuse") or {}
+            if source.get("paths"):
+                retained_levels.append(level)
+                if row["sharp_marginal_drop"]:sharp_path_levels.append(level)
         games.append({"game": game, "reached": reached, "total_levels": total,
                       "levels": levels, "M_bytes": values,
                       "exact_winning_source": exact,
                       "static_unchanged_leg_call_levels": calls,
                       "sharp_drop_with_static_call_levels": coupled_levels,
+                      "retained_source_path_levels": retained_levels,
+                      "sharp_drop_with_retained_path_levels": sharp_path_levels,
                       "direction_reversals": direction_reversals(values)})
     if set(boundaries) - {(g["game"], l) for g in games for l in g["levels"]}:
         raise ValueError("source boundary outside the release")
@@ -97,6 +104,7 @@ def build_profiles(audit: dict, release_table: dict) -> dict:
     if coupled != len(expected["sharp_drops_with_literal_reuse"]):
         raise ValueError("coupled profile count differs from the source audit")
     summary.update({"sharp_drops_with_static_call": coupled,
+                    "sharp_drops_with_retained_source_path": sum(len(g["sharp_drop_with_retained_path_levels"]) for g in games),
                     "games_with_direction_reversals": sum(g["direction_reversals"] > 0 for g in games),
                     "direction_reversals": sum(g["direction_reversals"] for g in games)})
     return {"schema": 1, "dataset": "frozen GPT-5.6 campaign",

@@ -50,6 +50,7 @@
 \newcommand{\Pos}[1]{[#1]_{+}}
 \newcommand{\RepoURL}{https://github.com/sashakolpakov/gkm}
 \input{generated/comparator_stats.tex}
+\input{generated/reuse_accounting.tex}
 
 \title{Kolmogorov Structure Functions, Inverse-Colimits, and Cofibrations: Solving ARC-AGI-3 with Compute-Bounded Self-Improving Agents}
 
@@ -74,7 +75,9 @@ admission. The selected GPT-5.6 campaign replays 181 of 183 public levels
 ($98.9071\%$ raw coverage; $98.1166\%$ Competition-Mode score). The source audit
 admits 171 exact winning checkpoints. A computable conditional-AST novelty proxy
 decreases in 64 of 141 comparable marginals, including 21 half-or-more drops;
-13 of those coincide with direct static call sites to unchanged earlier legs. We publish
+\GKMGeneralSharpPaths{} of those coincide with source paths to retained definitions.
+The generalized source account follows newly added glue and finds such paths in
+\GKMGeneralPaths{} of \GKMGeneralPairs{} adjacent exact source pairs. We publish
 the conditional marginal profiles for all 25 games and examine concrete source
 structure at their dips, including direct and indirect helper reuse and a compact
 literal action program. Source-growth counters are supporting accounting and are
@@ -373,6 +376,21 @@ layouts can require new logic. The level's appearance alone does not establish
 how much is reusable or whether the proposer found it. The source and call-site
 audit is therefore needed alongside the marginal curve.
 
+The generalized source account starts at the winning executable entry point and
+follows calls through new routines, imports, aliases, callback parameters and
+methods. It computes a finite points-to fixed point over the supplied Python
+sources and records each retained definition's hash and a possible call path.
+Matching is by normalized-AST content; the preceding binding is recorded, including
+when a literal nested helper is rebound inside a new routine. New glue
+remains ordinary candidate code and is charged by $M$; no particular glue syntax
+or component hierarchy is required by the host. Unresolved bindings remain explicit
+in the source account. A separate replay observer can record the functions actually
+selected at runtime and bind those observations to the same source hashes. Both
+tools are deterministic code; neither invokes an LLM or changes candidate admission.
+The historical campaign was not instrumented with this observer, so its new totals
+below are source-path measurements. The observer is released for independent replay
+and subsequent campaigns.
+
 \subsection{Supporting source-growth counters and post-admission diagnostics}
 For a source file $f$, $d(f)$ counts nonblank, noncomment lines plus the number of
 elements in Python list, tuple, set, and dictionary literals in its AST. A long
@@ -583,8 +601,8 @@ Markdown table. All source remains from the selected GPT-5.6 campaign.
 \includegraphics[width=0.98\textwidth]{figures/marginal_complexity_profiles.png}
 \caption{Conditional marginal-complexity proxy at exact winning boundaries,
 in compressed normalized-AST novelty bytes. Orange rings mark decreases; green
-diamonds mark half-or-more drops accompanied by a direct call site to an unchanged
-earlier leg. These are marginal profiles, not line-growth counters. Each panel has
+diamonds mark half-or-more drops with a source path to a retained definition,
+including paths through newly added glue. These are marginal profiles, not line-growth counters. Each panel has
 its own linear ordinate. The first point describes initial construction against an
 empty AST dictionary. The \texttt{dc22} and \texttt{wa30} troughs reuse unchanged
 helpers through new level routines; \texttt{ls20} makes a direct call.}
@@ -593,8 +611,9 @@ helpers through new level routines; \texttt{ls20} makes a direct call.}
 
 Across the authenticated source history, \GKMDecreases{} of \GKMComparable{}
 comparable marginals decrease and \GKMSharpDrops{} fall by at least half.
-\GKMCoupledWitnesses{} of those sharp drops meet the direct player-to-unchanged-leg
-call-site condition. The figures display
+\GKMGeneralSharpPaths{} of those sharp drops have a retained-definition path under
+the generalized source account. The original direct-call test counts
+\GKMCoupledWitnesses{} and is retained for the cross-system comparison below. The figures display
 both small and large fluctuations, rather than retaining only the sharp cases.
 No sawtooth formula was imposed on admission. These observations address the
 conditional description of admitted solutions; the supporting counters below
@@ -843,9 +862,21 @@ convention for $M_1$.
 
 The conditional novelty $M_L$ is defined in Eq.~\eqref{eq:conditional-ast}, and
 the complete per-game profiles are plotted in Appendix~\ref{sec:all-marginals}.
-The following suite-wide audit counts direct static calls from the winning player
-to unchanged retained legs. The separate case audit in
-Table~\ref{tab:reuse-cases} also follows calls through newly added level routines.
+The generalized GKM account covers all \GKMGeneralPairs{} exact adjacent source
+pairs and finds retained-definition paths in \GKMGeneralPaths{}. Of these,
+\GKMAdditionalGluePaths{} have paths only through intermediate glue and are omitted
+by the direct-call criterion. \GKMGeneralSharpPaths{} of the 21 sharp marginal
+drops have such a path. Definitions anywhere in the retained solver source are
+eligible, rather than only functions in \texttt{legs.py}. The per-boundary hashes,
+paths and resolution status are in the joint audit; a coverage summary is in
+\path{generated/reuse_accounting.json}.
+
+The same accounting engine is integrated into the GKM, OPINE and baseline1 source
+adapters. The frozen comparator rows available here retain their earlier direct-call
+audit; they are not relabelled using unavailable raw source. The following table
+therefore keeps the common direct-call criterion for that comparison. The five-case
+table above illustrates the additional paths through new glue. Runtime observer
+reports can be attached separately after checking source and entrypoint bindings.
 
 We call $M_L\le M_{L-1}/2$ a sharp drop, a descriptive threshold. Separately, the
 static test asks whether the AST of the later winning entry point contains a direct
@@ -853,9 +884,8 @@ named call site to a definition unchanged from the preceding winning source.
 A \emph{coupled static case} meets both tests. The parser does not establish branch
 reachability, resolve dynamic dispatch, or instrument execution. A retained call site
 can be unexecuted; successful whole-program replay alone does not resolve this.
-The direct-call counts retain this fixed definition. Calls through new wrappers
-are reported separately in Table~\ref{tab:reuse-cases}. Runtime call counts were
-not collected.
+The direct-call counts retain this fixed definition. The generalized account and
+its replay observer are described in \path{arc/REUSE_ACCOUNTING.md}.
 
 \begin{table}[H]
 \centering
@@ -974,9 +1004,9 @@ The measured $M_k$ profiles show repeated rises and falls in several games, with
 \GKMDecreases{} decreases among \GKMComparable{} comparable marginals. Alternation
 between learning new machinery and applying retained machinery is the proposed
 explanation for a marginal-complexity sawtooth. It is supported most specifically
-when a decrease coincides with source evidence of a retained call: the audit finds
-\GKMHardReuse{} static unchanged-leg cases, including \GKMCoupledWitnesses{} with
-half-or-more novelty drops. In \texttt{ls20}, for example, the L2 drop accompanies
+when a decrease coincides with source evidence of a retained call: the generalized
+audit finds \GKMGeneralPaths{} source-pair cases with retained paths, including
+\GKMGeneralSharpPaths{} with half-or-more novelty drops. In \texttt{ls20}, for example, the L2 drop accompanies
 a static call to unchanged \texttt{follow\_cardinal\_runs}; later route literals
 add novelty while that leg remains unchanged. A matched experiment would still
 be needed to attribute a reduction in discovery effort to access to the library.
@@ -1035,7 +1065,9 @@ The selected GPT-5.6 release replays 181/183 public levels, scoring $98.1166\%$ 
 Competition Mode with 7001 stored path actions and 7069 official API calls. At the
 171 exact winning-source checkpoints, the conditional-AST novelty proxy decreases
 in \GKMDecreases{} of \GKMComparable{} comparable steps, including \GKMSharpDrops{}
-half-or-more drops and \GKMCoupledWitnesses{} sharp static call-site cases. The
+half-or-more drops and \GKMGeneralSharpPaths{} sharp retained-path cases. The generalized
+account follows calls through new glue in all \GKMGeneralPairs{} exact adjacent
+source pairs, finding retained paths in \GKMGeneralPaths{}. The
 complete marginal profiles expose sawtooth patterns and exceptions, while the
 source-growth counters provide separate supporting accounting. The corrected
 \texttt{dc22} profile is nonmonotone despite increasing promoted-source growth.
@@ -1064,7 +1096,7 @@ marginal. The complete values and input hashes are in
 \includegraphics[width=\textwidth,height=0.88\textheight,keepaspectratio]{figures/marginal_complexity_all_games.png}
 \caption{Conditional marginal profiles for all 25 public games, using separate
 linear scales. Orange rings mark decreases and green diamonds mark sharp decreases
-with direct unchanged-leg call sites. Panel counts report measured marginals, not
+with retained-definition source paths, including indirect paths. Panel counts report measured marginals, not
 solved levels: a replay-verified level can lack the exact source needed for this
 analysis. Gaps are unknown, not zero. Some games show repeated rises and falls;
 others provide only a short or incomplete segment. Direct and wrapper-mediated

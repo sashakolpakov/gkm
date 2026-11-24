@@ -12,6 +12,7 @@ from pathlib import Path
 import tempfile
 
 import audit_revision_sources as frozen
+from executable_reuse import Program, analyse_reuse
 
 
 CASES = (("dc22", 2), ("dc22", 5), ("wa30", 2), ("wa30", 6), ("cn04", 3))
@@ -42,44 +43,11 @@ def body_calls(node: ast.AST):
 
 
 def inspect_call_paths(previous: dict[str, bytes], current: dict[str, bytes], level: int) -> dict:
-    old, new = definitions(previous), definitions(current)
-    roots = {name: [key for key in new if key[1] == name] for _, name in new}
-    if any(len(keys) != 1 for keys in roots.values()):
-        raise ValueError("case analysis requires unambiguous top-level names")
-    # These five historical players import their solver legs explicitly by star.
-    imports = ast.parse(current["players.py"]).body
-    if not any(isinstance(n, ast.ImportFrom) and n.module == "legs"
-               and any(a.name == "*" for a in n.names) for n in imports):
-        raise ValueError("case player does not use the checked legs import convention")
-    start = ("players.py", f"play_level_{level}")
-    if start not in new:
-        raise ValueError("missing winning entry point")
-    unchanged = {key for key, node in new.items() if key[0] == "legs.py"
-                 and key in old and ast_hash(node) == ast_hash(old[key])}
-    paths, queue, seen = [], deque([[start]]), {start}
-    while queue:
-        path = queue.popleft()
-        key = path[-1]
-        node = new[key]
-        if key in unchanged:
-            paths.append(path)
-        shadowed = {arg.arg for arg in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)}
-        shadowed.update(n.id for n in ast.walk(node) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store))
-        for call in body_calls(node):
-            if not isinstance(call.func, ast.Name) or call.func.id in shadowed:
-                continue
-            candidates = roots.get(call.func.id, [])
-            if not candidates:
-                continue
-            target = candidates[0]
-            # Calls inside legs.py resolve to its own module; player globals are
-            # supplied by the asserted star import or a player-local definition.
-            if key[0] == "legs.py" and target[0] != "legs.py":
-                continue
-            if target not in seen:
-                seen.add(target)
-                queue.append(path + [target])
-    root = new[start]
+    program = Program(current)
+    start = f"players.py:play_level_{level}"
+    general = analyse_reuse(previous, current, [start], target_files={"legs.py"})
+    root = program.defs[start].node
+    paths = list(general["paths"].values())
     calls = list(body_calls(root))
     literal_loop = (len(root.body) == 1 and isinstance(root.body[0], ast.For)
                     and isinstance(root.body[0].iter, (ast.List, ast.Tuple))
@@ -90,10 +58,10 @@ def inspect_call_paths(previous: dict[str, bytes], current: dict[str, bytes], le
             ast.literal_eval(root.body[0].iter)
         except (ValueError, TypeError):
             literal_loop = False
-    return {"entrypoint": ":".join(start), "entrypoint_ast_sha256": ast_hash(root),
+    return {"entrypoint": start, "entrypoint_ast_sha256": ast_hash(root),
             "entrypoint_calls": sorted({ast.unparse(c.func) for c in calls}),
-            "unchanged_leg_paths": [[":".join(key) for key in path] for path in paths],
-            "unchanged_target_ast_sha256": {":".join(path[-1]): ast_hash(new[path[-1]]) for path in paths},
+            "unchanged_leg_paths": paths,
+            "unchanged_target_ast_sha256": general["unchanged_definition_sha256"],
             "literal_action_loop_only": literal_loop,
             "literal_action_count": len(root.body[0].iter.elts) if literal_loop else None}
 

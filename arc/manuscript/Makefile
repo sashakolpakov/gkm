@@ -21,6 +21,7 @@ marginal-profiles: tables
 	$(PYTHON) scripts/generate_marginal_profiles.py
 
 reuse-cases:
+	$(PYTHON) scripts/generate_reuse_accounting.py
 	$(PYTHON) scripts/audit_reuse_cases.py
 
 figures: source-comparison marginal-profiles reuse-cases
@@ -40,6 +41,8 @@ test:
 		arc/test_audit_action_boundaries.py \
 		arc/test_audit_submission_taint.py \
 		arc/test_audit_marginal_literal_reuse.py \
+		arc/test_executable_reuse.py \
+		arc/test_record_replay_calls.py \
 		arc/test_build_artifact_docs.py \
 		arc/crack_lab/test_gkm_arena.py \
 		arc/crack_lab/test_gkm_legs.py \
@@ -49,6 +52,7 @@ test:
 		arc/manuscript/scripts/test_generate_figures.py \
 		arc/manuscript/scripts/test_generate_marginal_profiles.py \
 		arc/manuscript/scripts/test_audit_reuse_cases.py \
+		arc/manuscript/scripts/test_generate_reuse_accounting.py \
 		arc/manuscript/scripts/test_compare_source_charges.py \
 		arc/manuscript/scripts/test_generate_empirical_tables.py \
 		arc/manuscript/scripts/test_build_arxiv_bundle.py \

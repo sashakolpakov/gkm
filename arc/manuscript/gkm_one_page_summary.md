@@ -43,9 +43,10 @@ winning program. It is representation-dependent, omits complete decoding metadat
 and does not estimate ideal K with a calibrated error bound.
 
 The audit admits 171 exact winning checkpoints and 141 comparable marginals: 64
-decrease, including 21 half-or-more drops. Thirteen sharp drops coincide with static
-calls to unchanged earlier legs; runtime call execution remains unmeasured. Missing
-source is not bridged. The main figure compares three cases; the appendix plots all
+decrease, including 21 half-or-more drops. Generalized source accounting finds
+retained-definition paths in 115 of 144 adjacent source pairs, including 18 sharp
+drops. Sixty-one pairs require following intermediate glue beyond a direct call.
+Missing source is not bridged. Historical runtime call events were not collected. The main figure compares three cases; the appendix plots all
 25 games, including unknown and unclaimed boundaries.
 
 The `dc22` proxy is 1058, 604, 716, 885, 828, 1379 compressed bytes: it has two dips
@@ -66,6 +67,13 @@ reconstruction were corrected without repairing the valid solver, counter or rep
 These counters neither replace conditional marginals nor reconstruct all failed
 work over the discovery process.
 
-A matched-model, matched-budget library ablation and runtime call instrumentation
-are needed to test causal search savings. See [marginal profiles](generated/conditional_marginal_profiles.md),
+A matched-model, matched-budget library ablation is needed to test causal search
+savings. Runtime call measurements can now be collected with the separate observer. See [marginal profiles](generated/conditional_marginal_profiles.md),
 [revision evidence](REVISION_EVIDENCE.md) and [response to comments](RESPONSE_TO_REVIEWS.md).
+
+The shared code-only accountant follows aliases, callbacks, wrappers, dispatch tables
+and methods. A separate replay observer records actual runtime dispatch, including
+generated glue, without changing the candidate or admission rule. Source hashes bind
+the observations; unresolved source bindings are never treated as non-reuse. See
+[accounting protocol](../REUSE_ACCOUNTING.md) and
+[coverage table](generated/reuse_accounting.md).

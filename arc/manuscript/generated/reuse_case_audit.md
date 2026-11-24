@@ -6,8 +6,8 @@ Concrete source evidence at conditional marginal dips
 | --- | --- | --- |
 | dc22 L2 | 1058 → 604 | players.py:play_level_2 → legs.py:traverse_revealed_three_stage_bridge_chain → legs.py:toggle_control; players.py:play_level_2 → legs.py:traverse_revealed_three_stage_bridge_chain → legs.py:walk_segments |
 | dc22 L5 | 885 → 828 | players.py:play_level_5 → legs.py:clear_level_5_platform_transfer → legs.py:toggle_control; players.py:play_level_5 → legs.py:clear_level_5_platform_transfer → legs.py:walk_segments |
-| wa30 L2 | 899 → 339 | players.py:play_level_2 → legs.py:fill_bottom_slots_alongside_courier → legs.py:walk; players.py:play_level_2 → legs.py:fill_bottom_slots_alongside_courier → legs.py:interact |
-| wa30 L6 | 534 → 343 | players.py:play_level_6 → legs.py:recover_two_blocks_across_courier_port → legs.py:walk; players.py:play_level_6 → legs.py:recover_two_blocks_across_courier_port → legs.py:interact |
+| wa30 L2 | 899 → 339 | players.py:play_level_2 → legs.py:fill_bottom_slots_alongside_courier → legs.py:interact; players.py:play_level_2 → legs.py:fill_bottom_slots_alongside_courier → legs.py:walk |
+| wa30 L6 | 534 → 343 | players.py:play_level_6 → legs.py:recover_two_blocks_across_courier_port → legs.py:interact; players.py:play_level_6 → legs.py:recover_two_blocks_across_courier_port → legs.py:walk |
 | cn04 L3 | 337 → 245 | 23-action literal loop; its only call is env.step |
 
 Source hashes, unchanged-definition hashes and frozen revision are in reuse_case_audit.json.

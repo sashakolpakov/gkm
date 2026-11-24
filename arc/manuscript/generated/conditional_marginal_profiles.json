@@ -12,6 +12,7 @@
     "sharp_half_or_more_marginal_drops": 21,
     "hard_literal_world_model_reuse_witnesses": 54,
     "sharp_drops_with_static_call": 13,
+    "sharp_drops_with_retained_source_path": 18,
     "games_with_direction_reversals": 22,
     "direction_reversals": 62
   },
@@ -62,6 +63,18 @@
       "sharp_drop_with_static_call_levels": [
         2
       ],
+      "retained_source_path_levels": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "sharp_drop_with_retained_path_levels": [
+        2
+      ],
       "direction_reversals": 4
     },
     {
@@ -103,6 +116,19 @@
       ],
       "static_unchanged_leg_call_levels": [],
       "sharp_drop_with_static_call_levels": [],
+      "retained_source_path_levels": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "sharp_drop_with_retained_path_levels": [
+        6
+      ],
       "direction_reversals": 5
     },
     {
@@ -137,6 +163,10 @@
         6
       ],
       "sharp_drop_with_static_call_levels": [],
+      "retained_source_path_levels": [
+        6
+      ],
+      "sharp_drop_with_retained_path_levels": [],
       "direction_reversals": 3
     },
     {
@@ -176,6 +206,15 @@
       "sharp_drop_with_static_call_levels": [
         2
       ],
+      "retained_source_path_levels": [
+        2,
+        4,
+        5,
+        6
+      ],
+      "sharp_drop_with_retained_path_levels": [
+        2
+      ],
       "direction_reversals": 2
     },
     {
@@ -208,6 +247,14 @@
       ],
       "static_unchanged_leg_call_levels": [],
       "sharp_drop_with_static_call_levels": [],
+      "retained_source_path_levels": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "sharp_drop_with_retained_path_levels": [],
       "direction_reversals": 3
     },
     {
@@ -242,6 +289,12 @@
         6
       ],
       "sharp_drop_with_static_call_levels": [],
+      "retained_source_path_levels": [
+        4,
+        5,
+        6
+      ],
+      "sharp_drop_with_retained_path_levels": [],
       "direction_reversals": 1
     },
     {
@@ -277,6 +330,14 @@
       ],
       "static_unchanged_leg_call_levels": [],
       "sharp_drop_with_static_call_levels": [],
+      "retained_source_path_levels": [
+        2,
+        6,
+        7
+      ],
+      "sharp_drop_with_retained_path_levels": [
+        7
+      ],
       "direction_reversals": 0
     },
     {
@@ -319,6 +380,17 @@
         7
       ],
       "sharp_drop_with_static_call_levels": [
+        2
+      ],
+      "retained_source_path_levels": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "sharp_drop_with_retained_path_levels": [
         2
       ],
       "direction_reversals": 3
@@ -369,6 +441,16 @@
       "sharp_drop_with_static_call_levels": [
         3
       ],
+      "retained_source_path_levels": [
+        3,
+        4,
+        5,
+        8
+      ],
+      "sharp_drop_with_retained_path_levels": [
+        3,
+        8
+      ],
       "direction_reversals": 4
     },
     {
@@ -417,6 +499,18 @@
       "sharp_drop_with_static_call_levels": [
         2
       ],
+      "retained_source_path_levels": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "sharp_drop_with_retained_path_levels": [
+        2
+      ],
       "direction_reversals": 3
     },
     {
@@ -461,6 +555,17 @@
       "sharp_drop_with_static_call_levels": [
         2
       ],
+      "retained_source_path_levels": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "sharp_drop_with_retained_path_levels": [
+        2
+      ],
       "direction_reversals": 2
     },
     {
@@ -499,6 +604,15 @@
       "sharp_drop_with_static_call_levels": [
         2
       ],
+      "retained_source_path_levels": [
+        2,
+        4,
+        5,
+        6
+      ],
+      "sharp_drop_with_retained_path_levels": [
+        2
+      ],
       "direction_reversals": 2
     },
     {
@@ -531,6 +645,12 @@
       ],
       "static_unchanged_leg_call_levels": [],
       "sharp_drop_with_static_call_levels": [],
+      "retained_source_path_levels": [
+        2,
+        5,
+        6
+      ],
+      "sharp_drop_with_retained_path_levels": [],
       "direction_reversals": 0
     },
     {
@@ -569,6 +689,18 @@
       ],
       "static_unchanged_leg_call_levels": [],
       "sharp_drop_with_static_call_levels": [],
+      "retained_source_path_levels": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "sharp_drop_with_retained_path_levels": [
+        6
+      ],
       "direction_reversals": 3
     },
     {
@@ -607,6 +739,16 @@
       ],
       "static_unchanged_leg_call_levels": [],
       "sharp_drop_with_static_call_levels": [],
+      "retained_source_path_levels": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "sharp_drop_with_retained_path_levels": [],
       "direction_reversals": 4
     },
     {
@@ -650,6 +792,15 @@
       "sharp_drop_with_static_call_levels": [
         3
       ],
+      "retained_source_path_levels": [
+        3,
+        4,
+        6,
+        8
+      ],
+      "sharp_drop_with_retained_path_levels": [
+        3
+      ],
       "direction_reversals": 3
     },
     {
@@ -690,6 +841,16 @@
       "sharp_drop_with_static_call_levels": [
         2
       ],
+      "retained_source_path_levels": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "sharp_drop_with_retained_path_levels": [
+        2
+      ],
       "direction_reversals": 1
     },
     {
@@ -728,6 +889,14 @@
       ],
       "static_unchanged_leg_call_levels": [],
       "sharp_drop_with_static_call_levels": [],
+      "retained_source_path_levels": [
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "sharp_drop_with_retained_path_levels": [],
       "direction_reversals": 3
     },
     {
@@ -764,6 +933,15 @@
         5
       ],
       "sharp_drop_with_static_call_levels": [
+        5
+      ],
+      "retained_source_path_levels": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "sharp_drop_with_retained_path_levels": [
         5
       ],
       "direction_reversals": 2
@@ -812,6 +990,15 @@
       "sharp_drop_with_static_call_levels": [
         7
       ],
+      "retained_source_path_levels": [
+        3,
+        4,
+        5,
+        7
+      ],
+      "sharp_drop_with_retained_path_levels": [
+        7
+      ],
       "direction_reversals": 4
     },
     {
@@ -847,6 +1034,12 @@
       ],
       "static_unchanged_leg_call_levels": [],
       "sharp_drop_with_static_call_levels": [],
+      "retained_source_path_levels": [
+        5,
+        6,
+        7
+      ],
+      "sharp_drop_with_retained_path_levels": [],
       "direction_reversals": 2
     },
     {
@@ -879,6 +1072,8 @@
       ],
       "static_unchanged_leg_call_levels": [],
       "sharp_drop_with_static_call_levels": [],
+      "retained_source_path_levels": [],
+      "sharp_drop_with_retained_path_levels": [],
       "direction_reversals": 0
     },
     {
@@ -928,6 +1123,17 @@
         5,
         7
       ],
+      "retained_source_path_levels": [
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "sharp_drop_with_retained_path_levels": [
+        5,
+        7
+      ],
       "direction_reversals": 3
     },
     {
@@ -966,6 +1172,11 @@
         7
       ],
       "sharp_drop_with_static_call_levels": [],
+      "retained_source_path_levels": [
+        6,
+        7
+      ],
+      "sharp_drop_with_retained_path_levels": [],
       "direction_reversals": 2
     },
     {
@@ -1007,11 +1218,24 @@
       ],
       "static_unchanged_leg_call_levels": [],
       "sharp_drop_with_static_call_levels": [],
+      "retained_source_path_levels": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "sharp_drop_with_retained_path_levels": [
+        2
+      ],
       "direction_reversals": 3
     }
   ],
   "input_sha256": {
-    "source_audit": "8e1305eb382f1429fc3ea1904686e979a942f5bc664b89f67215dc824d2a5aac",
+    "source_audit": "f85900c115e2d73a6d36dd0eb0ae3383b668d680d407aee7b10f484470aebb0c",
     "release_table": "9c5c089aa85ed27cd54bf68823fbe61007caf53d59c502a77ff7e99196f20836"
   }
 }

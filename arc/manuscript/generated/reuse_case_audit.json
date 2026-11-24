@@ -1,7 +1,7 @@
 {
   "history_revision": "4d0e42f34d7b1db8305f03d725528dfdefe22511",
   "history_tree_sha1": "85543629cfcafc70eb7230493f394059c8e0ac45",
-  "source_audit_sha256": "8e1305eb382f1429fc3ea1904686e979a942f5bc664b89f67215dc824d2a5aac",
+  "source_audit_sha256": "f85900c115e2d73a6d36dd0eb0ae3383b668d680d407aee7b10f484470aebb0c",
   "scope": "five concrete winning-source cases; the existing suite-wide direct-call counts are unchanged",
   "measurement": "effective top-level definitions and named static call paths to unchanged legs; no runtime call counts",
   "cases": [
@@ -119,17 +119,17 @@
         [
           "players.py:play_level_2",
           "legs.py:fill_bottom_slots_alongside_courier",
-          "legs.py:walk"
+          "legs.py:interact"
         ],
         [
           "players.py:play_level_2",
           "legs.py:fill_bottom_slots_alongside_courier",
-          "legs.py:interact"
+          "legs.py:walk"
         ]
       ],
       "unchanged_target_ast_sha256": {
-        "legs.py:walk": "c6cf4e0b836e3d2d2c8ebac14ccf20a7c8081a8b1037689905727533d567a9e3",
-        "legs.py:interact": "967b0310d54d1ed05ace7d6e5d33db61ba3faf21ea681ce10aadf8dc66beb3d5"
+        "legs.py:interact": "967b0310d54d1ed05ace7d6e5d33db61ba3faf21ea681ce10aadf8dc66beb3d5",
+        "legs.py:walk": "c6cf4e0b836e3d2d2c8ebac14ccf20a7c8081a8b1037689905727533d567a9e3"
       },
       "literal_action_loop_only": false,
       "literal_action_count": null
@@ -162,17 +162,17 @@
         [
           "players.py:play_level_6",
           "legs.py:recover_two_blocks_across_courier_port",
-          "legs.py:walk"
+          "legs.py:interact"
         ],
         [
           "players.py:play_level_6",
           "legs.py:recover_two_blocks_across_courier_port",
-          "legs.py:interact"
+          "legs.py:walk"
         ]
       ],
       "unchanged_target_ast_sha256": {
-        "legs.py:walk": "c6cf4e0b836e3d2d2c8ebac14ccf20a7c8081a8b1037689905727533d567a9e3",
-        "legs.py:interact": "967b0310d54d1ed05ace7d6e5d33db61ba3faf21ea681ce10aadf8dc66beb3d5"
+        "legs.py:interact": "967b0310d54d1ed05ace7d6e5d33db61ba3faf21ea681ce10aadf8dc66beb3d5",
+        "legs.py:walk": "c6cf4e0b836e3d2d2c8ebac14ccf20a7c8081a8b1037689905727533d567a9e3"
       },
       "literal_action_loop_only": false,
       "literal_action_count": null

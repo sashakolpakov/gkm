@@ -1020,6 +1020,18 @@
           "legs.py:cross_pressure_gates_then_align_height"
         ]
       }
-    ]
+    ],
+    "source_reuse_accounting": {
+      "exact_pairs_analysed": 144,
+      "pairs_with_retained_call_path": 115,
+      "pairs_with_direct_path": 54,
+      "pairs_with_indirect_path": 77,
+      "pairs_with_only_indirect_paths": 61,
+      "sharp_drops_with_retained_call_path": 18,
+      "pairs_with_unresolved_sites": 128,
+      "cached_or_unavailable_pairs": 0,
+      "runtime_call_observations": "separate replay evidence; not inferred from static paths",
+      "source_bound_replay_observations": 0
+    }
   }
 }
