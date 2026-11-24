@@ -1,0 +1,1025 @@
+{
+  "history_revision": "4d0e42f34d7b1db8305f03d725528dfdefe22511",
+  "history_tree_sha1": "85543629cfcafc70eb7230493f394059c8e0ac45",
+  "release_commit": "9235ed26627140460efa1f6ca5e4041470cddc14",
+  "materialized_source_and_metadata_files": 1401,
+  "scope": "static audit only; no solver, game, replay, or proposer executed",
+  "source_units": "nonblank noncomment lines plus AST container-literal elements, per file",
+  "recorded_charge_baseline": "source in the working workspace before the winning harness cycle; not necessarily the preceding promoted source",
+  "runtime_call_execution": "unmeasured",
+  "all_no_debrief_auto_solve_checks": [
+    {
+      "game": "dc22",
+      "level": 5,
+      "snapshot": "arc/crack_lab/agent_solutions/dc22_legs/wip_context/level_05/auto_solve_debrief_skipped_0ec2282c641a",
+      "same_normalized_top_level_units_as_parent_reconstruction": false,
+      "actual_source_sha256": {
+        "legs.py": "7fe6c94f5aef61900978da06dcefb2c7ea619f45a237da387cf77d486bfed5ad",
+        "players.py": "15da2f06f527fb890e5685e3b4c612dcf2ad687182b4fc7a3561d9b5270ec916",
+        "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+      }
+    },
+    {
+      "game": "lf52",
+      "level": 3,
+      "snapshot": "arc/crack_lab/agent_solutions/lf52_legs/wip_context/level_03/auto_solve_debrief_skipped_73a4d46e0508",
+      "same_normalized_top_level_units_as_parent_reconstruction": true,
+      "actual_source_sha256": {
+        "legs.py": "d9686a5331dfdf4db6bf0690df2d3b240efa5187f611d2c52cdf3e8aeb72ed4a",
+        "players.py": "55a005fda2b2939dc4a10f652209c817a1e04f6cb61810b743fc1f34fdd7e511",
+        "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+      }
+    },
+    {
+      "game": "sb26",
+      "level": 3,
+      "snapshot": "arc/crack_lab/agent_solutions/sb26_legs/wip_context/level_03/auto_solve_debrief_skipped_247704c5568e",
+      "same_normalized_top_level_units_as_parent_reconstruction": true,
+      "actual_source_sha256": {
+        "legs.py": "c2aa65895bb580a100a2ab5ba19c77b17e54f1ea3bdc8a7ea6380121d493f0ab",
+        "players.py": "a8562d3693f254f568501636d434724a3b50151800baa4e97c1f134b05a87987",
+        "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+      }
+    },
+    {
+      "game": "sb26",
+      "level": 4,
+      "snapshot": "arc/crack_lab/agent_solutions/sb26_legs/wip_context/level_04/auto_solve_debrief_skipped_892b89fca941",
+      "same_normalized_top_level_units_as_parent_reconstruction": true,
+      "actual_source_sha256": {
+        "legs.py": "c2aa65895bb580a100a2ab5ba19c77b17e54f1ea3bdc8a7ea6380121d493f0ab",
+        "players.py": "c63f758ca2843e19e04ff465bed2327612a1762069593806bc0a2a8bdbc40d37",
+        "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+      }
+    },
+    {
+      "game": "su15",
+      "level": 7,
+      "snapshot": "arc/crack_lab/agent_solutions/su15_legs/wip_context/level_07/auto_solve_debrief_skipped_3744ff206271",
+      "same_normalized_top_level_units_as_parent_reconstruction": true,
+      "actual_source_sha256": {
+        "legs.py": "149cfc9663337c681ff6fe4b139ec47f3db4bef91ec70d60114543b8296493bf",
+        "players.py": "4675c3a9c787df7b69f98e5ec5d5e3b3bdf6c8e6781224d9f7ba841e07785be5",
+        "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+      }
+    }
+  ],
+  "paid_debrief_exclusions": [
+    {
+      "game": "g50t",
+      "level": 3,
+      "snapshot": "arc/crack_lab/agent_solutions/g50t_legs/wip_context/level_03/after_auto_solve_debrief_2bcf04981404",
+      "reason": "paid debrief snapshot does not authenticate the pre-debrief workspace"
+    },
+    {
+      "game": "g50t",
+      "level": 4,
+      "snapshot": "arc/crack_lab/agent_solutions/g50t_legs/wip_context/level_04/after_auto_solve_debrief_7375339f7b7e",
+      "reason": "paid debrief snapshot does not authenticate the pre-debrief workspace"
+    },
+    {
+      "game": "r11l",
+      "level": 3,
+      "snapshot": "arc/crack_lab/agent_solutions/r11l_legs/wip_context/level_03/after_auto_solve_debrief_1e1b0798f8e5",
+      "reason": "paid debrief snapshot does not authenticate the pre-debrief workspace"
+    }
+  ],
+  "source_audit_scope": {
+    "replay_verified_endpoint_wins": 181,
+    "admissible_exact_winning_source_checkpoints": 171,
+    "excluded_from_source_marginals": [
+      {
+        "game": "ft09",
+        "level": 2
+      },
+      {
+        "game": "g50t",
+        "level": 3
+      },
+      {
+        "game": "g50t",
+        "level": 4
+      },
+      {
+        "game": "r11l",
+        "level": 3
+      },
+      {
+        "game": "tr87",
+        "level": 1
+      },
+      {
+        "game": "tr87",
+        "level": 2
+      },
+      {
+        "game": "tr87",
+        "level": 3
+      },
+      {
+        "game": "tr87",
+        "level": 4
+      },
+      {
+        "game": "tr87",
+        "level": 5
+      },
+      {
+        "game": "tr87",
+        "level": 6
+      }
+    ]
+  },
+  "dc22": {
+    "initial_scaffold_D": 1,
+    "recorded_total": 650,
+    "initial_scaffold_qualification": "the full growth total assumes the standard initial template; the authenticated paired comparison excludes G1",
+    "authenticated_paired_levels": [
+      2,
+      6
+    ],
+    "paired_recorded_total": 601,
+    "paired_promoted_growth_total": 801,
+    "baseline_interpretation": "recorded workspace-local charges and adjacent-promotion growth use different baselines; their difference is not a solver or counter defect",
+    "recomputed_positive_growth_total": 850,
+    "endpoint_D": 851,
+    "endpoint_matches_frozen_release_acquisition_source": {
+      "legs.py": true,
+      "players.py": true,
+      "solve.py": true
+    },
+    "measurements": [
+      {
+        "level": 1,
+        "snapshot": "arc/crack_lab/agent_solutions/dc22_legs/wip_context/level_01/reached_before_debrief_b61ace806ad1/files",
+        "file_costs": {
+          "legs.py": 24,
+          "players.py": 26
+        },
+        "D": 50,
+        "source_sha256": {
+          "legs.py": "a4a9878bb379626e41c6edd6c6492b729836121abb7fe0465a8a99019b53ac20",
+          "players.py": "c9cb7845b5ef83f25f5e2be9f71ce4bd6777605c89e8c773a555fceddb8f81ed",
+          "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+        },
+        "recorded_C": 49,
+        "adjacent_source_growth": 49,
+        "adjacent_minus_recorded": 0,
+        "adjacent_source_growth_uses_authenticated_predecessor": false
+      },
+      {
+        "level": 2,
+        "snapshot": "arc/crack_lab/agent_solutions/dc22_legs/wip_context/level_02/reached_before_debrief_4050141013ef/files",
+        "file_costs": {
+          "legs.py": 43,
+          "players.py": 78
+        },
+        "D": 121,
+        "source_sha256": {
+          "legs.py": "aee0f7af419c9420bc0278f21bfc71f1390fc925a23cecaac6f228953d17b6d5",
+          "players.py": "42b1960cbb4fc34502c4ec571fbce08be9cc8e93955fe53a99236ec46f5767bf",
+          "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+        },
+        "recorded_C": 71,
+        "adjacent_source_growth": 71,
+        "adjacent_minus_recorded": 0,
+        "adjacent_source_growth_uses_authenticated_predecessor": true
+      },
+      {
+        "level": 3,
+        "snapshot": "arc/crack_lab/agent_solutions/dc22_legs/wip_context/level_03/reached_before_debrief_d9109a373040/files",
+        "file_costs": {
+          "legs.py": 70,
+          "players.py": 147
+        },
+        "D": 217,
+        "source_sha256": {
+          "legs.py": "ca6b050e385591b8b30bc2f0afe124ef06d8f50b18a533d85cc3e4c12ee0464c",
+          "players.py": "3c973999454e51de49690b503bfa4b3e1eecd05d15561d96056d49469ae9f45f",
+          "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+        },
+        "recorded_C": 96,
+        "adjacent_source_growth": 96,
+        "adjacent_minus_recorded": 0,
+        "adjacent_source_growth_uses_authenticated_predecessor": true
+      },
+      {
+        "level": 4,
+        "snapshot": "arc/crack_lab/agent_solutions/dc22_legs/wip_context/level_04/reached_before_debrief_12f44b3c26d6/files",
+        "file_costs": {
+          "legs.py": 109,
+          "players.py": 215
+        },
+        "D": 324,
+        "source_sha256": {
+          "legs.py": "4db58e4bb8ac2f6a5f2a6015d7306d9056148f7f4dbc71add5ccc73095430ae3",
+          "players.py": "399cb89e33d584bf5923bee106a1d18f6e9ab2f9560cdb152d92dcaff3a33a2c",
+          "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+        },
+        "recorded_C": 107,
+        "adjacent_source_growth": 107,
+        "adjacent_minus_recorded": 0,
+        "adjacent_source_growth_uses_authenticated_predecessor": true
+      },
+      {
+        "level": 5,
+        "snapshot": "arc/crack_lab/agent_solutions/dc22_legs/wip_context/level_05/auto_solve_debrief_skipped_0ec2282c641a/files",
+        "file_costs": {
+          "legs.py": 269,
+          "players.py": 257
+        },
+        "D": 526,
+        "source_sha256": {
+          "legs.py": "7fe6c94f5aef61900978da06dcefb2c7ea619f45a237da387cf77d486bfed5ad",
+          "players.py": "15da2f06f527fb890e5685e3b4c612dcf2ad687182b4fc7a3561d9b5270ec916",
+          "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+        },
+        "recorded_C": 2,
+        "adjacent_source_growth": 202,
+        "adjacent_minus_recorded": 200,
+        "adjacent_source_growth_uses_authenticated_predecessor": true
+      },
+      {
+        "level": 6,
+        "snapshot": "arc/crack_lab/agent_solutions/dc22_legs/wip_context/level_06/reached_before_debrief_7671882b61c3/files",
+        "file_costs": {
+          "legs.py": 592,
+          "players.py": 259
+        },
+        "D": 851,
+        "source_sha256": {
+          "legs.py": "ecb47bb99a83103b84e48edc7c8466357f8b670534d0eee389b840741b23fcb7",
+          "players.py": "3c12680cecef2d6cf3248a3516e5b4f492663260b4f09888c42f1a0f99d055b7",
+          "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+        },
+        "recorded_C": 325,
+        "adjacent_source_growth": 325,
+        "adjacent_minus_recorded": 0,
+        "adjacent_source_growth_uses_authenticated_predecessor": true
+      }
+    ],
+    "corrected_conditional_AST_zlib_bytes": {
+      "1": 1058,
+      "2": 604,
+      "3": 716,
+      "4": 885,
+      "5": 828,
+      "6": 1379
+    }
+  },
+  "GKM_summary": {
+    "retained_or_winning_checkpoints": 171,
+    "exact_winning_checkpoints": 171,
+    "exact_adjacent_transitions": 144,
+    "transitions_with_level_to_level_marginal_comparison": 141,
+    "marginal_decreases": 64,
+    "sharp_half_or_more_marginal_drops": 21,
+    "hard_literal_world_model_reuse_witnesses": 54,
+    "sharp_drops_with_literal_reuse": [
+      {
+        "game": "ar25",
+        "completed_level": 2,
+        "previous_marginal_ast_zlib_bytes": 622,
+        "marginal_ast_zlib_bytes": 175,
+        "marginal_drop_bytes": 447,
+        "reused_world_model_literals": [
+          "legs.py:repeat_action"
+        ]
+      },
+      {
+        "game": "cn04",
+        "completed_level": 2,
+        "previous_marginal_ast_zlib_bytes": 710,
+        "marginal_ast_zlib_bytes": 337,
+        "marginal_drop_bytes": 373,
+        "reused_world_model_literals": [
+          "legs.py:rotate_quarter_turns",
+          "legs.py:walk"
+        ]
+      },
+      {
+        "game": "ka59",
+        "completed_level": 2,
+        "previous_marginal_ast_zlib_bytes": 810,
+        "marginal_ast_zlib_bytes": 301,
+        "marginal_drop_bytes": 509,
+        "reused_world_model_literals": [
+          "legs.py:move_steps",
+          "legs.py:select_at"
+        ]
+      },
+      {
+        "game": "lf52",
+        "completed_level": 3,
+        "previous_marginal_ast_zlib_bytes": 1602,
+        "marginal_ast_zlib_bytes": 157,
+        "marginal_drop_bytes": 1445,
+        "reused_world_model_literals": [
+          "legs.py:solve_peg_solitaire_with_carrier"
+        ]
+      },
+      {
+        "game": "lp85",
+        "completed_level": 2,
+        "previous_marginal_ast_zlib_bytes": 698,
+        "marginal_ast_zlib_bytes": 189,
+        "marginal_drop_bytes": 509,
+        "reused_world_model_literals": [
+          "legs.py:repeat_click"
+        ]
+      },
+      {
+        "game": "ls20",
+        "completed_level": 2,
+        "previous_marginal_ast_zlib_bytes": 737,
+        "marginal_ast_zlib_bytes": 247,
+        "marginal_drop_bytes": 490,
+        "reused_world_model_literals": [
+          "legs.py:follow_cardinal_runs"
+        ]
+      },
+      {
+        "game": "m0r0",
+        "completed_level": 2,
+        "previous_marginal_ast_zlib_bytes": 673,
+        "marginal_ast_zlib_bytes": 265,
+        "marginal_drop_bytes": 408,
+        "reused_world_model_literals": [
+          "legs.py:follow_action_sequence"
+        ]
+      },
+      {
+        "game": "sb26",
+        "completed_level": 3,
+        "previous_marginal_ast_zlib_bytes": 1796,
+        "marginal_ast_zlib_bytes": 158,
+        "marginal_drop_bytes": 1638,
+        "reused_world_model_literals": [
+          "legs.py:copy_visible_color_code_into_diagram"
+        ]
+      },
+      {
+        "game": "sc25",
+        "completed_level": 2,
+        "previous_marginal_ast_zlib_bytes": 1131,
+        "marginal_ast_zlib_bytes": 279,
+        "marginal_drop_bytes": 852,
+        "reused_world_model_literals": [
+          "legs.py:move_until_level_progress",
+          "legs.py:select_grid_cells_of_color"
+        ]
+      },
+      {
+        "game": "sp80",
+        "completed_level": 5,
+        "previous_marginal_ast_zlib_bytes": 2011,
+        "marginal_ast_zlib_bytes": 486,
+        "marginal_drop_bytes": 1525,
+        "reused_world_model_literals": [
+          "legs.py:drive_objects"
+        ]
+      },
+      {
+        "game": "su15",
+        "completed_level": 7,
+        "previous_marginal_ast_zlib_bytes": 1246,
+        "marginal_ast_zlib_bytes": 161,
+        "marginal_drop_bytes": 1085,
+        "reused_world_model_literals": [
+          "legs.py:merge_equal_squares_around_moving_cutter"
+        ]
+      },
+      {
+        "game": "tu93",
+        "completed_level": 5,
+        "previous_marginal_ast_zlib_bytes": 1302,
+        "marginal_ast_zlib_bytes": 186,
+        "marginal_drop_bytes": 1116,
+        "reused_world_model_literals": [
+          "legs.py:drive_dynamic_maze_via_color"
+        ]
+      },
+      {
+        "game": "tu93",
+        "completed_level": 7,
+        "previous_marginal_ast_zlib_bytes": 1440,
+        "marginal_ast_zlib_bytes": 212,
+        "marginal_drop_bytes": 1228,
+        "reused_world_model_literals": [
+          "legs.py:drive_dynamic_directional_waypoints"
+        ]
+      }
+    ],
+    "all_hard_literal_reuse_witnesses": [
+      {
+        "game": "ar25",
+        "completed_level": 2,
+        "previous_marginal_ast_zlib_bytes": 622,
+        "marginal_ast_zlib_bytes": 175,
+        "marginal_drop_bytes": 447,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:repeat_action"
+        ]
+      },
+      {
+        "game": "ar25",
+        "completed_level": 3,
+        "previous_marginal_ast_zlib_bytes": 175,
+        "marginal_ast_zlib_bytes": 196,
+        "marginal_drop_bytes": -21,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:repeat_action"
+        ]
+      },
+      {
+        "game": "ar25",
+        "completed_level": 4,
+        "previous_marginal_ast_zlib_bytes": 196,
+        "marginal_ast_zlib_bytes": 181,
+        "marginal_drop_bytes": 15,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:repeat_action"
+        ]
+      },
+      {
+        "game": "ar25",
+        "completed_level": 5,
+        "previous_marginal_ast_zlib_bytes": 181,
+        "marginal_ast_zlib_bytes": 189,
+        "marginal_drop_bytes": -8,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:repeat_action"
+        ]
+      },
+      {
+        "game": "ar25",
+        "completed_level": 6,
+        "previous_marginal_ast_zlib_bytes": 189,
+        "marginal_ast_zlib_bytes": 199,
+        "marginal_drop_bytes": -10,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:repeat_action"
+        ]
+      },
+      {
+        "game": "ar25",
+        "completed_level": 7,
+        "previous_marginal_ast_zlib_bytes": 199,
+        "marginal_ast_zlib_bytes": 198,
+        "marginal_drop_bytes": 1,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:repeat_action"
+        ]
+      },
+      {
+        "game": "ar25",
+        "completed_level": 8,
+        "previous_marginal_ast_zlib_bytes": 198,
+        "marginal_ast_zlib_bytes": 198,
+        "marginal_drop_bytes": 0,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:repeat_action"
+        ]
+      },
+      {
+        "game": "cd82",
+        "completed_level": 6,
+        "previous_marginal_ast_zlib_bytes": 498,
+        "marginal_ast_zlib_bytes": 520,
+        "marginal_drop_bytes": -22,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:apply_west_north_east_north_layers_then_payload"
+        ]
+      },
+      {
+        "game": "cn04",
+        "completed_level": 2,
+        "previous_marginal_ast_zlib_bytes": 710,
+        "marginal_ast_zlib_bytes": 337,
+        "marginal_drop_bytes": 373,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:rotate_quarter_turns",
+          "legs.py:walk"
+        ]
+      },
+      {
+        "game": "cn04",
+        "completed_level": 4,
+        "previous_marginal_ast_zlib_bytes": 245,
+        "marginal_ast_zlib_bytes": 250,
+        "marginal_drop_bytes": -5,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:rotate_quarter_turns",
+          "legs.py:select_figure",
+          "legs.py:walk"
+        ]
+      },
+      {
+        "game": "cn04",
+        "completed_level": 5,
+        "previous_marginal_ast_zlib_bytes": 250,
+        "marginal_ast_zlib_bytes": 376,
+        "marginal_drop_bytes": -126,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:select_figure",
+          "legs.py:walk"
+        ]
+      },
+      {
+        "game": "cn04",
+        "completed_level": 6,
+        "previous_marginal_ast_zlib_bytes": 376,
+        "marginal_ast_zlib_bytes": 243,
+        "marginal_drop_bytes": 133,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:rotate_quarter_turns",
+          "legs.py:select_figure",
+          "legs.py:walk"
+        ]
+      },
+      {
+        "game": "ft09",
+        "completed_level": 6,
+        "previous_marginal_ast_zlib_bytes": 5008,
+        "marginal_ast_zlib_bytes": 3730,
+        "marginal_drop_bytes": 1278,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:solve_coupled_key_board"
+        ]
+      },
+      {
+        "game": "ka59",
+        "completed_level": 2,
+        "previous_marginal_ast_zlib_bytes": 810,
+        "marginal_ast_zlib_bytes": 301,
+        "marginal_drop_bytes": 509,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:move_steps",
+          "legs.py:select_at"
+        ]
+      },
+      {
+        "game": "ka59",
+        "completed_level": 3,
+        "previous_marginal_ast_zlib_bytes": 301,
+        "marginal_ast_zlib_bytes": 227,
+        "marginal_drop_bytes": 74,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:move_steps"
+        ]
+      },
+      {
+        "game": "ka59",
+        "completed_level": 4,
+        "previous_marginal_ast_zlib_bytes": 227,
+        "marginal_ast_zlib_bytes": 275,
+        "marginal_drop_bytes": -48,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:move_steps",
+          "legs.py:select_at"
+        ]
+      },
+      {
+        "game": "ka59",
+        "completed_level": 5,
+        "previous_marginal_ast_zlib_bytes": 275,
+        "marginal_ast_zlib_bytes": 189,
+        "marginal_drop_bytes": 86,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:move_steps"
+        ]
+      },
+      {
+        "game": "ka59",
+        "completed_level": 6,
+        "previous_marginal_ast_zlib_bytes": 189,
+        "marginal_ast_zlib_bytes": 239,
+        "marginal_drop_bytes": -50,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:move_steps"
+        ]
+      },
+      {
+        "game": "ka59",
+        "completed_level": 7,
+        "previous_marginal_ast_zlib_bytes": 239,
+        "marginal_ast_zlib_bytes": 376,
+        "marginal_drop_bytes": -137,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:move_steps",
+          "legs.py:select_at"
+        ]
+      },
+      {
+        "game": "lf52",
+        "completed_level": 3,
+        "previous_marginal_ast_zlib_bytes": 1602,
+        "marginal_ast_zlib_bytes": 157,
+        "marginal_drop_bytes": 1445,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:solve_peg_solitaire_with_carrier"
+        ]
+      },
+      {
+        "game": "lp85",
+        "completed_level": 2,
+        "previous_marginal_ast_zlib_bytes": 698,
+        "marginal_ast_zlib_bytes": 189,
+        "marginal_drop_bytes": 509,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:repeat_click"
+        ]
+      },
+      {
+        "game": "lp85",
+        "completed_level": 3,
+        "previous_marginal_ast_zlib_bytes": 189,
+        "marginal_ast_zlib_bytes": 186,
+        "marginal_drop_bytes": 3,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:repeat_click"
+        ]
+      },
+      {
+        "game": "lp85",
+        "completed_level": 4,
+        "previous_marginal_ast_zlib_bytes": 186,
+        "marginal_ast_zlib_bytes": 177,
+        "marginal_drop_bytes": 9,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:repeat_click"
+        ]
+      },
+      {
+        "game": "lp85",
+        "completed_level": 5,
+        "previous_marginal_ast_zlib_bytes": 177,
+        "marginal_ast_zlib_bytes": 192,
+        "marginal_drop_bytes": -15,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:repeat_click"
+        ]
+      },
+      {
+        "game": "lp85",
+        "completed_level": 6,
+        "previous_marginal_ast_zlib_bytes": 192,
+        "marginal_ast_zlib_bytes": 213,
+        "marginal_drop_bytes": -21,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:repeat_click"
+        ]
+      },
+      {
+        "game": "lp85",
+        "completed_level": 7,
+        "previous_marginal_ast_zlib_bytes": 213,
+        "marginal_ast_zlib_bytes": 193,
+        "marginal_drop_bytes": 20,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:repeat_click"
+        ]
+      },
+      {
+        "game": "lp85",
+        "completed_level": 8,
+        "previous_marginal_ast_zlib_bytes": 193,
+        "marginal_ast_zlib_bytes": 195,
+        "marginal_drop_bytes": -2,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:repeat_click"
+        ]
+      },
+      {
+        "game": "ls20",
+        "completed_level": 2,
+        "previous_marginal_ast_zlib_bytes": 737,
+        "marginal_ast_zlib_bytes": 247,
+        "marginal_drop_bytes": 490,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:follow_cardinal_runs"
+        ]
+      },
+      {
+        "game": "ls20",
+        "completed_level": 3,
+        "previous_marginal_ast_zlib_bytes": 247,
+        "marginal_ast_zlib_bytes": 259,
+        "marginal_drop_bytes": -12,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:follow_cardinal_runs"
+        ]
+      },
+      {
+        "game": "ls20",
+        "completed_level": 4,
+        "previous_marginal_ast_zlib_bytes": 259,
+        "marginal_ast_zlib_bytes": 270,
+        "marginal_drop_bytes": -11,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:follow_cardinal_runs"
+        ]
+      },
+      {
+        "game": "ls20",
+        "completed_level": 5,
+        "previous_marginal_ast_zlib_bytes": 270,
+        "marginal_ast_zlib_bytes": 289,
+        "marginal_drop_bytes": -19,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:follow_cardinal_runs"
+        ]
+      },
+      {
+        "game": "ls20",
+        "completed_level": 6,
+        "previous_marginal_ast_zlib_bytes": 289,
+        "marginal_ast_zlib_bytes": 299,
+        "marginal_drop_bytes": -10,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:follow_cardinal_runs"
+        ]
+      },
+      {
+        "game": "ls20",
+        "completed_level": 7,
+        "previous_marginal_ast_zlib_bytes": 299,
+        "marginal_ast_zlib_bytes": 292,
+        "marginal_drop_bytes": 7,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:follow_cardinal_runs"
+        ]
+      },
+      {
+        "game": "m0r0",
+        "completed_level": 2,
+        "previous_marginal_ast_zlib_bytes": 673,
+        "marginal_ast_zlib_bytes": 265,
+        "marginal_drop_bytes": 408,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:follow_action_sequence"
+        ]
+      },
+      {
+        "game": "m0r0",
+        "completed_level": 5,
+        "previous_marginal_ast_zlib_bytes": 868,
+        "marginal_ast_zlib_bytes": 574,
+        "marginal_drop_bytes": 294,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:reunite_mirrored_pair"
+        ]
+      },
+      {
+        "game": "m0r0",
+        "completed_level": 6,
+        "previous_marginal_ast_zlib_bytes": 574,
+        "marginal_ast_zlib_bytes": 314,
+        "marginal_drop_bytes": 260,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:reunite_mirrored_pair"
+        ]
+      },
+      {
+        "game": "sb26",
+        "completed_level": 3,
+        "previous_marginal_ast_zlib_bytes": 1796,
+        "marginal_ast_zlib_bytes": 158,
+        "marginal_drop_bytes": 1638,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:copy_visible_color_code_into_diagram"
+        ]
+      },
+      {
+        "game": "sb26",
+        "completed_level": 4,
+        "previous_marginal_ast_zlib_bytes": 158,
+        "marginal_ast_zlib_bytes": 158,
+        "marginal_drop_bytes": 0,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:copy_visible_color_code_into_diagram"
+        ]
+      },
+      {
+        "game": "sc25",
+        "completed_level": 2,
+        "previous_marginal_ast_zlib_bytes": 1131,
+        "marginal_ast_zlib_bytes": 279,
+        "marginal_drop_bytes": 852,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:move_until_level_progress",
+          "legs.py:select_grid_cells_of_color"
+        ]
+      },
+      {
+        "game": "sc25",
+        "completed_level": 3,
+        "previous_marginal_ast_zlib_bytes": 279,
+        "marginal_ast_zlib_bytes": 295,
+        "marginal_drop_bytes": -16,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:move_until_level_progress",
+          "legs.py:select_grid_cells_of_color"
+        ]
+      },
+      {
+        "game": "sc25",
+        "completed_level": 4,
+        "previous_marginal_ast_zlib_bytes": 295,
+        "marginal_ast_zlib_bytes": 325,
+        "marginal_drop_bytes": -30,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:move_until_level_progress",
+          "legs.py:select_grid_cells_of_color"
+        ]
+      },
+      {
+        "game": "sc25",
+        "completed_level": 5,
+        "previous_marginal_ast_zlib_bytes": 325,
+        "marginal_ast_zlib_bytes": 352,
+        "marginal_drop_bytes": -27,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:move_until_level_progress",
+          "legs.py:select_grid_cells_of_color"
+        ]
+      },
+      {
+        "game": "sc25",
+        "completed_level": 6,
+        "previous_marginal_ast_zlib_bytes": 352,
+        "marginal_ast_zlib_bytes": 358,
+        "marginal_drop_bytes": -6,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:move_until_level_progress",
+          "legs.py:select_grid_cells_of_color"
+        ]
+      },
+      {
+        "game": "sp80",
+        "completed_level": 2,
+        "previous_marginal_ast_zlib_bytes": 1525,
+        "marginal_ast_zlib_bytes": 1450,
+        "marginal_drop_bytes": 75,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:play_fixed_sequence"
+        ]
+      },
+      {
+        "game": "sp80",
+        "completed_level": 3,
+        "previous_marginal_ast_zlib_bytes": 1450,
+        "marginal_ast_zlib_bytes": 1288,
+        "marginal_drop_bytes": 162,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:play_fixed_sequence"
+        ]
+      },
+      {
+        "game": "sp80",
+        "completed_level": 5,
+        "previous_marginal_ast_zlib_bytes": 2011,
+        "marginal_ast_zlib_bytes": 486,
+        "marginal_drop_bytes": 1525,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:drive_objects"
+        ]
+      },
+      {
+        "game": "su15",
+        "completed_level": 3,
+        "previous_marginal_ast_zlib_bytes": 1517,
+        "marginal_ast_zlib_bytes": 1433,
+        "marginal_drop_bytes": 84,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:merge_equal_squares_and_deliver_to_ring"
+        ]
+      },
+      {
+        "game": "su15",
+        "completed_level": 7,
+        "previous_marginal_ast_zlib_bytes": 1246,
+        "marginal_ast_zlib_bytes": 161,
+        "marginal_drop_bytes": 1085,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:merge_equal_squares_around_moving_cutter"
+        ]
+      },
+      {
+        "game": "tu93",
+        "completed_level": 5,
+        "previous_marginal_ast_zlib_bytes": 1302,
+        "marginal_ast_zlib_bytes": 186,
+        "marginal_drop_bytes": 1116,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:drive_dynamic_maze_via_color"
+        ]
+      },
+      {
+        "game": "tu93",
+        "completed_level": 7,
+        "previous_marginal_ast_zlib_bytes": 1440,
+        "marginal_ast_zlib_bytes": 212,
+        "marginal_drop_bytes": 1228,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:drive_dynamic_directional_waypoints"
+        ]
+      },
+      {
+        "game": "tu93",
+        "completed_level": 8,
+        "previous_marginal_ast_zlib_bytes": 212,
+        "marginal_ast_zlib_bytes": 210,
+        "marginal_drop_bytes": 2,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:drive_dynamic_directional_waypoints"
+        ]
+      },
+      {
+        "game": "tu93",
+        "completed_level": 9,
+        "previous_marginal_ast_zlib_bytes": 210,
+        "marginal_ast_zlib_bytes": 210,
+        "marginal_drop_bytes": 0,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:drive_dynamic_directional_waypoints"
+        ]
+      },
+      {
+        "game": "vc33",
+        "completed_level": 6,
+        "previous_marginal_ast_zlib_bytes": 1868,
+        "marginal_ast_zlib_bytes": 1392,
+        "marginal_drop_bytes": 476,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:cross_pressure_gates_then_align_height"
+        ]
+      },
+      {
+        "game": "vc33",
+        "completed_level": 7,
+        "previous_marginal_ast_zlib_bytes": 1392,
+        "marginal_ast_zlib_bytes": 3437,
+        "marginal_drop_bytes": -2045,
+        "identical_winning_entrypoint": false,
+        "reused_world_model_literals": [
+          "legs.py:align_marker_pair_with_pressure_controls",
+          "legs.py:cross_pressure_gates_then_align_height"
+        ]
+      }
+    ]
+  }
+}

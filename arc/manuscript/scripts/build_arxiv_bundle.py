@@ -23,8 +23,10 @@ SOURCE_FILES = (
     Path("references.bib"),
     Path("generated/marginal_complexity_by_level.tex"),
     Path("generated/comparator_stats.tex"),
+    Path("generated/source_charge_comparison.tex"),
     Path("figures/marginal_complexity_profiles.png"),
     Path("figures/bounded_campaign_profiles.png"),
+    Path("figures/source_charge_comparison.png"),
 )
 
 _INPUT_RE = re.compile(r"\\input\{([^}]+)\}")

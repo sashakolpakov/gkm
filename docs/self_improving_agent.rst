@@ -6,7 +6,8 @@ solver-growth approach for ARC-AGI-3. In the Gödel--Kolmogorov Machine, a codin
 proposer writes level solvers, a local simulator validates promoted behavior by
 replay, and incumbent legs are tried before new code is requested. The name
 Gödel--Kolmogorov Machine joins verifier-gated self-revision with
-description-length selection; it does not assert proof-search optimality. The
+description length accounting and structural pressure; it does not assert proof
+search optimality. The
 abbreviation ``GKM`` is used below only after this full introduction. Artifact
 provenance is the evidence contract for acquisition and reuse, not the method's
 identity. The study is not an official ARC-AGI-3 sample-efficiency or leaderboard
@@ -43,10 +44,22 @@ The retained solver has three principal parts:
 * ``players.py`` contains level entry points and composition glue; and
 * ``solve.py`` dispatches to the appropriate player.
 
-A proposal is executed, its action path is replayed from a fresh environment, and
-only a validated state is promoted. Pre-debrief, recovered-path, interrupted, and
-post-debrief workspaces are retained under ``wip_context``. This distinguishes a
-successful literal plan from a later parameterized refactor.
+The host first runs bounded trials that each call one public retained leg. If they fail,
+the proposer is asked to factor new behavior through those legs and add minimal glue. The first
+candidate that reaches the exact next boundary and passes replay, taint, and provenance
+checks is promoted. Its complete solver tree becomes the starting diagram for the next
+level. This proposal order therefore influences the retained lineage even though replay
+is the hard admission rule.
+
+The generic harness can record work before and after a separate refactor turn under
+``wip_context``. The later frozen configuration set ``--debrief-policy=never``;
+older inherited acquisition histories include paid debriefs. That setting does not
+retroactively describe the entire lineage. Exact pre-debrief source is used where
+available, and unauthenticated paid-debrief auto-solve reconstructions are excluded
+from the strict acquisition-source audit.
+
+Compute allocation among games used clean retry history and a heuristic based on
+retained core source byte count. It did not use the reported free energy value.
 
 Forbidden source and private-runtime inspection is blocked before execution. The exact
 rejected payload is retained in ``blocked_attempts.log`` for audit, while the main
@@ -78,30 +91,59 @@ terminal or promotion evidence authenticate as one aggregate. Unknown control fi
 cross-frontier evidence, incomplete diagnostics, and exhausted or tainted aggregates
 fail closed. This is current campaign infrastructure, not a retroactive property of
 the frozen 181-boundary release: that release remains governed by the verifier and
-control revision named in its schema-v2 receipt.
+control revision named in its schema-1 partial-release receipt. The current admission
+contract and later endpoint certification do not establish that every inherited
+acquisition used the later containment controls.
 
-Source-Growth Statistic
------------------------
+Source Measurements and Baselines
+---------------------------------
 
-For source text ``f``, let ``d(f)`` count nonblank, noncomment lines plus the number
-of elements in Python list, tuple, set, and dictionary literals. The historical
-checkpoint field ``marginal_C`` is
+For source text ``f``, ``d(f)`` counts nonblank, noncomment lines plus AST
+container-literal elements. Define retained size and adjacent retained-state growth as
 
 .. math::
 
-   C_k = [d(legs_k)-d(legs_{k-1})]_+
-       + [d(players_k)-d(players_{k-1})]_+.
+   D_k = d(legs_k) + d(players_k),
 
-This is positive **net retained-size growth per file**, not gross diff additions and
-not semantic novelty. For example, replacing 100 charged units with 100 different
-units in the same file contributes zero. Unchanged shared code also contributes zero.
-Therefore a low value supports reuse only when source inspection identifies calls to
-previously retained routines and fresh replay validates the composition.
+   G_k = [d(legs_k)-d(legs_{k-1})]_+
+       + [d(players_k)-d(players_{k-1})]_+, \quad k\geq2.
 
-The statistic is preserved because it is the one stored in the historical artifacts.
-Changing it now would invalidate comparisons with those checkpoints. A future gross
-diff or tree-edit ledger would need to be recomputed from paired snapshots and reported
-as a different measure.
+The recorded checkpoint field ``marginal_C`` uses a different baseline: the working
+files saved by the producer at the start of the winning iteration. With those files
+denoted by ``legs_baseline`` and ``players_baseline``,
+
+.. math::
+
+   C_k^{\mathrm{recorded}}
+     = [d(legs_k)-d(legs_{baseline})]_+
+       + [d(players_k)-d(players_{baseline})]_+.
+
+The working baseline can already contain earlier work and need not be the preceding
+promotion. The earlier manuscript incorrectly identified these two baselines. A
+difference between recorded ``C`` and recomputed ``G`` is not by itself a harness
+error, missing source, or invalid solver. Within each file, changes are netted before
+taking the positive part, so a same-size replacement can receive zero under either
+measure. Neither measure is full discovery cost or ideal Kolmogorov complexity.
+
+For ``dc22`` L5, 200 source units beyond the prior promotion were already in the
+working workspace before the accepted two-unit stub was added. Thus recorded
+``C_5=2`` and adjacent-state ``G_5=202`` are consistent with their different
+baselines. The full recorded ``C`` total is 650. On authenticated L2–L6 pairs,
+``C`` sums to 601 and ``G`` to 801 while ``D`` grows from 50 to 851. Initial
+workspace bytes are not authenticated, so primary comparisons exclude ``G_1``.
+The solver, replay, and counters were valid. The source audit now uses the complete winning snapshot instead of its
+incomplete parent-plus-stub reconstruction.
+
+After a winning source and exact boundary were fixed, the harness reported
+
+.. math::
+
+   F_{\mathrm{diag}}(k) = -k + 0.02\sum_{j\leq k} C_j^{\mathrm{recorded}}.
+
+No admission, rejection, or ranking branch consumed this value. It is a diagnostic
+of the recorded workspace-local charges. A low value is not a reuse certificate;
+static call-site inspection and fresh whole-program replay are separate checks,
+and runtime execution of particular calls remains unmeasured.
 
 Promoted Endpoints
 ------------------
@@ -110,8 +152,8 @@ Promoted Endpoints
 
 The frozen v2 `Competition-Mode scorecard
 <https://arcprize.org/scorecards/cf75e14b-2c25-41cb-bc70-53bd57411edb>`_
-scores **98.11664037825032%** over all 25 public games. Its distinct unweighted
-raw coverage is **181/183 = 98.907103825137%**; its certified paths contain 7001
+scores **98.1166%** over all 25 public games. Its distinct unweighted
+raw coverage is **181/183 = 98.9071%**; its certified paths contain 7001
 actions and the scorecard used 7069 API actions including resets. The preceding
 `ONLINE shakedown
 <https://arcprize.org/scorecards/e293eeae-c0de-4263-a916-0a40ad282cbc>`_
@@ -129,16 +171,51 @@ Marginal complexity by game and level
 
 The uniform ``ls20`` ledger is ``40, 54, 86, 114, 138, 170, 158``. Its sharp
 conditional-AST drop at L2, from 737 to 247 compressed novelty bytes, is coupled to a
-direct call of the unchanged ``follow_cardinal_runs`` leg. The uniform ``wa30``
+static call site naming unchanged ``follow_cardinal_runs``; runtime call execution
+is unmeasured. The uniform ``wa30``
 ledger is ``43, 20, 32, 50, 39, 23, 28, 34, 49``. These are auditable construction
 histories, not estimators of Kolmogorov complexity.
+
+Recorded Charges and Promoted Growth
+-------------------------------------
+
+The paired audit uses the same charged files and source metric for recorded ``C``
+and adjacent-promoted ``G``. Its primary sample contains 158 manifest-bound retained
+states and 134 paired values in 24 games. Missing pairs are not bridged; initial
+``G_1`` and unauthenticated phase candidates are excluded. Of 20 games with at least
+three consecutive paired values, 18 have reversals in both series. Summed over
+aligned domains, the C/G reversal counts are 45/43.
+
+For ``dc22`` L2–L6, C reverses twice while G increases strictly: the recorded L5
+trough reflects its working baseline. For ``wa30`` L2–L9, C and G coincide and
+reverse twice, preserving the rise–fall–rise pattern. For ``ls20`` L2–L7, both have
+one final reversal rather than repeated alternation. Thus some nonmonotone patterns
+persist in both coordinates, but not every recorded trough does.
+
+.. image:: ../arc/manuscript/figures/source_charge_comparison.png
+   :alt: Recorded workspace charges and adjacent promoted growth on aligned authenticated levels
+   :width: 95%
+
+The full per-game scope, source hashes, excluded reconstruction capsules, and
+separate extended analysis are in
+``arc/manuscript/generated/source_charge_comparison.json`` and its Markdown table.
+The extended analysis adds 15 retained-phase candidates without independent
+promotion authentication; its 147 pairs are not pooled with the primary sample.
+A reversal is descriptive source-cost variation, not proof of executed reuse or
+causal search savings.
 
 Prior and Source Audit
 ----------------------
 
 The frozen release has 181 replay-verified endpoint wins. The stricter source audit
-admits 174 exact winning-source checkpoints; it excludes ``ft09`` L2 and ``tr87``
-L1--L6 deterministic reconstructions from source-marginal and reuse counts.
+admits 171 exact winning-source checkpoints. It excludes ``ft09`` L2 and ``tr87``
+L1--L6 path reconstructions plus ``g50t`` L3/L4 and ``r11l`` L3 unauthenticated
+paid-debrief auto-solve reconstructions. Missing source is not bridged by a one-level
+marginal or sharp-drop comparison. There are 144 exact adjacent transitions,
+141 marginal comparisons, 21 sharp drops, 54 static unchanged-leg call-site cases,
+and 13 coupled static cases. Actual call execution and causal search savings remain
+unmeasured. Frozen evidence and source-only reproduction are documented in
+``arc/manuscript/REVISION_EVIDENCE.md``.
 
 The frozen ``wa30`` history is a fresh, uniform L1--L9 reacquisition with an exact
 winning-source boundary and replay-validated promotion manifest at every level. An
@@ -154,9 +231,21 @@ The manuscript places retained artifacts in a finite behavior--description plane
 models source growth by inverse-shaped diagrams of typed interfaces, executable cells,
 and attaching maps. Their colimit is a pushout. Monomorphic interface inclusions are
 designated cofibrations, so cobase change preserves the incumbent source presentation;
-an optional debrief is treated separately as a replay-equivalent refactor. A finite
-replay semantics supplies the empirical comparison map rather than assuming that
-execution preserves arbitrary source colimits globally.
+an optional debrief is treated separately by finite replay obligations. Source
+pushouts do not establish behavioral pushouts; replay checks the admitted finite
+behavior without assuming global preservation of colimits.
+
+The pushout determines how a valid attachment is glued; it does not rank all possible
+attachments. Replay supplies the hard admission condition. Source cost is recorded
+after candidate fixation; an explicit complexity ranking is a proposed extension.
+Retention makes components available to later candidates without demonstrating
+that this availability reduced search effort.
+
+One fixed weighting of library source, glue, and path length need not be meaningful
+across games with different horizons, move budgets, mechanics, and useful
+representations. A future selector can calibrate weights within each game and source
+coding, or retain a Pareto set. Such a selector enriches the categorical construction;
+it does not define categorical validity.
 
 The compute-completeness result is conditional on deterministic finite games, finite
 winning traces, recognizable replay, fair dovetailed search, or the stated stagewise
@@ -176,9 +265,10 @@ conditional novelty, operational reuse, and descriptive memory.
 The cross-system marginal is the zlib-9 length of normalized top-level AST
 statements in the current winning program that are not literal members of the
 preceding winning program. A half-or-more decrease is a sharp drop. It is
-attributed to reuse only when the winning entry point directly calls a named
-definition whose normalized AST is unchanged from the preceding winning
-checkpoint.
+coupled to a static call-site case only when the winning entry-point AST contains a
+direct named call site to an unchanged definition from the preceding exact winning
+source. The parser does not prove branch reachability or runtime invocation;
+whole-program replay is separate evidence.
 
 The numerical comparison is generated rather than duplicated here. See
 ``arc/manuscript/generated/comparator_stats.md`` for the current table and

@@ -575,6 +575,7 @@ def test_source_audit_scope_separates_endpoint_wins_from_source_rows() -> None:
     assert scope["excluded_from_source_marginals"] == [
         {"game": game, "level": level}
         for game, level in reproduce_manuscript.FROZEN_SOURCE_AUDIT_EXCLUSIONS
+        if game in receipt["claimed_inventory"]
     ]
 
     payload["rows"].append(
@@ -634,6 +635,7 @@ def test_complete_source_scope_requires_new_levels_and_exact_old_exclusions() ->
     assert scope["excluded_from_source_marginals"] == [
         {"game": game, "level": level}
         for game, level in reproduce_manuscript.FROZEN_SOURCE_AUDIT_EXCLUSIONS
+        if game in inventory
     ]
 
     payload["rows"] = [

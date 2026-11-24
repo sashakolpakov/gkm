@@ -5,12 +5,12 @@ For ordinary proposer wins, ``reached_before_debrief`` is the exact source prese
 when replay first cleared the level.  An orphaned proposer whose parent harness exits
 after the winning turn is independently replayed before the harness writes
 ``recovered_existing_workspace_solver``; that snapshot is the same exact
-pre-promotion winning boundary.  Post-win debrief code is excluded.  Auto-solve wins
-predate a dedicated pre-debrief snapshot, but their winning source is exactly
-reconstructible: the harness starts from the preceding retained source (including
-the unchanged source when debrief was skipped) and appends a deterministic one-call
-``play_level_K`` stub before verification.  The successful called leg is preserved
-in the subsequent auto-solve artifact whether or not a paid debrief ran.
+pre-promotion winning boundary.  Post-win debrief code is excluded.  When auto-solve
+skips debrief, its archived snapshot is the unchanged winning source.  It may contain
+workspace additions absent from the previous promotion, so it must not be replaced by
+that parent plus a stub.  A paid-debrief auto-solve snapshot alone cannot authenticate
+the pre-debrief winning source.  Such boundaries are excluded unless an independent
+direct winning snapshot exists; parent-plus-stub reconstruction is not exact evidence.
 
 Failed proposals and every other interim snapshot are excluded.  Missing historical
 winning artifacts are reported as gaps, never imputed from the final promoted files.
@@ -144,37 +144,18 @@ def exact_snapshot(
         metadata, files_root = direct
         return metadata, source_files(files_root)
 
-    # Whether a paid debrief ran is irrelevant to the acquisition boundary.
-    # In both phases the harness has already independently verified the
-    # deterministic one-call player that auto-solve appended.  Reconstruct that
-    # same pre-verification source from the retained parent and the recorded
-    # called leg; do not require a debrief merely to make an exact checkpoint
-    # measurable.
-    auto = latest_snapshot(game_dir, level, AUTO_SOLVE_WINNING_PHASES)
-    if auto is None or level <= 1:
-        return None
-    auto_metadata, auto_files_root = auto
-    prior = retained_snapshot(game_dir, level - 1)
-    if prior is None:
-        return None
-    prior_metadata, prior_files_root = prior
-    files = source_files(prior_files_root)
-    called_leg = auto_solve_leg(
-        (auto_files_root / "players.py").read_bytes(), level
-    )
-    if called_leg is None or "players.py" not in files:
-        return None
-    stub = f"\n\ndef play_level_{level}(env):\n    {called_leg}(env)\n".encode()
-    files["players.py"] += stub
-    metadata = {
-        **auto_metadata,
-        "phase": "reconstructed_auto_solve_boundary",
-        "attempt": (
-            f"{auto_metadata['attempt']} from {prior_metadata['attempt']} "
-            f"via {called_leg}"
-        ),
-    }
-    return metadata, files
+    # No source rewrite occurs in this phase.  Keep the entire archived workspace:
+    # dc22 L5, for example, contains 200 source-cost units added before the two-unit
+    # auto-solve stub, which reconstruction from the earlier promotion would omit.
+    skipped = latest_snapshot(game_dir, level, {"auto_solve_debrief_skipped"})
+    if skipped is not None:
+        metadata, files_root = skipped
+        return metadata, source_files(files_root)
+
+    # The producer reads its current workspace, not an authenticated parent, before
+    # auto-solve.  A later paid debrief can rewrite that source.  Neither the called
+    # leg's name nor the retained parent proves the exact pre-debrief workspace.
+    return None
 
 
 def canonical_records(game_dir: Path) -> tuple[dict[int, int], int]:

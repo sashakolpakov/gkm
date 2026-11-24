@@ -31,19 +31,25 @@
 Docs: \url{https://sashakolpakov.github.io/gkm/} \;·\;
 Manuscript: \texttt{arc/manuscript/arc\_agi3.tex}}
 
-\textbf{Claim.} The G\"odel--Kolmogorov Machine is a verifier-driven program-growth approach for local ARC-AGI-3 games. A coding proposer grows solver structure, the simulator validates promoted behavior by replay, and the admission loop tries incumbent-leg composition before new code. Retained source states make the resulting acquisition and reuse claims auditable.
+The G\"odel--Kolmogorov Machine (GKM) retains verified executable solver components
+and exposes their source history for audit. The proposer contract, public Arena
+interface, blank scaffold, and gate are shared across games; learned programs remain
+game- and level-dependent. The intellectual lineage is Schmidhuber's G\"odel machine,
+PowerPlay, and artificial curiosity.
 
-The producer is universal across the benchmark: each game uses the same proposer contract, Arena interface, blank scaffold, complexity coordinate, and replay gate. Its learned executable outputs are game- and level-dependent.
-
-\section*{Setting and objective}
-The local harness exposes \texttt{step(action) -> frame}, \texttt{levels\_completed}, and \texttt{clone()} for lookahead. Clone-enabled exploration is stronger than the official reset/step interface and is not included in replay action totals. A candidate program is promoted only if fresh replay validates more completed levels under
+\section*{Admission and accounting}
+The host tries bounded calls to incumbent legs before requesting new code. The first
+candidate reaching the exact next boundary and passing execution, independent full-path
+replay, taint/provenance, and containment checks is promoted. Its full solver tree becomes
+the next parent. Source cost and
 \[
-F(\pi)=R(\pi)+\lambda C(\pi), \qquad R(\pi)=-\operatorname{levels\_completed}(\pi),
+ F_{\rm diag}(k)=-k+0.02\sum_{j\le k}C_j^{\rm recorded}
 \]
-where historical $C$ is positive net retained-size growth in the library and player files. Unchanged legs add no charge, but additions and deletions within a file can cancel, so source inspection is required to attribute a low value to reuse.
-
-\section*{What is optimized}
-Executable-world-model agents try to build a predictive simulator, verify it, and plan through it. The G\"odel--Kolmogorov Machine treats a world model as only one possible useful structure. The optimized object is broader: solver-program growth. A promoted artifact may be a probe, perception routine, BFS, planner, reusable leg, literal replay path, or world model. The G\"odel--Kolmogorov Machine is therefore closer to a G\"odel/PowerPlay-style self-improving program with a description-length ledger than to a pure model-building agent. We use \textbf{GKM} below only after this full introduction.
+are recorded afterwards; they do not admit, reject, or rank candidates. Free energy
+ranking and curiosity control are proposed extensions. This contract and later
+endpoint certification do not establish that older discovery used the later containment
+controls. The later no-debrief setting is distinct from inherited paid-debrief histories.
+Pushouts and structure functions supply a specification and accounting background.
 
 \section*{Current promoted artifacts}
 \begin{center}
@@ -51,19 +57,41 @@ Executable-world-model agents try to build a predictive simulator, verify it, an
 \input{generated/arc_artifacts.tex}
 \end{center}
 
-\textbf{\texttt{wa30}.} The fresh canonical reacquisition has nine sequential promotion manifests and a 597-action replay. Its L1--L9 charges are 43, 20, 32, 50, 39, 23, 28, 34, and 49. The superseded exploratory lineage remains available for historical comparison but is not spliced into this ledger.
+The Competition-Mode replay scores $98.1166\%$; raw coverage is $181/183=98.9071\%$.
+Stored paths contain 7001 actions and the scorecard records 7069 API calls. Discovery
+with cloned environments, failed proposals, and inference cost exceed these replay
+totals. This public-set result does not measure held-out generalization.
 
-\textbf{\texttt{ls20}.} The uniform acquisition ledger is $40,54,86,114,138,170,158$. The stricter winning-checkpoint audit finds a sharp conditional-AST drop at L2, from 737 to 247 compressed novelty bytes, while the winning player directly calls unchanged \texttt{follow\_cardinal\_runs}. Cumulative executable source does not shrink; the attribution comes from marginal and literal-call evidence together.
+\section*{Source evidence and corrections}
+The source proxy counts nonblank, noncomment lines plus AST container-literal elements
+in \texttt{legs.py} and \texttt{players.py}. For \texttt{dc22}, the recorded workspace-local
+charge totals 650. On authenticated L2--L6 pairs, $C$ sums to 601 and $G$ to 801,
+taking retained size from 50 to 851; initial $G_1$ is excluded. The earlier manuscript conflated these baselines and its audit
+used an incomplete source reconstruction. The solver, replay, and counters were valid.
 
-\section*{Audit trail}
-GKM is meant to leave evidence, not just outputs. Every admitted endpoint has replay and hash evidence; the winning-source subset additionally supports source-marginal and reuse analysis. This separates literal path reconstruction from historical executable growth.
+The exact acquisition-source audit admits 171 checkpoints, 144 adjacent transitions,
+and 141 marginal comparisons. It excludes \texttt{ft09} L2, \texttt{tr87} L1--L6,
+\texttt{g50t} L3/L4, and \texttt{r11l} L3; missing source is not bridged. There are
+54 static call-site cases referencing unchanged earlier legs, including 13 with
+half-or-more conditional novelty drops. Runtime call execution is unmeasured.
 
-\section*{Comparison}
-All 181 claimed boundaries are replay-verified wins. The stricter source audit admits 174 exact winning-source checkpoints, excluding \texttt{ft09} L2 and \texttt{tr87} L1--L6 deterministic path reconstructions. GKM has 57 direct leg-reuse wins, 14 coupled to half-or-more marginal drops. OPINE has four direct engine-reuse wins, two coupled to sharp drops. baseline1 has no coupled unchanged-world-model witness in its released exact adjacent commands. Retrodict releases curated memory rather than executable winning checkpoints.
+\textbf{\texttt{ls20}.} The complete history has a conditional-AST drop from 737 to 247
+compressed novelty bytes at L2, with a static call site to unchanged
+\texttt{follow\_cardinal\_runs}. The line/literal ledger separately totals 760.
+\textbf{\texttt{wa30}.} Its complete nine-level ledger totals 318 and oscillates without
+an adjacent unchanged-leg case under the narrow test. Its replay has 597 actions.
+Sawtooth shape is observed, not enforced or shown to cause performance.
 
-\section*{Next evaluation and collaboration request}
-The frozen v2 release spans 181/183 levels across all 25 games and 7001 stored actions. Its definitive Competition-Mode replay scores 98.11664037825032\%; the distinct raw coverage is 98.907103825137\%. The next step is a compute-matched comparison against graph exploration and executable world models, plus independent artifact review and private-set evaluation.
+The paired audit has 134 values in 24 games; 18 of 20 histories with enough
+consecutive values reverse in both series. On aligned ranges, \texttt{wa30} has two
+$C/G$ reversals each, \texttt{ls20} one each, and \texttt{dc22} two in $C$ versus none
+in $G$. Its recorded L5 trough is a baseline effect. Missing pairs are not bridged.
 
-\textbf{Bottom line.} GKM treats local solver development as verifier-gated acquisition of reusable program structure. Replay establishes endpoint behavior; checkpoint JSON and retained source expose when novelty was admitted, when prior legs sufficed, and how the solver was refactored.
+\section*{Limits and next evaluation}
+Actual calls need instrumentation. Causal search savings require a matched-model,
+matched-budget library ablation. Historical discovery logs do not support a full token
+bill. The companion \texttt{REVISION\_EVIDENCE.md} records frozen commits, snapshots,
+reconciliation, and source-only reproduction; \texttt{RESPONSE\_TO\_REVIEWS.md} records
+the revisions for editor review.
 
 \end{document}

@@ -47,7 +47,7 @@ def test_orphan_recovery_snapshot_is_exact_winning_source(tmp_path):
     assert rows[0].phase == "recovered_existing_workspace_solver"
 
 
-def test_skipped_debrief_auto_solve_is_exactly_reconstructed(tmp_path):
+def test_skipped_debrief_auto_solve_keeps_complete_winning_workspace(tmp_path):
     game = tmp_path / "demo_legs"
     exact_parent = (
         game / "wip_context" / "level_01" / "reached_before_debrief_parent"
@@ -99,10 +99,13 @@ def test_skipped_debrief_auto_solve_is_exactly_reconstructed(tmp_path):
     win_files = win / "files"
     win_files.mkdir(parents=True)
     for name, source in {
-        "legs.py": "def reused_leg(env):\n    env.step(1)\n",
+        "legs.py": (
+            "def reused_leg(env):\n    env.step(1)\n\n"
+            "def newly_added_leg(env):\n    env.step(2)\n"
+        ),
         "players.py": (
             "def play_level_1(env):\n    reused_leg(env)\n\n"
-            "def play_level_2(env):\n    reused_leg(env)\n"
+            "def play_level_2(env):\n    newly_added_leg(env)\n"
         ),
         "solve.py": "def solve(env):\n    return None\n",
     }.items():
@@ -134,6 +137,19 @@ def test_skipped_debrief_auto_solve_is_exactly_reconstructed(tmp_path):
     assert gaps == []
     assert [row.phase for row in rows] == [
         "reached_before_debrief",
-        "reconstructed_auto_solve_boundary",
+        "auto_solve_debrief_skipped",
     ]
     assert rows[1].levels_spanned == 1
+    metadata, winning_files = Audit.exact_snapshot(game, 2)
+    assert metadata["phase"] == "auto_solve_debrief_skipped"
+    assert winning_files == Audit.source_files(win_files)
+    assert b"def newly_added_leg" in winning_files["legs.py"]
+
+    # The same archive after a paid debrief cannot certify the pre-debrief source.
+    # In particular, reconstructing the old parent plus a stub drops the new leg.
+    metadata["phase"] = "after_auto_solve_debrief"
+    (win / "metadata.json").write_text(json.dumps(metadata))
+    assert Audit.exact_snapshot(game, 2) is None
+    rows, gaps = Audit.analyse_game(game)
+    assert gaps == [2]
+    assert len(rows) == 1

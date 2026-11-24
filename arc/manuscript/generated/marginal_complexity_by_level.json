@@ -11,7 +11,30 @@
     "stored_actions": 7001,
     "official_api_actions": 7069
   },
-  "measurement": "checkpoint-recorded positive net retained-description growth per legs.py and players.py, including the container-literal surcharge",
+  "measurement": "historical checkpoint-recorded workspace-local source charges per legs.py and players.py, in nonblank noncomment lines plus AST container-literal elements; not always identical to recomputed adjacent-source growth",
+  "counter_baseline": "source in the working workspace before the winning harness cycle; may include resumed WIP and need not equal the preceding promotion",
+  "known_baseline_differences": [
+    {
+      "game": "dc22",
+      "level": 5,
+      "recorded_C": 2,
+      "recomputed_adjacent_source_growth": 202,
+      "adjacent_minus_recorded": 200,
+      "recorded_total": 650,
+      "recomputed_growth_total": 850,
+      "initial_scaffold_D": 1,
+      "endpoint_D": 851,
+      "growth_total_assumes_initial_scaffold": true,
+      "authenticated_paired_levels": [
+        2,
+        6
+      ],
+      "paired_recorded_total": 601,
+      "paired_promoted_growth_total": 801,
+      "paired_start_D": 50,
+      "evidence": "REVISION_EVIDENCE.md"
+    }
+  ],
   "games": [
     {
       "game": "ar25",
@@ -625,6 +648,6 @@
   "figure_selection": {
     "strongest_raw_shape": "su15",
     "manuscript_primary": "wa30",
-    "reason": "su15 has the strongest raw oscillation, but wa30 is the strongest complete uniform promotion-history example with one audited sidecar per level; ls20 supplies the coupled unchanged-leg reuse example"
+    "reason": "su15 has the strongest raw oscillation, but wa30 is the strongest complete uniform promotion-history example with one audited sidecar per level; ls20 supplies the coupled static unchanged-leg call-site example"
   }
 }

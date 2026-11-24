@@ -31,6 +31,9 @@ FROZEN_HISTORY_TREE = "arc/crack_lab/agent_solutions"
 FROZEN_SOURCE_HISTORY_TREE_SHA1 = "85543629cfcafc70eb7230493f394059c8e0ac45"
 FROZEN_SOURCE_AUDIT_EXCLUSIONS = (
     ("ft09", 2),
+    ("g50t", 3),
+    ("g50t", 4),
+    ("r11l", 3),
     *(("tr87", level) for level in range(1, 7)),
 )
 FROZEN_V2_UNCLAIMED_BOUNDARIES = [
@@ -703,10 +706,14 @@ def _source_audit_scope(
     exclusions = sorted(endpoint_ids - source_ids)
     if unexpected:
         raise RuntimeError(f"source audit contains unclaimed endpoints: {unexpected}")
-    if tuple(exclusions) != tuple(FROZEN_SOURCE_AUDIT_EXCLUSIONS):
+    expected_exclusions = tuple(
+        boundary for boundary in FROZEN_SOURCE_AUDIT_EXCLUSIONS
+        if boundary in endpoint_ids
+    )
+    if tuple(exclusions) != expected_exclusions:
         raise RuntimeError(
             "frozen source-audit exclusions changed: "
-            f"expected {list(FROZEN_SOURCE_AUDIT_EXCLUSIONS)}, found {exclusions}"
+            f"expected {list(expected_exclusions)}, found {exclusions}"
         )
     return {
         "replay_verified_endpoint_wins": len(endpoint_ids),
@@ -797,7 +804,7 @@ def _write_generated_stats(
         coupled_clauses.append(
             rf"{system} \texttt{{{row['game']}}} L{row['completed_level']}, "
             rf"${row['previous_marginal_ast_zlib_bytes']}\!\to\!"
-            rf"{row['marginal_ast_zlib_bytes']}$, calling unchanged {called}"
+            rf"{row['marginal_ast_zlib_bytes']}$, static call sites to unchanged {called}"
         )
     tex_lines.append(
         r"\newcommand{\CoupledWitnessEnumeration}{"
@@ -812,7 +819,7 @@ def _write_generated_stats(
         "",
         "| System | Retained source checkpoints | Exact winning-source checkpoints admitted by audit | "
         "Exact adjacent | Comparable marginals | Decreases | Sharp drops | "
-        "Hard reuse | Sharp + reuse |",
+        "Static unchanged-definition call sites | Sharp + static call site |",
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for system in SYSTEMS:
@@ -850,7 +857,7 @@ def _write_generated_stats(
             "## OPINE sharp conditional drops",
             "",
             "| Boundary | Conditional AST marginal | Winning policy | Coupled "
-            "direct-call witness |",
+            "static call-site case |",
             "| --- | ---: | --- | --- |",
         ]
     )
@@ -865,8 +872,10 @@ def _write_generated_stats(
     md_lines.extend(
         [
             "",
-            "Only synthesized-planner rows can certify the released executable "
-            "winning path. The transient analyzer policies were not retained.",
+            "Call-site counts are static source evidence; runtime call execution is "
+            "unmeasured. Synthesized-planner provenance identifies the winning action "
+            "batch, but does not instrument its internal calls. The transient analyzer "
+            "policies were not retained.",
         ]
     )
     md_path.write_text("\n".join(md_lines) + "\n")
@@ -1195,6 +1204,16 @@ def main() -> int:
                 f"{comparator_drift['GKM']}"
             )
 
+        comparison_dir = tmp / "generated"
+        _run(
+            [sys.executable, "scripts/compare_source_charges.py",
+             "--output-dir", str(comparison_dir)],
+            cwd=manuscript,
+        )
+        comparison_files = tuple(sorted(comparison_dir.glob("source_charge_comparison.*")))
+        if len(comparison_files) != 3:
+            raise RuntimeError("paired source comparison did not produce JSON, Markdown, and TeX")
+
         figure_dir = tmp / "figures"
         env = os.environ.copy()
         env.setdefault("MPLCONFIGDIR", str(tmp / "matplotlib"))
@@ -1206,6 +1225,8 @@ def main() -> int:
             str(figure_dir),
             "--solutions-dir",
             str(acquisition_root),
+            "--comparison-data",
+            str(comparison_dir / "source_charge_comparison.json"),
         ]
         print("+", " ".join(command))
         subprocess.run(command, cwd=manuscript, env=env, check=True)
@@ -1238,6 +1259,8 @@ def main() -> int:
             for path in generated_stats:
                 shutil.copy2(path, tracked_generated / path.name)
             for path in generated_tables:
+                shutil.copy2(path, tracked_generated / path.name)
+            for path in comparison_files:
                 shutil.copy2(path, tracked_generated / path.name)
             docs_generated = repo / "docs" / "generated"
             docs_generated.mkdir(parents=True, exist_ok=True)
@@ -1322,6 +1345,7 @@ def main() -> int:
                         *figure_dir.iterdir(),
                         *generated_stats,
                         *generated_tables,
+                        *comparison_files,
                         rst_out,
                         taint_out,
                         action_boundary_out,
@@ -1347,6 +1371,7 @@ def main() -> int:
             "-q",
             "arc/test_audit_marginal_literal_reuse.py",
             "arc/manuscript/scripts/test_generate_figures.py",
+            "arc/manuscript/scripts/test_compare_source_charges.py",
             "arc/manuscript/scripts/test_generate_empirical_tables.py",
             "arc/manuscript/scripts/test_reproduce_manuscript.py",
         ],

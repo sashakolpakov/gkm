@@ -52,6 +52,11 @@ def load_literal_mapping(path: Path, name: str) -> dict[str, str]:
 MARGINAL_COMPLEXITY_CONTRACT = load_literal_mapping(
     ARC / "crack_lab" / "gkm_legs.py", "MARGINAL_COMPLEXITY_CONTRACT"
 )
+WORKSPACE_BASELINE_NOTE = (
+    "Its baseline is the source in the working workspace before that harness cycle; "
+    "resumed WIP can already be present, so it is not necessarily growth from the "
+    "preceding promoted source."
+)
 
 
 AUTHORITATIVE_LEVELS = {
@@ -181,7 +186,8 @@ def summary_markdown(artifacts: tuple[Artifact, ...]) -> str:
             "per level. "
             f"`{MARGINAL_COMPLEXITY_CONTRACT['field']}` means "
             f"{MARGINAL_COMPLEXITY_CONTRACT['label']}. "
-            f"{MARGINAL_COMPLEXITY_CONTRACT['limitation'].capitalize()}.",
+            f"{MARGINAL_COMPLEXITY_CONTRACT['limitation'].capitalize()}. "
+            f"{WORKSPACE_BASELINE_NOTE}",
         ]
     )
     return "\n".join(rows)
@@ -203,11 +209,12 @@ def detail_markdown(artifact: Artifact) -> str:
             f"`arc/manuscript/artifact_history/{artifact.game}/manifest.json`. "
             "During active acquisition, the artifact root and `wip_context` retain "
             "the clean replay state and restart evidence. Publication authority comes "
-            "from the compact schema-v2 release and its frozen receipt; terminal "
+            "from the compact frozen release and its content-addressed receipt; terminal "
             "cleanup may prune mutable WIP after all release consumers are bound.",
             f"The `{MARGINAL_COMPLEXITY_CONTRACT['field']}` field is "
             f"{MARGINAL_COMPLEXITY_CONTRACT['label']}; "
-            f"{MARGINAL_COMPLEXITY_CONTRACT['limitation']}.",
+            f"{MARGINAL_COMPLEXITY_CONTRACT['limitation']}. "
+            f"{WORKSPACE_BASELINE_NOTE}",
         ]
     )
 
@@ -241,7 +248,8 @@ def render_rst(artifacts: tuple[Artifact, ...]) -> str:
             "additionally retain uniform per-promotion manuscript sidecars. "
             f"``{MARGINAL_COMPLEXITY_CONTRACT['field']}`` means "
             f"{MARGINAL_COMPLEXITY_CONTRACT['label']}. "
-            f"{MARGINAL_COMPLEXITY_CONTRACT['limitation'].capitalize()}.",
+            f"{MARGINAL_COMPLEXITY_CONTRACT['limitation'].capitalize()}. "
+            f"{WORKSPACE_BASELINE_NOTE}",
             "",
         ]
     )
@@ -279,7 +287,8 @@ def render_tex(artifacts: tuple[Artifact, ...]) -> str:
             "sidecar per level. "
             f"\\texttt{{{tex_escape(MARGINAL_COMPLEXITY_CONTRACT['field'])}}} denotes "
             f"{tex_escape(MARGINAL_COMPLEXITY_CONTRACT['label'])}; "
-            f"{tex_escape(MARGINAL_COMPLEXITY_CONTRACT['limitation'])}.",
+            f"{tex_escape(MARGINAL_COMPLEXITY_CONTRACT['limitation'])}. "
+            f"{tex_escape(WORKSPACE_BASELINE_NOTE)}",
             "",
         ]
     )

@@ -2,16 +2,16 @@
   "summary": {
     "measurement": "zlib-9 bytes of normalized top-level AST statements in the current exact winning program that are not literal members of the preceding exact winning program",
     "sharp_drop_rule": "current conditional AST marginal is at most one half of the preceding level's conditional AST marginal",
-    "reuse_rule": "the winning executable entry point directly calls a named definition whose normalized AST is identical at the preceding winning checkpoint",
+    "reuse_rule": "direct static AST call site to a definition unchanged at the preceding winning checkpoint; runtime call execution is not measured",
     "systems": {
       "GKM": {
-        "retained_or_winning_checkpoints": 174,
-        "exact_winning_checkpoints": 174,
-        "exact_adjacent_transitions": 149,
-        "transitions_with_level_to_level_marginal_comparison": 148,
-        "marginal_decreases": 68,
-        "sharp_half_or_more_marginal_drops": 23,
-        "hard_literal_world_model_reuse_witnesses": 57,
+        "retained_or_winning_checkpoints": 171,
+        "exact_winning_checkpoints": 171,
+        "exact_adjacent_transitions": 144,
+        "transitions_with_level_to_level_marginal_comparison": 141,
+        "marginal_decreases": 64,
+        "sharp_half_or_more_marginal_drops": 21,
+        "hard_literal_world_model_reuse_witnesses": 54,
         "sharp_drops_with_literal_reuse": [
           {
             "game": "ar25",
@@ -32,16 +32,6 @@
             "reused_world_model_literals": [
               "legs.py:rotate_quarter_turns",
               "legs.py:walk"
-            ]
-          },
-          {
-            "game": "g50t",
-            "completed_level": 4,
-            "previous_marginal_ast_zlib_bytes": 2238,
-            "marginal_ast_zlib_bytes": 168,
-            "marginal_drop_bytes": 2070,
-            "reused_world_model_literals": [
-              "legs.py:solve_unlock_macro"
             ]
           },
           {
@@ -308,28 +298,6 @@
             ]
           },
           {
-            "game": "g50t",
-            "completed_level": 3,
-            "previous_marginal_ast_zlib_bytes": 3297,
-            "marginal_ast_zlib_bytes": 2238,
-            "marginal_drop_bytes": 1059,
-            "identical_winning_entrypoint": false,
-            "reused_world_model_literals": [
-              "legs.py:solve_unlock_macro"
-            ]
-          },
-          {
-            "game": "g50t",
-            "completed_level": 4,
-            "previous_marginal_ast_zlib_bytes": 2238,
-            "marginal_ast_zlib_bytes": 168,
-            "marginal_drop_bytes": 2070,
-            "identical_winning_entrypoint": false,
-            "reused_world_model_literals": [
-              "legs.py:solve_unlock_macro"
-            ]
-          },
-          {
             "game": "ka59",
             "completed_level": 2,
             "previous_marginal_ast_zlib_bytes": 810,
@@ -583,17 +551,6 @@
             "identical_winning_entrypoint": false,
             "reused_world_model_literals": [
               "legs.py:reunite_mirrored_pair"
-            ]
-          },
-          {
-            "game": "r11l",
-            "completed_level": 3,
-            "previous_marginal_ast_zlib_bytes": 4565,
-            "marginal_ast_zlib_bytes": 4144,
-            "marginal_drop_bytes": 421,
-            "identical_winning_entrypoint": false,
-            "reused_world_model_literals": [
-              "legs.py:place_boxes_on_rings"
             ]
           },
           {
@@ -937,7 +894,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -964,7 +921,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": true,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -991,7 +948,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -1018,7 +975,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -1045,7 +1002,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -1072,7 +1029,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -1099,7 +1056,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -1126,7 +1083,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -1149,7 +1106,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1172,7 +1129,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1195,7 +1152,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1218,7 +1175,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1241,7 +1198,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1264,7 +1221,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1287,7 +1244,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1310,7 +1267,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1333,7 +1290,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1356,7 +1313,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1379,7 +1336,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1402,7 +1359,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1425,7 +1382,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1448,7 +1405,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1475,7 +1432,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -1498,7 +1455,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1527,7 +1484,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": true,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -1550,7 +1507,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1581,7 +1538,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -1610,7 +1567,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -1641,7 +1598,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -1664,7 +1621,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1687,7 +1644,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1710,7 +1667,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1733,7 +1690,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1741,14 +1698,14 @@
       "completed_level": 5,
       "source_checkpoint_exact": true,
       "exact_adjacent_transition": true,
-      "marginal_ast_zlib_bytes": 152,
+      "marginal_ast_zlib_bytes": 828,
       "previous_level_marginal_ast_zlib_bytes": 885,
-      "marginal_drop_bytes": 733,
-      "marginal_ratio": 0.17175141242937852,
-      "sharp_marginal_drop": true,
+      "marginal_drop_bytes": 57,
+      "marginal_ratio": 0.9355932203389831,
+      "sharp_marginal_drop": false,
       "literal_reused_top_level_nodes": 13,
-      "novel_top_level_nodes": 1,
-      "winning_policy_kind": "reconstructed_auto_solve_boundary",
+      "novel_top_level_nodes": 3,
+      "winning_policy_kind": "auto_solve_debrief_skipped",
       "winning_entrypoint": "players.py:play_level_5",
       "identical_winning_entrypoint": false,
       "reused_world_model_literals": [],
@@ -1756,7 +1713,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1764,13 +1721,13 @@
       "completed_level": 6,
       "source_checkpoint_exact": true,
       "exact_adjacent_transition": true,
-      "marginal_ast_zlib_bytes": 1899,
-      "previous_level_marginal_ast_zlib_bytes": 152,
-      "marginal_drop_bytes": -1747,
-      "marginal_ratio": 12.493421052631579,
+      "marginal_ast_zlib_bytes": 1379,
+      "previous_level_marginal_ast_zlib_bytes": 828,
+      "marginal_drop_bytes": -551,
+      "marginal_ratio": 1.6654589371980677,
       "sharp_marginal_drop": false,
-      "literal_reused_top_level_nodes": 14,
-      "novel_top_level_nodes": 5,
+      "literal_reused_top_level_nodes": 16,
+      "novel_top_level_nodes": 3,
       "winning_policy_kind": "reached_before_debrief",
       "winning_entrypoint": "players.py:play_level_6",
       "identical_winning_entrypoint": false,
@@ -1779,7 +1736,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1802,7 +1759,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1825,7 +1782,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1848,7 +1805,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1871,7 +1828,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1898,7 +1855,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -1921,7 +1878,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -1944,75 +1901,21 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
-    },
-    {
-      "system": "GKM",
-      "game": "g50t",
-      "completed_level": 3,
-      "source_checkpoint_exact": true,
-      "exact_adjacent_transition": true,
-      "marginal_ast_zlib_bytes": 2238,
-      "previous_level_marginal_ast_zlib_bytes": 3297,
-      "marginal_drop_bytes": 1059,
-      "marginal_ratio": 0.6787989080982711,
-      "sharp_marginal_drop": false,
-      "literal_reused_top_level_nodes": 19,
-      "novel_top_level_nodes": 7,
-      "winning_policy_kind": "reconstructed_auto_solve_boundary",
-      "winning_entrypoint": "players.py:play_level_3",
-      "identical_winning_entrypoint": false,
-      "reused_world_model_literals": [
-        "legs.py:solve_unlock_macro"
-      ],
-      "reused_world_model_literal_sha256": {
-        "legs.py:solve_unlock_macro": "638bf08bdf314ecd39f9c21dd663931f213e2c9aca32315c783dcdbf1dd3b7cb"
-      },
-      "hard_literal_reuse_witness": true,
-      "sharp_drop_with_literal_reuse": false,
-      "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
-    },
-    {
-      "system": "GKM",
-      "game": "g50t",
-      "completed_level": 4,
-      "source_checkpoint_exact": true,
-      "exact_adjacent_transition": true,
-      "marginal_ast_zlib_bytes": 168,
-      "previous_level_marginal_ast_zlib_bytes": 2238,
-      "marginal_drop_bytes": 2070,
-      "marginal_ratio": 0.07506702412868632,
-      "sharp_marginal_drop": true,
-      "literal_reused_top_level_nodes": 24,
-      "novel_top_level_nodes": 3,
-      "winning_policy_kind": "reconstructed_auto_solve_boundary",
-      "winning_entrypoint": "players.py:play_level_4",
-      "identical_winning_entrypoint": false,
-      "reused_world_model_literals": [
-        "legs.py:solve_unlock_macro"
-      ],
-      "reused_world_model_literal_sha256": {
-        "legs.py:solve_unlock_macro": "638bf08bdf314ecd39f9c21dd663931f213e2c9aca32315c783dcdbf1dd3b7cb"
-      },
-      "hard_literal_reuse_witness": true,
-      "sharp_drop_with_literal_reuse": true,
-      "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
       "game": "g50t",
       "completed_level": 5,
       "source_checkpoint_exact": true,
-      "exact_adjacent_transition": true,
-      "marginal_ast_zlib_bytes": 1751,
-      "previous_level_marginal_ast_zlib_bytes": 168,
-      "marginal_drop_bytes": -1583,
-      "marginal_ratio": 10.422619047619047,
+      "exact_adjacent_transition": false,
+      "marginal_ast_zlib_bytes": null,
+      "previous_level_marginal_ast_zlib_bytes": null,
+      "marginal_drop_bytes": null,
+      "marginal_ratio": null,
       "sharp_marginal_drop": false,
-      "literal_reused_top_level_nodes": 27,
-      "novel_top_level_nodes": 4,
+      "literal_reused_top_level_nodes": null,
+      "novel_top_level_nodes": null,
       "winning_policy_kind": "reached_before_debrief",
       "winning_entrypoint": "players.py:play_level_5",
       "identical_winning_entrypoint": false,
@@ -2021,7 +1924,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -2030,9 +1933,9 @@
       "source_checkpoint_exact": true,
       "exact_adjacent_transition": true,
       "marginal_ast_zlib_bytes": 2528,
-      "previous_level_marginal_ast_zlib_bytes": 1751,
-      "marginal_drop_bytes": -777,
-      "marginal_ratio": 1.4437464306110794,
+      "previous_level_marginal_ast_zlib_bytes": null,
+      "marginal_drop_bytes": null,
+      "marginal_ratio": null,
       "sharp_marginal_drop": false,
       "literal_reused_top_level_nodes": 29,
       "novel_top_level_nodes": 6,
@@ -2044,7 +1947,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -2067,7 +1970,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -2090,7 +1993,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -2119,7 +2022,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": true,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -2146,7 +2049,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -2175,7 +2078,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -2202,7 +2105,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -2229,7 +2132,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -2258,7 +2161,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -2281,7 +2184,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -2304,7 +2207,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -2331,7 +2234,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": true,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -2354,7 +2257,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -2377,7 +2280,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -2400,7 +2303,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -2423,7 +2326,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -2446,7 +2349,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -2469,7 +2372,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -2496,7 +2399,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": true,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -2523,7 +2426,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -2550,7 +2453,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -2577,7 +2480,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -2604,7 +2507,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -2631,7 +2534,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -2658,7 +2561,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -2681,7 +2584,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -2708,7 +2611,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": true,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -2735,7 +2638,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -2762,7 +2665,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -2789,7 +2692,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -2816,7 +2719,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -2843,7 +2746,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -2866,7 +2769,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -2893,7 +2796,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": true,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -2916,7 +2819,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -2939,7 +2842,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -2966,7 +2869,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -2993,7 +2896,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -3016,7 +2919,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3039,48 +2942,21 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
-    },
-    {
-      "system": "GKM",
-      "game": "r11l",
-      "completed_level": 3,
-      "source_checkpoint_exact": true,
-      "exact_adjacent_transition": true,
-      "marginal_ast_zlib_bytes": 4144,
-      "previous_level_marginal_ast_zlib_bytes": 4565,
-      "marginal_drop_bytes": 421,
-      "marginal_ratio": 0.907776560788609,
-      "sharp_marginal_drop": false,
-      "literal_reused_top_level_nodes": 13,
-      "novel_top_level_nodes": 14,
-      "winning_policy_kind": "reconstructed_auto_solve_boundary",
-      "winning_entrypoint": "players.py:play_level_3",
-      "identical_winning_entrypoint": false,
-      "reused_world_model_literals": [
-        "legs.py:place_boxes_on_rings"
-      ],
-      "reused_world_model_literal_sha256": {
-        "legs.py:place_boxes_on_rings": "ee03b8e3b6717479ddd13ee2c9002561798bca61442afc397c3d17459e9001fd"
-      },
-      "hard_literal_reuse_witness": true,
-      "sharp_drop_with_literal_reuse": false,
-      "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
       "game": "r11l",
       "completed_level": 4,
       "source_checkpoint_exact": true,
-      "exact_adjacent_transition": true,
-      "marginal_ast_zlib_bytes": 6285,
-      "previous_level_marginal_ast_zlib_bytes": 4144,
-      "marginal_drop_bytes": -2141,
-      "marginal_ratio": 1.516650579150579,
+      "exact_adjacent_transition": false,
+      "marginal_ast_zlib_bytes": null,
+      "previous_level_marginal_ast_zlib_bytes": null,
+      "marginal_drop_bytes": null,
+      "marginal_ratio": null,
       "sharp_marginal_drop": false,
-      "literal_reused_top_level_nodes": 24,
-      "novel_top_level_nodes": 15,
+      "literal_reused_top_level_nodes": null,
+      "novel_top_level_nodes": null,
       "winning_policy_kind": "reached_before_debrief",
       "winning_entrypoint": "players.py:play_level_4",
       "identical_winning_entrypoint": false,
@@ -3089,7 +2965,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3098,9 +2974,9 @@
       "source_checkpoint_exact": true,
       "exact_adjacent_transition": true,
       "marginal_ast_zlib_bytes": 6193,
-      "previous_level_marginal_ast_zlib_bytes": 6285,
-      "marginal_drop_bytes": 92,
-      "marginal_ratio": 0.9853619729514718,
+      "previous_level_marginal_ast_zlib_bytes": null,
+      "marginal_drop_bytes": null,
+      "marginal_ratio": null,
       "sharp_marginal_drop": false,
       "literal_reused_top_level_nodes": 35,
       "novel_top_level_nodes": 15,
@@ -3112,7 +2988,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3135,7 +3011,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3158,7 +3034,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3181,7 +3057,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3204,7 +3080,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3227,7 +3103,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3250,7 +3126,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3273,7 +3149,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3296,7 +3172,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3319,7 +3195,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3342,7 +3218,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3365,7 +3241,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3388,7 +3264,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3411,7 +3287,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3434,7 +3310,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3457,7 +3333,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3480,7 +3356,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3503,7 +3379,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3526,7 +3402,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3549,7 +3425,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3576,7 +3452,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": true,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -3603,7 +3479,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -3626,7 +3502,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3649,7 +3525,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3672,7 +3548,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3695,7 +3571,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3718,7 +3594,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3747,7 +3623,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": true,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -3776,7 +3652,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -3805,7 +3681,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -3834,7 +3710,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -3863,7 +3739,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -3886,7 +3762,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3909,7 +3785,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3932,7 +3808,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3955,7 +3831,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -3978,7 +3854,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4001,7 +3877,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4024,7 +3900,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4047,7 +3923,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4070,7 +3946,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4097,7 +3973,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -4124,7 +4000,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -4147,7 +4023,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4174,7 +4050,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": true,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -4197,7 +4073,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4220,7 +4096,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4243,7 +4119,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4270,7 +4146,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -4293,7 +4169,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4316,7 +4192,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4339,7 +4215,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4366,7 +4242,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": true,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -4389,7 +4265,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4412,7 +4288,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4435,7 +4311,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4458,7 +4334,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4481,7 +4357,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4504,7 +4380,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4527,7 +4403,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4550,7 +4426,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4573,7 +4449,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4596,7 +4472,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4619,7 +4495,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4642,7 +4518,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4665,7 +4541,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4692,7 +4568,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": true,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -4715,7 +4591,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4742,7 +4618,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": true,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -4769,7 +4645,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -4796,7 +4672,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -4819,7 +4695,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4842,7 +4718,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4865,7 +4741,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4888,7 +4764,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4911,7 +4787,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -4938,7 +4814,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -4967,7 +4843,7 @@
       "hard_literal_reuse_witness": true,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "winning player statically calls unchanged named legs"
+      "evidence": "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
     },
     {
       "system": "GKM",
@@ -4990,7 +4866,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -5013,7 +4889,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -5036,7 +4912,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -5059,7 +4935,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -5082,7 +4958,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -5105,7 +4981,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -5128,7 +5004,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -5151,7 +5027,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "GKM",
@@ -5174,7 +5050,7 @@
       "hard_literal_reuse_witness": false,
       "sharp_drop_with_literal_reuse": false,
       "winning_command_zlib_bytes": null,
-      "evidence": "no unchanged named leg is reachable from the winning player"
+      "evidence": "no direct static call site to an unchanged named leg in the winning player"
     },
     {
       "system": "OPINE",

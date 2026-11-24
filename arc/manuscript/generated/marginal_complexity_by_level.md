@@ -28,4 +28,5 @@
 | `vc33` | 7/7 | 213 | 982 | 55 | 46 | 87 | 144 | 167 | 87 | 395 | -- | -- | -- | 981 |
 | `wa30` | 9/9 | 597 | 319 | 43 | 20 | 32 | 50 | 39 | 23 | 28 | 34 | 49 | -- | 318 |
 
-Values are the checkpoint-recorded harness-native `marginal_C` charges. `pending` marks an authoritative level with no promoted boundary; `--` means that the game has no such level. The scalar alone is not a semantic reuse certificate.
+Values are checkpoint-recorded workspace-local `marginal_C` charges, measured against the working source before that harness cycle. Resumed WIP can already be present, so these are not automatically growth from the preceding promotion. `pending` marks an authoritative level with no promoted boundary; `--` means that the game has no such level. The scalar alone is not a semantic reuse certificate.
+`dc22` preserves the historical recorded L5 charge of 2 and total of 650. L5 adjacent-promoted growth is 202. On authenticated levels 2–6, the recorded charges sum to 601 and promoted growth to 801, with retained D moving from 50 to 851. These use different baselines; the difference is not a solver or counter defect. See `REVISION_EVIDENCE.md`.

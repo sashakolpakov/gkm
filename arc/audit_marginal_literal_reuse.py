@@ -7,15 +7,18 @@ post-win rewrites, and other interim states are not checkpoints.
 
 For two adjacent winning programs P_(k-1) and P_k, the conditional AST marginal
 is the zlib-9 length of the normalized top-level AST statements in P_k that do
-not occur literally in P_(k-1).  It is a computable upper bound on the source
-needed to describe P_k given a dictionary containing P_(k-1), not an estimate
-of uncomputable Kolmogorov complexity.  Unlike a signed total-size difference,
-it charges same-size rewrites.
+not occur literally in P_(k-1).  It is a computable novelty proxy relative to a
+dictionary containing P_(k-1), not an estimate of uncomputable Kolmogorov complexity.
+It omits complete decoding metadata, such as statement order and dictionary
+references, and is not by itself a prefix-code length.  Unlike a signed total-size
+difference, it charges same-size rewrites.
 
-A drop in that marginal is only a search cue.  It is classified as executable
-reuse only when the winning entry point directly calls a named definition whose
+A drop in that marginal is only a search cue.  A static source-reuse candidate
+requires a call site in the winning entry point to a named definition whose
 normalized AST is literally unchanged from the preceding winning checkpoint.
-The audit deliberately reports the two tests separately.
+The audit deliberately reports the two tests separately.  It does not instrument
+runtime calls: an AST call site can occur in an unexecuted branch.  Historical JSON
+field names containing ``hard_literal_reuse_witness`` describe this static test.
 
 System-specific evidence boundaries:
 
@@ -159,7 +162,7 @@ def unchanged_called_definitions(
     *,
     allowed_files: set[str] | None = None,
 ) -> list[str]:
-    """Return unchanged definitions called directly by the winning entry point."""
+    """Return unchanged definitions named at direct AST call sites, not runtime calls."""
     previous_definitions, _ = definitions_and_calls(previous)
     current_definitions, calls = definitions_and_calls(current)
     directly_called = calls.get(root, set())
@@ -288,9 +291,9 @@ def gkm_rows(root: Path) -> list[MarginalReuseRow]:
                     sharp_drop_with_literal_reuse=sharp and hard_reuse,
                     winning_command_zlib_bytes=None,
                     evidence=(
-                        "winning player statically calls unchanged named legs"
+                        "winning player has static call sites to unchanged named legs; runtime execution unmeasured"
                         if hard_reuse
-                        else "no unchanged named leg is reachable from the winning player"
+                        else "no direct static call site to an unchanged named leg in the winning player"
                     ),
                 )
             )
@@ -703,8 +706,9 @@ def main() -> int:
             "level's conditional AST marginal"
         ),
         "reuse_rule": (
-            "the winning executable entry point directly calls a named definition whose "
-            "normalized AST is identical at the preceding winning checkpoint"
+            "the winning executable entry point contains a direct static call site to a "
+            "named definition whose normalized AST is identical at the preceding winning "
+            "checkpoint; runtime call execution is not measured"
         ),
         "systems": {
             system: system_summary(rows) for system, rows in by_system.items()

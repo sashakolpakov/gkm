@@ -1,0 +1,26 @@
+\documentclass[10pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage[margin=0.72in]{geometry}
+\usepackage{lmodern,microtype,enumitem,hyperref}
+\hypersetup{hidelinks,pdfauthor={Alexander Kolpakov},pdftitle={Response to comments}}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt}
+\setlist[itemize]{leftmargin=1.4em,itemsep=6pt,topsep=5pt}
+\begin{document}
+{\Large\bfseries Response to comments}\par
+Alexander Kolpakov
+
+The revised manuscript focuses on verified solver retention and the source-history audit. Locations refer to the revised manuscript.
+\begin{itemize}
+\item \textbf{Contribution and mathematical background $\rightarrow$} Reframed the abstract and Introduction around the architecture, frozen release, and audit. Shortened \S\S4--5, identified standard results as background, cited the separate theoretical paper, and removed unused thermodynamic and Kan-extension exposition.
+\item \textbf{Structure functions and complexity measures $\rightarrow$} \S4 defines a finite evaluated archive and feasible loss--description points, rather than an optimized frontier. \S\S4.1 and 7.2 define line/literal units and compressed-AST novelty separately from ideal Kolmogorov complexity, including omitted decoding metadata.
+\item \textbf{Candidate selection $\rightarrow$} \S\S3.3 and 4.1 specify first success at the exact next boundary under execution, independent replay, taint/provenance, and containment checks. Complexity and free energy are recorded afterwards; free energy ranking remains proposed. \S3 distinguishes this contract and later endpoint certification from older acquisition controls.
+\item \textbf{\texttt{dc22} accounting and source provenance $\rightarrow$} \S\S4.1 and 6.1 distinguish the full recorded charge (650) from the paired L2--L6 sums, $C=601$ and $G=801$, as retained size grows from 50 to 851. No primary $G_1$ is inferred from the scaffold. The manuscript interpretation and source reconstruction were corrected; the solver, replay, and counters were valid. Complete source gives L5/L6 novelty of 828/1379 bytes, removing the spurious sharp L5 contraction.
+\item \textbf{Recorded-cycle and promoted-state profiles $\rightarrow$} \S6.5, Table~6, and the paired figure compare 134 authenticated pairs in 24 games. Of 20 histories long enough to show a reversal, 18 reverse in both series. \texttt{wa30} has two reversals in each, \texttt{ls20} one in each, and \texttt{dc22} two in $C$ versus none in $G$. These patterns do not establish executed reuse or search savings.
+\item \textbf{Exact acquisition-source provenance $\rightarrow$} \S7.2 excludes three unauthenticated paid-debrief reconstructions in addition to the seven existing exclusions, leaving 171 exact sources. Missing neighboring source is not bridged. Table~8 and the audit report 144 adjacent transitions, 141 marginal comparisons, 21 sharp drops, 54 static call-site cases, and 13 coupled static cases.
+\item \textbf{Source calls versus executed calls $\rightarrow$} The abstract, \S7.2, Table~8, and \S8 label the call-site counts as static evidence. Whole-program replay is reported separately; runtime call execution remains unmeasured.
+\item \textbf{Search savings and sawtooth interpretation $\rightarrow$} \S\S6.6 and 8 treat search savings as a hypothesis requiring matched-model, matched-budget library ablations. Oscillations are observations, with no enforced sawtooth rule or demonstrated causal effect on performance.
+\item \textbf{Score scope and precision $\rightarrow$} \S\S3.5, 6, and 8.1 distinguish public-solution replay from discovery interactions, failed proposals, inference cost, and held-out generalization. The official score is rounded to 98.1166\%, separately from 181/183 raw coverage.
+\item \textbf{Formal scope and presentation $\rightarrow$} \S5 clarifies that ``inverse colimit'' denotes an ordinary pushout of an inverse-shaped span, separates source persistence from behavioral validation, and removes the unsupported logarithmic metadata term. Appendix~A states the strong conditional success assumption and limits of the enumeration argument. \S2 credits Schmidhuber's lineage; auxiliary roles move to Appendix~B, distinguishing older inherited histories from later controls.
+\end{itemize}
+\end{document}

@@ -286,5 +286,5 @@ Useful external checks include:
 | `wa30` uniform history | 9/9 | 597 | 318 |
 | `ls20` uniform history | 7/7 | 365 | 760 |
 
-The frozen release contains one checkpoint record for every promoted level. The generated all-game marginal table is `arc/manuscript/generated/marginal_complexity_by_level.md`. The `wa30` and `ls20` rows additionally have one uniform, audited history sidecar per level. `marginal_C` means positive net retained-description growth per source file. Additions and deletions within the same file are netted before the positive part, so same-size replacement can receive zero.
+The frozen release contains one checkpoint record for every promoted level. The generated all-game marginal table is `arc/manuscript/generated/marginal_complexity_by_level.md`. The `wa30` and `ls20` rows additionally have one uniform, audited history sidecar per level. `marginal_C` means positive net retained-description growth per source file. Additions and deletions within the same file are netted before the positive part, so same-size replacement can receive zero. Its baseline is the source in the working workspace before that harness cycle; resumed WIP can already be present, so it is not necessarily growth from the preceding promoted source.
 <!-- END GENERATED: ARC_ARTIFACT_STATUS -->

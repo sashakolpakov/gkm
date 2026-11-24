@@ -6,7 +6,7 @@
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{@{}lrrrrrrrrrrrrrr@{}}
 \toprule
-Game & Depth & Path & $D(s)$ & L1 & L2 & L3 & L4 & L5 & L6 & L7 & L8 & L9 & L10 & $C_{\leq k}$ \\
+Game & Depth & Path & $D(s)$ & L1 & L2 & L3 & L4 & L5 & L6 & L7 & L8 & L9 & L10 & $C_{\leq k}^{\mathrm{recorded}}$ \\
 \midrule
 \texttt{ar25} & 8/8 & 269 & 67 & 9 & 4 & 9 & 7 & 7 & 10 & 10 & 10 & $\mathrm{n/a}$ & $\mathrm{n/a}$ & 66 \\
 \texttt{bp35} & 9/9 & 393 & 1280 & 210 & 174 & 108 & 102 & 44 & 128 & 174 & 79 & 260 & $\mathrm{n/a}$ & 1279 \\
@@ -36,6 +36,6 @@ Game & Depth & Path & $D(s)$ & L1 & L2 & L3 & L4 & L5 & L6 & L7 & L8 & L9 & L10 
 \bottomrule
 \end{tabular}%
 }
-\caption{Harness-native marginal-complexity ledger for all 25 games in the frozen 181/183 release. Values are the checkpoint-recorded $C_k$ charges. \textnormal{pending} marks the two authoritative but unsolved \texttt{lf52} boundaries; $\mathrm{n/a}$ means that the game has no such level. The scalar profile is descriptive and is not, by itself, a source-reuse witness.}
+\caption{Recorded workspace-local charges for all 25 games in the frozen 181/183 release, in noncomment-line plus AST literal-element units. The baseline is the source before that harness cycle, which can include resumed WIP. \textnormal{pending} marks the two unclaimed \texttt{lf52} boundaries; $\mathrm{n/a}$ means no such level. For \texttt{dc22}, L5 recorded charge 2 and promoted growth 202 use different baselines. On authenticated L2--L6 their sums are 601 and 801, with $D$ increasing from 50 to 851 (Section~\ref{sec:dc22}); the full recorded total remains 650. Scalar shape alone does not establish reuse.}
 \label{tab:all-marginal-complexities}
 \end{table}

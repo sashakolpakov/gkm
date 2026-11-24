@@ -1,33 +1,46 @@
 # Gödel–Kolmogorov Machine ARC-AGI-3 manuscript
 
 This directory contains the canonical manuscript and reproduction sources for the
-Gödel–Kolmogorov Machine ARC-AGI-3 study. The Gödel–Kolmogorov Machine combines
-verifier-gated program revision, inverse-colimit attachment, PowerPlay-style retained
-competence, artificial curiosity, and description-length selection. After this full
+Gödel–Kolmogorov Machine ARC-AGI-3 study. The Gödel–Kolmogorov Machine retains replay-verified solver programs and makes their
+source histories auditable. Pushout and structure-function language supplies a concise
+specification and accounting background; free energy selection and curiosity control
+remain proposed extensions. After this full
 introduction, **GKM** is used as the abbreviation in filenames and dense comparisons.
 
 ## Canonical deliverables
 
 - `arc_agi3.tex` and `references.bib`: the integrated paper source.
-- `arc_agi3.pdf`: the generated paper; build it locally rather than treating a bundled
-  binary as the source of truth.
-- `scripts/generate_figures.py`: exact source for the three empirical ledger figures.
+- `arc_agi3.pdf`: the current submission PDF, generated from the canonical TeX source.
+- `response_to_reviews.tex` and `response_to_reviews.pdf`: the current response source
+  and PDF. `gkm_one_page_summary.{md,tex,pdf}` is the companion summary.
+- `scripts/generate_figures.py`: source for the recorded-charge and paired source-growth figures.
 - `scripts/generate_empirical_tables.py`: the release-bound 25-game, per-level
   marginal-complexity table generator for TeX, Markdown, JSON, and Sphinx.
 - `figure_sources/inverse_colimit_attachment_standalone.tex`: standalone source for
   the inverse-colimit attachment diagram, which also appears inline in the paper.
 - `requirements-figures.txt`: the Matplotlib version used for the delivered figure
   geometry.
-- `SOCRATIC_PASSES.md` and `repo_ground_truth_matrix.md`: the current review and
-  code-to-claim records. Repository history preserves superseded editorial drafts.
+- `repo_ground_truth_matrix.md`, `RESPONSE_TO_REVIEWS.md`, and `REVISION_EVIDENCE.md`:
+  the current code-to-claim scope, response, and dataset verification evidence.
 - `BUILD_VERIFICATION.md`: results and limits of the repository integration checks.
 - `scripts/build_arxiv_bundle.py`: deterministic minimal arXiv source-package builder
   and isolated compile check.
 - `SHA256SUMS.txt`: fixed-scope integrity manifest for the integrated source
   deliverables and generated empirical evidence. `make verify-manifest` checks it and
-  `make manifest` regenerates it. It deliberately excludes the ignored local paper PDFs,
-  whose TeX metadata records the build time; their page/diagnostic checks are recorded
-  in `BUILD_VERIFICATION.md`.
+  `make manifest` regenerates it. The three canonical submission PDFs and source ZIP
+  are versioned outputs. The source manifest excludes PDFs because their TeX metadata
+  records build time; Git records their output blobs, and page/build checks and the
+  ZIP hash are recorded in `BUILD_VERIFICATION.md`.
+
+## Review revision
+
+`RESPONSE_TO_REVIEWS.md` gives the concise response for editor review.
+`REVISION_EVIDENCE.md` records the frozen-source reconciliation and reproduction
+commands; `generated/revision_source_audit.json` provides its machine-readable evidence.
+The selected empirical dataset is the GPT-5.6 campaign. Canonical submission files
+are overwritten in place when the paper is rebuilt. The distinct theoretical manuscript in
+`arxiv/` is not changed by this revision. Source and plot checks do not run discovery
+or replace the original frozen endpoint evidence.
 
 ## Build
 
@@ -58,9 +71,9 @@ compile it in a fresh temporary directory with:
 make -C arc/manuscript arxiv-check
 ```
 
-The resulting ignored local file is
-`arc/manuscript/build/arxiv/arc_agi3_arxiv.zip`. It contains exactly the main TeX
-source, the BibTeX database, the two included generated TeX tables, and the two included
+The canonical, versioned submission source ZIP is
+`arc/manuscript/build/arxiv/arc_agi3_arxiv.zip`. Its eight files are the main TeX
+source, the BibTeX database, the three included generated TeX tables, and the three included
 PNG figures. It excludes companion documents, repository evidence, scripts, caches,
 and all LaTeX output/intermediate files.
 
@@ -68,7 +81,8 @@ The figure generator validates the expected PNG dimensions under Matplotlib 3.10
 
 - `figures/ls20_sawtooth.png`: 1728 × 912 pixels;
 - `figures/bounded_campaign_profiles.png`: 2034 × 1072 pixels;
-- `figures/marginal_complexity_profiles.png`: 2448 × 912 pixels.
+- `figures/marginal_complexity_profiles.png`: 2448 × 912 pixels;
+- `figures/source_charge_comparison.png`: 2448 × 912 pixels.
 
 Matplotlib 3.10.8 reproduces the supplied bundle byte-for-byte. Compatible later
 versions can preserve the numerical data and validated geometry while changing raster
@@ -80,7 +94,7 @@ The manuscript build reproduces the document, not the stochastic discovery campa
 The repository supplies separate gates for the retained evidence:
 
 The frozen artifacts and receipt were published at commit
-`9235ed26627140460efa1f6ca5e4041470cddc14`. The schema-v2 receipt
+`9235ed26627140460efa1f6ca5e4041470cddc14`. The schema-1 partial-release receipt
 `140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681`
 separately binds control/verifier source revision
 `c1f8168f230732f2d745c234555b3e3dfcb8aefa`. From the current reproduction
@@ -107,8 +121,17 @@ manuscript's frozen source-history snapshot at commit
 Git rather than reading the mutable live campaign. That authority is distinct from the
 artifact-publication commit `9235ed...` and receipt-bound verifier revision `c1f8168...`.
 The release result is 181/183 replay-verified wins. The narrower winning-source
-audit admits 174 exact checkpoints and excludes the seven deterministic path reconstructions
-(`ft09` L2 and `tr87` L1--L6) from source-complexity denominators.
+audit admits 171 exact checkpoints. It excludes seven path reconstructions
+(`ft09` L2 and `tr87` L1--L6) and three unauthenticated paid-debrief auto-solve
+reconstructions (`g50t` L3/L4, `r11l` L3) from source-complexity denominators.
+The revised audit has 54 static call-site cases and 13 sharp coupled static cases;
+runtime call execution remains unmeasured. A separate promoted-state audit supplies
+134 paired C/G values in 24 games, with first-boundary and missing-state exclusions;
+its table, full JSON, and plot are `generated/source_charge_comparison.*` and
+`figures/source_charge_comparison.*`. See `REVISION_EVIDENCE.md` for the
+200-unit difference between the `dc22` accounting baselines, the corrected source
+reconstruction, exact snapshot paths, and a source-only audit command. The solver and
+recorded counters were valid and are unchanged.
 The final command performs a zero-LLM endpoint replay against public remote environments
 and therefore requires the ARC API environment and credentials. See
 [`../../REPRODUCE_ARC.md`](../../REPRODUCE_ARC.md) for the complete protocol and
@@ -166,4 +189,4 @@ terminal or promotion evidence authenticate together; malformed, cross-frontier,
 tainted, or incomplete aggregates fail closed. This mechanism postdates the frozen
 181-boundary result and is not part of the historical release claim. The release
 continues to be interpreted solely under the verifier/control revision bound by its
-schema-v2 receipt.
+schema-1 partial-release receipt.

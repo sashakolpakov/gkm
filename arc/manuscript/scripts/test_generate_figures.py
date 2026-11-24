@@ -61,3 +61,13 @@ def test_load_profile_rejects_unvalidated_checkpoint(tmp_path: Path) -> None:
     path.write_text(json.dumps(payload))
     with pytest.raises(ValueError, match="not replay validated"):
         generate_figures._load_profile(tmp_path, "demo")
+
+
+def test_paired_plot_keeps_unknown_pairs_missing_and_zero_values_observed() -> None:
+    payload = {"games": [{"game": "demo", "levels": [1, 2, 3, 4],
+                           "recorded_C": [5, 0, 6, 7],
+                           "primary_G": [None, 0, None, 8]}]}
+    levels, recorded, growth = generate_figures._comparison_profile(payload, "demo")
+    assert levels == (1, 2, 3, 4)
+    assert recorded == (None, 0, None, 7)
+    assert growth == (None, 0, None, 8)
