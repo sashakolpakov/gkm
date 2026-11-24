@@ -185,9 +185,13 @@ For ``dc22``, M is ``1058, 604, 716, 885, 828, 1379`` compressed bytes: two dips
 even though growth between promoted source versions increases. ``wa30`` has
 conditional troughs at L2 and L6. ``ls20`` falls from 737 to 247 bytes at L2,
 with a static call to unchanged ``follow_cardinal_runs``; later route data add
-novelty while that leg remains unchanged. Learning new machinery followed by
-using retained machinery is the proposed explanation for a sawtooth, rather than
-a demonstrated cause of every trough or a requirement on every game.
+novelty while that leg remains unchanged. Both dc22 dips reuse unchanged
+``walk_segments`` and ``toggle_control`` through newly added routines; both wa30
+troughs similarly reuse ``walk`` and ``interact``. The narrow direct-call count
+excludes those indirect paths. A different source pattern occurs in cn04 L3:
+novelty falls from 337 to 245 bytes, and the new player is a 23-action literal loop
+whose only call is ``env.step``. Exact source hashes and call paths are published
+in ``arc/manuscript/generated/reuse_case_audit.json`` and its Markdown table.
 
 .. image:: ../arc/manuscript/figures/marginal_complexity_all_games.png
    :alt: Conditional marginal-complexity proxy for every game in the frozen 25-game suite; missing boundaries remain gaps

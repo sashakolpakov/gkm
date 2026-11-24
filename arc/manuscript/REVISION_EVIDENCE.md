@@ -37,8 +37,9 @@ AST novelty from the net-growth ledger and proposed that retained components cou
 make later descriptions cheaper. This revision restores that central question while
 retaining the corrections to source provenance and implemented candidate selection.
 For dc22, M is 1058, 604, 716, 885, 828, 1379 bytes: the L2 and L5 dips exist despite
-strictly increasing promoted-source growth. No static unchanged-leg case is present
-under the narrow direct-call test, so those dips are not attributed to proven reuse.
+strictly increasing promoted-source growth. The new routine at each dip calls unchanged `walk_segments` and `toggle_control`;
+the old direct-call test excludes the intervening new routine. This is indirect
+reuse, rather than an absence of retained calls.
 
 The source-growth comparisons below are supporting accounting. The recorded-cycle
 counter does not reconstruct all failed edits or the full discovery process.
@@ -129,3 +130,19 @@ python3 arc/manuscript/scripts/compare_source_charges.py \
 The per-game tables and scalar figures use the frozen acquisition files at publication commit `9235ed...`. Their displayed `C_recorded` values are preserved workspace-local charges; they are not relabeled as adjacent retained-state growth. `G` is computed only from authenticated adjacent retained states, separately from the exact pre-debrief winning states used for `M`. No source gap is bridged or filled using a normalized endpoint capsule.
 
 Current test, document-build, and integrity results are in `BUILD_VERIFICATION.md`. The frozen endpoint/taint/action/receipt evidence is identified separately from source-only manuscript checks. Discovery cost, causal search savings, actual helper-call execution, and held-out generalization are not established by this audit.
+
+## Concrete source structure at marginal dips
+
+`scripts/audit_reuse_cases.py` checks five specified cases against the same immutable
+winning-source history. Outputs `generated/reuse_case_audit.{json,md,tex}` bind the
+source-audit hash, both programs' source hashes, unchanged-definition AST hashes and
+the complete named call paths. Duplicate player definitions are resolved by their
+actual last definition. The four dc22/wa30 dips have unchanged-helper paths through
+a newly added routine. The cn04 L3 player is a 23-action literal loop calling only
+`env.step`, with M decreasing from 337 to 245 bytes. That is a concrete compact-action
+case alongside the direct and indirect retained-helper cases. The suite-wide
+54 direct-call and 13 sharp/direct-call counts are unchanged.
+
+The manuscript reports these specific findings in place of generic doubt about
+reuse at the dc22/wa30 troughs. The case audit records source call structure; it does
+not add runtime call counts or a matched discovery-efficiency experiment.

@@ -8,12 +8,12 @@ The separate theoretical manuscript and active discovery campaign are unchanged.
 
 ## Submission files
 
-- `arc_agi3.pdf`: **23 pages**, 1,800,239 bytes.
-- `response_to_reviews.pdf`: **one page**, 92,536 bytes.
-- `gkm_one_page_summary.pdf`: **one page**, 212,602 bytes.
-- `build/arxiv/arc_agi3_arxiv.zip`: **nine source files**, 1,212,466 bytes.
+- `arc_agi3.pdf`: **24 pages**, 1,804,100 bytes.
+- `response_to_reviews.pdf`: **one page**, 92,830 bytes.
+- `gkm_one_page_summary.pdf`: **one page**, 213,023 bytes.
+- `build/arxiv/arc_agi3_arxiv.zip`: **ten source files**, 1,214,737 bytes.
   Its main source matches the canonical TeX; isolated PDFLaTeX/BibTeX compilation
-  passed. SHA-256: `bd1463e2b0d4cfd46a7c13c0f3705b7c2b67a36a346750466b85ff21c712558a`.
+  passed. SHA-256: `8b62ce2deb25c760e7d32c897486397972bbce8d212b2226ba42e4962f851337`.
 
 The three PDFs and ZIP are canonical versioned outputs. Source checksums exclude
 compiled PDFs; Git records their exact blobs. PDFLaTeX logs contain no warnings,
@@ -28,7 +28,7 @@ empty AST dictionary. Missing exact source, missing predecessors and unclaimed
 levels remain unknown; plots never bridge those gaps or fill them with zero.
 
 The main figure plots dc22, wa30 and ls20; the full-suite appendix plots all 25 games.
-Orange rings mark decreases; green diamonds mark sharp drops with static unchanged-leg
+Orange rings mark decreases; green diamonds mark sharp drops with direct unchanged-leg
 call sites. Both PNG and vector PDF outputs were generated. The ls20 standalone
 figure also now plots M rather than its source-growth surrogate. The five figure
 pairs have checked PNG geometry: 1728×912, 2034×1072, two at 2448×912, and 2688×2880.
@@ -41,10 +41,19 @@ with **64 decreases, 21 half-or-more drops, 54 static call-site cases and 13 sha
 coupled static cases**. Runtime call execution remains unmeasured.
 
 For dc22, M is 1058, 604, 716, 885, 828, 1379 bytes: it has dips at L2 and L5 even
-though G increases strictly over authenticated L2–L6. Its corrected L5 dip is modest,
-not a sharp contraction or an established reuse case. ls20 supplies the inspectable
-sharp-drop/static-call example. The novelty-then-reuse explanation is discussed as
-a hypothesis, without imposing a sawtooth or changing candidate admission.
+though G increases strictly over authenticated L2–L6. Both dips call unchanged
+walk_segments and toggle_control through newly added routines. Both wa30 troughs
+similarly reach unchanged walk and interact through new routines. These concrete
+indirect reuse paths are excluded by the fixed narrow direct-call statistic.
+
+A new case audit binds previous/current file hashes, unchanged-definition hashes
+and call paths for those four dips and the contrasting cn04 L3 player. The latter
+has 23 literal actions with env.step as its only call, while M falls from 337 to
+245 bytes. The claim concerns that new player's bypass of retained solver legs.
+All five source pairs and helper/entry-point AST hashes were independently checked
+against the frozen Git history. The case table was also inspected on the PDF page.
+The canonical case outputs are `generated/reuse_case_audit.{json,md,tex}`; the
+original suite-wide direct-call counts and admission rule are unchanged.
 
 ## Supporting accounting and frozen scope
 
@@ -65,12 +74,14 @@ with retained size rising from 50 to 851. The solver, counter and replay were va
 
 ## Checks and scope
 
-**64 targeted tests passed**, covering source reconstruction and reuse analysis,
-profile gap handling, conditional-versus-growth data, figure series, artifact docs,
+**69 targeted tests passed**, covering source reconstruction and reuse analysis,
+profile gap handling, conditional-versus-growth data, indirect wrapper paths,
+duplicate-player resolution, shadowed names, excluded uncalled nested bodies,
+figure series, artifact docs,
 package closure, reproduction helpers and the source checksum manifest.
 
 Strict Sphinx HTML passed all 10 documentation sources, including both new marginal
-figures. The three canonical PDFs compiled; the nine-file source ZIP compiled in
+figures. The three canonical PDFs compiled; the ten-file source ZIP compiled in
 isolation. Source analysis is static: no discovery run, game implementation, runtime
 harness or frozen solver was modified. Earlier endpoint/receipt/taint/action evidence
 was retained; no new online replay or endpoint gate is claimed here. Runtime calls,

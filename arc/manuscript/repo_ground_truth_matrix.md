@@ -50,6 +50,7 @@ enter primary reversal counts. See `generated/source_charge_comparison.json` and
 The central empirical analysis is the conditional marginal proxy M, not the C/G
 source-growth comparison. Its 25-game figure and per-level JSON preserve missing
 exact sources, predecessor gaps and unclaimed levels. dc22 has marginal dips at L2
-and L5 despite increasing G; no executed reuse is inferred from that shape. The
-novelty/reuse explanation of a sawtooth is a hypothesis checked against static call
-evidence, with no complexity-based admission rule.
+and L5 despite increasing G. Both dc22 dips and both wa30 troughs have source paths
+through new routines to unchanged helpers, as documented by the five-case audit.
+cn04 L3 instead has a 23-action player calling only env.step. The direct-call
+statistic excludes the intermediate wrappers and retains its fixed scope.

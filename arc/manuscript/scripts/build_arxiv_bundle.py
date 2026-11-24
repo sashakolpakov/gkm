@@ -24,6 +24,7 @@ SOURCE_FILES = (
     Path("generated/marginal_complexity_by_level.tex"),
     Path("generated/comparator_stats.tex"),
     Path("generated/source_charge_comparison.tex"),
+    Path("generated/reuse_case_audit.tex"),
     Path("figures/marginal_complexity_profiles.png"),
     Path("figures/marginal_complexity_all_games.png"),
     Path("figures/bounded_campaign_profiles.png"),

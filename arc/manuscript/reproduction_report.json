@@ -204,14 +204,14 @@
     "canonical-taint-audit.json": "7a6432185959f9b3cdbdcb77767d878a5b8bf5a8f0dd6a55e630ddec1d1c81d8",
     "comparator_stats.md": "1e3bdaf19018fbc1dd8da15bb60fca804f49a1ba8f67fcf5e3922bc5f4eba4ab",
     "comparator_stats.tex": "cba29e02d35302b6add03baadd18358981733488ba7ba2ef4c885a04189b1998",
-    "ls20_sawtooth.pdf": "5de019b3073096b206daa671f24038a1b16675a4c6341a8f7023c93b6422eae9",
-    "ls20_sawtooth.png": "9ad430032b532c075063b9b0231e889a408b3cb451fcbd793c714662d3d2ff5e",
+    "ls20_sawtooth.pdf": "582cc2b2ec4126a0c41b73007e84f59763138bb21e99574ff7dd1e0d81eef676",
+    "ls20_sawtooth.png": "c7d66e67e4fdc3bf2a3e150128f5e59e4f26162087a013c752e6ac9e14005dff",
     "marginal_complexity_by_level.json": "9c5c089aa85ed27cd54bf68823fbe61007caf53d59c502a77ff7e99196f20836",
     "marginal_complexity_by_level.md": "7f01e7bc7ccda1767406b7ec41f9746e7767be256774d31f7efabe92d5637096",
     "marginal_complexity_by_level.rst": "0184b4d3576a4bfcbad900b795c22dcb9d63fc46514cbd41613bc776d43a5a42",
     "marginal_complexity_by_level.tex": "797e08757c55a72fd38a462e220ee0904d9167b4cc2e0ae9bde58097b76d4d50",
-    "marginal_complexity_profiles.pdf": "844df07b1ebcd60dd4a8f3e0db5459d0a2af60cf584c0be78e46383d6d5fea4d",
-    "marginal_complexity_profiles.png": "4889dda4a72b91dbc63b00482ffccbf6ad173ec3f769ab55b7a5b2c3c61eed6f",
+    "marginal_complexity_profiles.pdf": "4c705475b4f18b908d4c7235feb1053809821b840e5cf1966d72cf21778c664c",
+    "marginal_complexity_profiles.png": "5fa7e62f36614e079eabfe500ed203db6b36be32ccea42ea4128a13baf89e5fb",
     "revision_source_audit.json": "39f8c2523be1d1eee67b2a38d44a7d9e477065b409fbbf1a7b474837047cc01f",
     "source_charge_comparison.json": "1f804bc4f1581edce95c225e01b7e98f138b431509a654ff88f975febefa376e",
     "source_charge_comparison.md": "fb7a5bd89f715f10194533126aa38195f11e404fc4399ed93bef61cb0e2f9992",
@@ -220,8 +220,11 @@
     "source_charge_comparison.pdf": "6c8d8ba0ff12984214bb0a6fe931a6dbde55ec655867e75d7c0f32fafa6581a5",
     "conditional_marginal_profiles.json": "8c5fb4e6b18411f9925b8cfa34ee61a7878e38b5dde797bd657b6e9b7e1f4c04",
     "conditional_marginal_profiles.md": "601cfa66c56555886bbd0eec42bb1ef4cb0a724d867eadc8dadb0690fc7bfd43",
-    "marginal_complexity_all_games.png": "99c912e2fc5e6fdb117b1d09cfe915d8a59057cc4d2646d4e574b2c66023cff2",
-    "marginal_complexity_all_games.pdf": "61e5311ed9bbba66a58d0ddd085faae60cab7aed23549e4224ee48de441e553f"
+    "marginal_complexity_all_games.png": "7cdbfa038c6752cf3c5a8842f4e4e313a782528c120008ad011e20422d3dc3d2",
+    "marginal_complexity_all_games.pdf": "a256bc9fddd88273099b09887855c506260e52711d13cbc67b4e64bd857b9ad0",
+    "reuse_case_audit.json": "bcbdaea601e41514bb3bcf4617790f41a3a4d071ccfa0e5ea45ec35f049bd044",
+    "reuse_case_audit.md": "12a0b93673e14dcef39c4b1c54fc3e3c524c91aba574e7dbf74d63b1e0ff3f9a",
+    "reuse_case_audit.tex": "4d09232e66afb6760655218acbf0b9bb760c302f5454fe76f7b70036e6152136"
   },
   "revision_validation": {
     "date": "2026-11-24",
@@ -270,8 +273,26 @@
       "source_audit": "8e1305eb382f1429fc3ea1904686e979a942f5bc664b89f67215dc824d2a5aac",
       "release_table": "9c5c089aa85ed27cd54bf68823fbe61007caf53d59c502a77ff7e99196f20836"
     },
-    "targeted_tests_passed": 64,
+    "targeted_tests_passed": 69,
     "all_game_figures_preserve_unknown_boundaries": true,
-    "admission_policy_changed": false
+    "admission_policy_changed": false,
+    "concrete_reuse_cases": {
+      "indirect_helper_cases": [
+        "dc22 L2",
+        "dc22 L5",
+        "wa30 L2",
+        "wa30 L6"
+      ],
+      "compact_action_player": {
+        "game": "cn04",
+        "level": 3,
+        "previous_M": 337,
+        "M": 245,
+        "literal_actions": 23,
+        "only_call": "env.step"
+      },
+      "suite_wide_direct_call_counts_changed": false,
+      "source_hashes_independently_checked": true
+    }
   }
 }

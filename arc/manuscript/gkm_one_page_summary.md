@@ -52,8 +52,11 @@ The `dc22` proxy is 1058, 604, 716, 885, 828, 1379 compressed bytes: it has two 
 despite strictly increasing promoted-source growth. `wa30` has troughs at L2 and L6.
 In `ls20`, M falls from 737 to 247 at L2, with a static call site to unchanged
 `follow_cardinal_runs`; later route data add novelty while the leg remains unchanged.
-These patterns motivate the explanation of new machinery followed by economical
-reuse, without establishing that every dip was caused by an executed retained call.
+At both dc22 dips, the new routine calls unchanged walk_segments and toggle_control;
+at both wa30 troughs, it calls unchanged walk and interact. These are indirect
+reuse paths omitted by the narrow direct-call count. The case audit also identifies
+a compact-action case: cn04 L3 falls from 337 to 245 bytes, with a 23-action player
+whose only call is env.step.
 
 **Supporting source counters.** Recorded C compares with the workspace before a
 winning cycle; G compares authenticated adjacent promoted states. For `dc22`, paired

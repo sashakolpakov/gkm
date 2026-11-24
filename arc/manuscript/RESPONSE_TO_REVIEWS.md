@@ -6,7 +6,7 @@ The revision centres conditional marginal complexity and its evidence in the ret
 
 **Marginal complexity and source growth →** Methods distinguish ideal conditional Kolmogorov complexity from the fixed compressed-AST novelty proxy M and the line/literal counters C and G. The source-growth counters are supporting accounting, not substitutes for conditional complexity or measures of complete discovery cost.
 
-**Marginal profiles and sawtooth interpretation →** The main figure plots conditional novelty for dc22, wa30 and ls20; the full-suite appendix publishes all 25 games, leaving unknown boundaries as gaps. The Results and Discussion explain novelty followed by reuse as a proposed mechanism for the observed rises and falls, without imposing a universal sawtooth or changing admission.
+**Marginal profiles and sawtooth interpretation →** The main figure plots conditional novelty for dc22, wa30 and ls20; the full-suite appendix publishes all 25 games, leaving unknown boundaries as gaps. A new hash-bound case audit documents indirect reuse at both dc22 dips and both wa30 troughs, which the direct-call statistic excludes. It also identifies cn04 L3 as a smaller literal action player. The Results and Discussion use these concrete source findings to explain the different dips.
 
 **Candidate selection →** The architecture description specifies first success at the exact next boundary under execution, independent replay, taint/provenance and containment checks. Complexity and free energy are diagnostics after candidate fixation; ranking remains proposed. Older acquisition controls and later endpoint certification are distinguished.
 

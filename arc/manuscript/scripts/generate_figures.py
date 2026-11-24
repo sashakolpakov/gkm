@@ -194,7 +194,7 @@ def _plot_conditional_marginal(ax: plt.Axes, profile: dict) -> None:
     coupled = profile["sharp_drop_with_static_call_levels"]
     ax.scatter(coupled, [values[level - 1] for level in coupled],
                marker="D", color="#008060", s=29, zorder=5,
-               label="Sharp drop + static call site")
+               label="Sharp drop + direct leg call site")
     ax.set_xticks(levels)
     ax.set_xlim(0.6, len(levels) + 0.4)
     ax.set_ylim(bottom=0)

@@ -1,0 +1,210 @@
+{
+  "history_revision": "4d0e42f34d7b1db8305f03d725528dfdefe22511",
+  "history_tree_sha1": "85543629cfcafc70eb7230493f394059c8e0ac45",
+  "source_audit_sha256": "8e1305eb382f1429fc3ea1904686e979a942f5bc664b89f67215dc824d2a5aac",
+  "scope": "five concrete winning-source cases; the existing suite-wide direct-call counts are unchanged",
+  "measurement": "effective top-level definitions and named static call paths to unchanged legs; no runtime call counts",
+  "cases": [
+    {
+      "game": "dc22",
+      "level": 2,
+      "previous_M": 1058,
+      "M": 604,
+      "winning_phase": "reached_before_debrief",
+      "winning_attempt": "reached_before_debrief_4050141013ef",
+      "source_sha256": {
+        "previous": {
+          "legs.py": "a4a9878bb379626e41c6edd6c6492b729836121abb7fe0465a8a99019b53ac20",
+          "players.py": "c9cb7845b5ef83f25f5e2be9f71ce4bd6777605c89e8c773a555fceddb8f81ed",
+          "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+        },
+        "current": {
+          "legs.py": "aee0f7af419c9420bc0278f21bfc71f1390fc925a23cecaac6f228953d17b6d5",
+          "players.py": "42b1960cbb4fc34502c4ec571fbce08be9cc8e93955fe53a99236ec46f5767bf",
+          "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+        }
+      },
+      "entrypoint": "players.py:play_level_2",
+      "entrypoint_ast_sha256": "50d6435584b1ada886efd3f0fd290e60018b7622a86c9761bf6c4fb2067d473b",
+      "entrypoint_calls": [
+        "traverse_revealed_three_stage_bridge_chain"
+      ],
+      "unchanged_leg_paths": [
+        [
+          "players.py:play_level_2",
+          "legs.py:traverse_revealed_three_stage_bridge_chain",
+          "legs.py:toggle_control"
+        ],
+        [
+          "players.py:play_level_2",
+          "legs.py:traverse_revealed_three_stage_bridge_chain",
+          "legs.py:walk_segments"
+        ]
+      ],
+      "unchanged_target_ast_sha256": {
+        "legs.py:toggle_control": "1c6d224380effce6af5af4c567d91a560ed830cf6bd809832368e346148e39a8",
+        "legs.py:walk_segments": "172de98472c2440aee3442d459565492ca5e67075d2ffd6eb5dee8383bf9bffe"
+      },
+      "literal_action_loop_only": false,
+      "literal_action_count": null
+    },
+    {
+      "game": "dc22",
+      "level": 5,
+      "previous_M": 885,
+      "M": 828,
+      "winning_phase": "auto_solve_debrief_skipped",
+      "winning_attempt": "auto_solve_debrief_skipped_0ec2282c641a",
+      "source_sha256": {
+        "previous": {
+          "legs.py": "4db58e4bb8ac2f6a5f2a6015d7306d9056148f7f4dbc71add5ccc73095430ae3",
+          "players.py": "399cb89e33d584bf5923bee106a1d18f6e9ab2f9560cdb152d92dcaff3a33a2c",
+          "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+        },
+        "current": {
+          "legs.py": "7fe6c94f5aef61900978da06dcefb2c7ea619f45a237da387cf77d486bfed5ad",
+          "players.py": "15da2f06f527fb890e5685e3b4c612dcf2ad687182b4fc7a3561d9b5270ec916",
+          "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+        }
+      },
+      "entrypoint": "players.py:play_level_5",
+      "entrypoint_ast_sha256": "4f13432c4ebcf76719861c06d943a8920bfd0565c23aeab0cb27f256e6c8d10b",
+      "entrypoint_calls": [
+        "clear_level_5_platform_transfer"
+      ],
+      "unchanged_leg_paths": [
+        [
+          "players.py:play_level_5",
+          "legs.py:clear_level_5_platform_transfer",
+          "legs.py:toggle_control"
+        ],
+        [
+          "players.py:play_level_5",
+          "legs.py:clear_level_5_platform_transfer",
+          "legs.py:walk_segments"
+        ]
+      ],
+      "unchanged_target_ast_sha256": {
+        "legs.py:toggle_control": "1c6d224380effce6af5af4c567d91a560ed830cf6bd809832368e346148e39a8",
+        "legs.py:walk_segments": "172de98472c2440aee3442d459565492ca5e67075d2ffd6eb5dee8383bf9bffe"
+      },
+      "literal_action_loop_only": false,
+      "literal_action_count": null
+    },
+    {
+      "game": "wa30",
+      "level": 2,
+      "previous_M": 899,
+      "M": 339,
+      "winning_phase": "reached_before_debrief",
+      "winning_attempt": "reached_before_debrief_fd8ab40c29e5",
+      "source_sha256": {
+        "previous": {
+          "legs.py": "82ef39abfa8f99e47b04a97e8530843f249325404d445514d04a20052affbabd",
+          "players.py": "f197485a4429782d1729bdb5ff731fa0954f09f42591718d2fa9cb41accf3f81",
+          "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+        },
+        "current": {
+          "legs.py": "8adf0798fb1ec0f66fc10964c4d3fea8d2847b45f04945ec6d3ea355c94ca5dc",
+          "players.py": "c75b57e35d6d2b29d204123f4fbcaa46080e657aa1def22a376a95c4926e3ee3",
+          "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+        }
+      },
+      "entrypoint": "players.py:play_level_2",
+      "entrypoint_ast_sha256": "166b37dc4be5525154e814f42e75e68735f9c308de1d3face0f9ed34d3af60b6",
+      "entrypoint_calls": [
+        "fill_bottom_slots_alongside_courier"
+      ],
+      "unchanged_leg_paths": [
+        [
+          "players.py:play_level_2",
+          "legs.py:fill_bottom_slots_alongside_courier",
+          "legs.py:walk"
+        ],
+        [
+          "players.py:play_level_2",
+          "legs.py:fill_bottom_slots_alongside_courier",
+          "legs.py:interact"
+        ]
+      ],
+      "unchanged_target_ast_sha256": {
+        "legs.py:walk": "c6cf4e0b836e3d2d2c8ebac14ccf20a7c8081a8b1037689905727533d567a9e3",
+        "legs.py:interact": "967b0310d54d1ed05ace7d6e5d33db61ba3faf21ea681ce10aadf8dc66beb3d5"
+      },
+      "literal_action_loop_only": false,
+      "literal_action_count": null
+    },
+    {
+      "game": "wa30",
+      "level": 6,
+      "previous_M": 534,
+      "M": 343,
+      "winning_phase": "reached_before_debrief",
+      "winning_attempt": "reached_before_debrief_fa0e124e31ea",
+      "source_sha256": {
+        "previous": {
+          "legs.py": "8f16468c3908114886d2b4b9411ded1ef2defcde4f5dcd79ae25583d1784666d",
+          "players.py": "53ef8ccbede07fac242ac17df4b475d2771f3d0573236ccb682424319c52c3f3",
+          "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+        },
+        "current": {
+          "legs.py": "ded752f0d99e8e29eca7ad1f22cd0be1353811a5535d3b919861b6f406927935",
+          "players.py": "4ace32874c4e34e7b00505376a85b1157e3adce536beb8efcf2481cb8a3ee921",
+          "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+        }
+      },
+      "entrypoint": "players.py:play_level_6",
+      "entrypoint_ast_sha256": "8dbd1289bbaac417fbd903558b9024465a94a83cd5ebbdda8b60ae67e9d03cf3",
+      "entrypoint_calls": [
+        "recover_two_blocks_across_courier_port"
+      ],
+      "unchanged_leg_paths": [
+        [
+          "players.py:play_level_6",
+          "legs.py:recover_two_blocks_across_courier_port",
+          "legs.py:walk"
+        ],
+        [
+          "players.py:play_level_6",
+          "legs.py:recover_two_blocks_across_courier_port",
+          "legs.py:interact"
+        ]
+      ],
+      "unchanged_target_ast_sha256": {
+        "legs.py:walk": "c6cf4e0b836e3d2d2c8ebac14ccf20a7c8081a8b1037689905727533d567a9e3",
+        "legs.py:interact": "967b0310d54d1ed05ace7d6e5d33db61ba3faf21ea681ce10aadf8dc66beb3d5"
+      },
+      "literal_action_loop_only": false,
+      "literal_action_count": null
+    },
+    {
+      "game": "cn04",
+      "level": 3,
+      "previous_M": 337,
+      "M": 245,
+      "winning_phase": "reached_before_debrief",
+      "winning_attempt": "reached_before_debrief_eea3df22f0d5",
+      "source_sha256": {
+        "previous": {
+          "legs.py": "c2024a403d923db13d75036de6dd60d5d12a0d034f2a68adb088c196d3dd5b0d",
+          "players.py": "90e339c8cb698d41e5ede2d57e825145a68125489f84ffee744044f2e51f432b",
+          "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+        },
+        "current": {
+          "legs.py": "c2024a403d923db13d75036de6dd60d5d12a0d034f2a68adb088c196d3dd5b0d",
+          "players.py": "53ef1827b112731b88c8dc13ddd0bbe27eb5a77d9c1b020ebd6f74c35d1abe91",
+          "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+        }
+      },
+      "entrypoint": "players.py:play_level_3",
+      "entrypoint_ast_sha256": "682425fedf9331f53feb5fd0d45490f3ad1dd3bae03b9cf404f9b0586b7b91c6",
+      "entrypoint_calls": [
+        "env.step"
+      ],
+      "unchanged_leg_paths": [],
+      "unchanged_target_ast_sha256": {},
+      "literal_action_loop_only": true,
+      "literal_action_count": 23
+    }
+  ]
+}

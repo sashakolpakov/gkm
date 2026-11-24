@@ -74,10 +74,10 @@ admission. The selected GPT-5.6 campaign replays 181 of 183 public levels
 ($98.9071\%$ raw coverage; $98.1166\%$ Competition-Mode score). The source audit
 admits 171 exact winning checkpoints. A computable conditional-AST novelty proxy
 decreases in 64 of 141 comparable marginals, including 21 half-or-more drops;
-13 of those coincide with static call sites to unchanged earlier legs. We publish
-the conditional marginal profiles for all 25 games and discuss their sawtooth
-patterns as observations consistent with alternating novelty and reuse, rather
-than a universal law. Source-growth counters are supporting accounting and are
+13 of those coincide with direct static call sites to unchanged earlier legs. We publish
+the conditional marginal profiles for all 25 games and examine concrete source
+structure at their dips, including direct and indirect helper reuse and a compact
+literal action program. Source-growth counters are supporting accounting and are
 not substituted for conditional complexity. These are source and replay observations; runtime call
 execution and causal search savings are unmeasured. We use pushout attachments and
 computable structure functions as concise specifications of retention and accounting,
@@ -361,9 +361,8 @@ This measurement expresses the paper's central empirical question in compressed
 bytes. It is representation-dependent and omits a full reconstruction protocol,
 including ordering and dictionary-reference metadata. It is neither a complete
 prefix-code length nor a calibrated estimate or upper bound for ideal $K$.
-It also cannot recognize all algorithmically equivalent rewrites. We retain the
-same encoding throughout the selected campaign instead of changing the measure
-to obtain a desired curve.
+It also cannot recognize all algorithmically equivalent rewrites. The encoding
+is fixed throughout the selected campaign.
 
 A new mechanism can raise the conditional marginal because a new routine must be
 described. A later variant can lower it if retained machinery suffices with small
@@ -584,23 +583,32 @@ Markdown table. All source remains from the selected GPT-5.6 campaign.
 \includegraphics[width=0.98\textwidth]{figures/marginal_complexity_profiles.png}
 \caption{Conditional marginal-complexity proxy at exact winning boundaries,
 in compressed normalized-AST novelty bytes. Orange rings mark decreases; green
-diamonds mark half-or-more drops accompanied by a static call site to an unchanged
+diamonds mark half-or-more drops accompanied by a direct call site to an unchanged
 earlier leg. These are marginal profiles, not line-growth counters. Each panel has
 its own linear ordinate. The first point describes initial construction against an
-empty AST dictionary. A trough alone does not establish executed reuse.}
+empty AST dictionary. The \texttt{dc22} and \texttt{wa30} troughs reuse unchanged
+helpers through new level routines; \texttt{ls20} makes a direct call.}
 \label{fig:marginal-profiles}
 \end{figure}
 
 Across the authenticated source history, \GKMDecreases{} of \GKMComparable{}
 comparable marginals decrease and \GKMSharpDrops{} fall by at least half.
-\GKMCoupledWitnesses{} of those sharp drops coincide with the static unchanged-leg
-call-site condition; the remaining \GKMUncoupledSharp{} do not. The figures display
+\GKMCoupledWitnesses{} of those sharp drops meet the direct player-to-unchanged-leg
+call-site condition. The figures display
 both small and large fluctuations, rather than retaining only the sharp cases.
 No sawtooth formula was imposed on admission. These observations address the
 conditional description of admitted solutions; the supporting counters below
 instead describe source growth at working-cycle and promotion boundaries. Neither
 the figures nor those counters reconstruct all failed search, inference, or
 within-cycle development effort.
+
+Table~\ref{tab:reuse-cases} identifies the source structure at five dips. The
+\texttt{dc22} and \texttt{wa30} players reach unchanged helpers through newly added
+level routines. The \texttt{cn04} L3 player is a compact literal action loop.
+The case audit verifies unchanged-definition hashes and the intervening call
+paths against adjacent exact winning sources; its full evidence is in
+\path{generated/reuse_case_audit.json}.
+\input{generated/reuse_case_audit.tex}
 
 Supporting source-growth ledgers and the paired counter comparison are reported in Appendix~\ref{sec:source-counters}.
 
@@ -646,10 +654,11 @@ complexity. The complete corrected $M$ profile is
 It falls at L2 and L5 and rises between and after those falls: a nonmonotone marginal
 profile despite increasing source-growth charges. The L5 decrease is modest
 ($885\to828$), not a sharp contraction. More line/literal source can contain a
-smaller compressed description of novel AST structure. Neither that accounting
-fact nor the two dips establishes which level mechanics changed. Under the narrow
-direct-call test, \texttt{dc22} has no static unchanged-leg case, so its dips are
-not attributed to demonstrated reuse.
+smaller compressed description of novel AST structure. At both dips, the new
+level routine calls unchanged \texttt{walk\_segments} and \texttt{toggle\_control}.
+This is indirect reuse: the player first calls the new routine, which reaches
+those retained helpers. The direct-call statistic counts a different, narrower
+source pattern and therefore omits these two cases.
 
 \subsection{The \texttt{wa30} artifact}
 The promoted \texttt{wa30} checkpoint records nine levels reached, successful fresh
@@ -669,11 +678,9 @@ exact winning source and parent-manifest hash. The source-charge profile drops f
 through 50, falls to 23, and rises again to 49. The conditional marginal profile in
 Fig.~\ref{fig:marginal-profiles} is
 \(899,339,503,521,534,343,386,684,1313\) compressed bytes. Its troughs occur at L2
-and L6. These alternating
-decreases and novelty increases are observable dynamics, but \texttt{wa30} supplies no
-coupled static case because its adjacent winning entry points name newly introduced
-level-specific routines. The claim is therefore a measured sawtooth, not an unsupported
-attribution of every trough to reuse.
+and L6. Both troughs involve reuse of unchanged \texttt{walk} and \texttt{interact}
+through the newly added level-specific routine. The player calls that new routine,
+so the narrow direct-call statistic omits this wrapper-mediated reuse.
 
 The earlier nonuniform \texttt{wa30} lineage remains archived as superseded provenance.
 It is useful for studying development history, but none of its ledger entries is
@@ -710,10 +717,9 @@ falls sharply from 737 bytes at L1 to 247 at L2 while the
 winning player contains a direct call site to unchanged \texttt{follow\_cardinal\_runs}; this is a
 coupled complexity-drop and static call-site case. Later exact marginals are
 \(259,270,289,299,292\): novelty accumulates in the route literals while the same leg
-remains unchanged, followed by a small L7 decrease. These source statements and
-successful whole-program replay do not instrument whether a particular call executed. Thus the scalar ledger remains a
-search map, while the conditional marginal and static call site provide a source-level
-factorization candidate, with runtime use still unmeasured.
+remains unchanged, followed by a small L7 decrease. Here the shared leg is named
+directly in each later player, while the changing route literals account for
+the residual description.
 
 \begin{table}[t]
 \centering
@@ -837,8 +843,9 @@ convention for $M_1$.
 
 The conditional novelty $M_L$ is defined in Eq.~\eqref{eq:conditional-ast}, and
 the complete per-game profiles are plotted in Appendix~\ref{sec:all-marginals}.
-The following audit asks which marginal drops coincide with static source evidence
-of a reference to retained machinery, rather than treating every trough as reuse.
+The following suite-wide audit counts direct static calls from the winning player
+to unchanged retained legs. The separate case audit in
+Table~\ref{tab:reuse-cases} also follows calls through newly added level routines.
 
 We call $M_L\le M_{L-1}/2$ a sharp drop, a descriptive threshold. Separately, the
 static test asks whether the AST of the later winning entry point contains a direct
@@ -846,8 +853,9 @@ named call site to a definition unchanged from the preceding winning source.
 A \emph{coupled static case} meets both tests. The parser does not establish branch
 reachability, resolve dynamic dispatch, or instrument execution. A retained call site
 can be unexecuted; successful whole-program replay alone does not resolve this.
-Thus these counts identify source factorizations consistent with reuse, not a count
-of demonstrated executed calls or a lower bound on causal reuse.
+The direct-call counts retain this fixed definition. Calls through new wrappers
+are reported separately in Table~\ref{tab:reuse-cases}. Runtime call counts were
+not collected.
 
 \begin{table}[H]
 \centering
@@ -973,20 +981,26 @@ a static call to unchanged \texttt{follow\_cardinal\_runs}; later route literals
 add novelty while that leg remains unchanged. A matched experiment would still
 be needed to attribute a reduction in discovery effort to access to the library.
 
-The other cases show why the pattern and its cause must be distinguished.
-\texttt{wa30} has marginal troughs but names newly introduced level-specific
-routines under the narrow adjacent direct-call test. \texttt{dc22} has two dips
-in $M$ even though its positive source-growth charges increase at every measured
-step. Its L5 marginal dip survives correction of the source reconstruction but
-is much smaller than the earlier incomplete audit implied. Those cases establish
-nonmonotone conditional novelty, without establishing that an executed old leg
-caused the decrease. Whole-program replay does not instrument individual calls.
+The source shows reuse in all four \texttt{dc22}/\texttt{wa30} dips examined here.
+The new \texttt{dc22} routines call unchanged \texttt{walk\_segments} and
+\texttt{toggle\_control}; the new \texttt{wa30} routines call unchanged \texttt{walk}
+and \texttt{interact}. These are concrete call paths through an added wrapper,
+which the direct-call test excludes. The corrected \texttt{dc22} L5 dip is modest,
+but its unchanged helpers remain available and referenced.
 
-No sawtooth formula was enforced and no result shows that oscillation caused
-coverage. The structure-function account separates retained description from
-conditional novelty; the source-counter appendix separately reconciles working
-and promoted baselines. These measurements describe a first-success lineage,
-not an optimized Kolmogorov frontier or a free energy selection mechanism.
+There is also a concrete alternative source pattern. In \texttt{cn04} L3,
+$M$ falls from 337 to 245 bytes and the new player is a 23-action literal loop
+whose only call is \texttt{env.step}. That player bypasses the retained solver
+legs. Thus the observed dips include both reuse through retained helpers and a
+compact action program; Table~\ref{tab:reuse-cases} identifies which occurs in
+each examined case. This distinction follows from the winning source, rather
+than from the scalar curve alone.
+
+Admission remains execution and replay; the marginal curves analyze the resulting
+first-success lineage. The structure-function account separates retained description
+from conditional novelty, while the source-counter appendix reconciles working and
+promoted baselines. The concrete source cases explain how the retained program
+and the new residual code contribute to each measured marginal.
 
 \subsection{Limits and controlled follow-up}
 The 181/183 result is replay of solutions on the public set. It is not a held-out
@@ -1050,11 +1064,11 @@ marginal. The complete values and input hashes are in
 \includegraphics[width=\textwidth,height=0.88\textheight,keepaspectratio]{figures/marginal_complexity_all_games.png}
 \caption{Conditional marginal profiles for all 25 public games, using separate
 linear scales. Orange rings mark decreases and green diamonds mark sharp decreases
-with static unchanged-leg call sites. Panel counts report measured marginals, not
+with direct unchanged-leg call sites. Panel counts report measured marginals, not
 solved levels: a replay-verified level can lack the exact source needed for this
 analysis. Gaps are unknown, not zero. Some games show repeated rises and falls;
-others provide only a short or incomplete segment. The figure does not assert a
-universal sawtooth law or instrument runtime call execution.}
+others provide only a short or incomplete segment. Direct and wrapper-mediated
+reuse are distinguished in Table~\ref{tab:reuse-cases}.}
 \label{fig:all-marginals}
 \end{figure}
 \clearpage

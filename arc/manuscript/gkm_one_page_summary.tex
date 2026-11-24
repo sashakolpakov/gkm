@@ -79,8 +79,10 @@ $1058,604,716,885,828,1379$ bytes: two dips despite increasing promoted-source g
 \textbf{\texttt{wa30}.} Its conditional profile has troughs at L2 and L6.
 \textbf{\texttt{ls20}.} The L2 drop from 737 to 247 bytes coincides with a static
 call to unchanged \texttt{follow\_cardinal\_runs}; later route data add novelty
-while that leg remains unchanged. New machinery followed by economical reuse is
-the proposed explanation, not a demonstrated cause of every trough.
+while that leg remains unchanged. Both \texttt{dc22} dips and both \texttt{wa30}
+troughs also call unchanged helpers through newly added level routines: indirect reuse.
+By contrast, \texttt{cn04} L3 falls from 337 to 245 bytes with a 23-action player
+whose only call is \texttt{env.step}. The case audit records these concrete source patterns.
 
 \section*{Supporting source accounting}
 Recorded $C$ compares with the working workspace before a winning cycle; $G$ compares

@@ -1245,6 +1245,13 @@ def main() -> int:
         if len(marginal_files) != 2:
             raise RuntimeError("conditional marginal profiles did not produce JSON and Markdown")
 
+        _run([sys.executable, "scripts/audit_reuse_cases.py",
+              "--audit", str(joint_out), "--output-dir", str(generated_dir)],
+             cwd=manuscript)
+        reuse_case_files = tuple(sorted(generated_dir.glob("reuse_case_audit.*")))
+        if len(reuse_case_files) != 3:
+            raise RuntimeError("reuse-case audit did not produce JSON, Markdown, and TeX")
+
         figure_dir = tmp / "figures"
         env = os.environ.copy()
         env.setdefault("MPLCONFIGDIR", str(tmp / "matplotlib"))
@@ -1275,7 +1282,7 @@ def main() -> int:
                 shutil.copy2(path, tracked_generated / path.name)
             for path in generated_tables:
                 shutil.copy2(path, tracked_generated / path.name)
-            for path in (*comparison_files, *marginal_files):
+            for path in (*comparison_files, *marginal_files, *reuse_case_files):
                 shutil.copy2(path, tracked_generated / path.name)
             docs_generated = repo / "docs" / "generated"
             docs_generated.mkdir(parents=True, exist_ok=True)
@@ -1362,6 +1369,7 @@ def main() -> int:
                         *generated_tables,
                         *comparison_files,
                         *marginal_files,
+                        *reuse_case_files,
                         rst_out,
                         taint_out,
                         action_boundary_out,
@@ -1388,6 +1396,7 @@ def main() -> int:
             "arc/test_audit_marginal_literal_reuse.py",
             "arc/manuscript/scripts/test_generate_figures.py",
             "arc/manuscript/scripts/test_generate_marginal_profiles.py",
+            "arc/manuscript/scripts/test_audit_reuse_cases.py",
             "arc/manuscript/scripts/test_compare_source_charges.py",
             "arc/manuscript/scripts/test_generate_empirical_tables.py",
             "arc/manuscript/scripts/test_reproduce_manuscript.py",
