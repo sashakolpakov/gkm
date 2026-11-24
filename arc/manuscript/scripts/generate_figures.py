@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Regenerate figures used by the Gödel--Kolmogorov Machine manuscript.
 
-Numerical inputs are read from the replay-validated campaign checkpoints rather
-than duplicated in this script.  The rendering parameters are pinned to
+Conditional marginals come from the exact-winning-source audit; supporting source
+charges come from replay-validated checkpoints. Rendering parameters are pinned to
 reproduce the delivered PNG geometry under Matplotlib 3.10.8:
 
 * figures/ls20_sawtooth.png: 1728 x 912 pixels
 * figures/bounded_campaign_profiles.png: 2034 x 1072 pixels
 * figures/marginal_complexity_profiles.png: 2448 x 912 pixels
 * figures/source_charge_comparison.png: 2448 x 912 pixels
+* figures/marginal_complexity_all_games.png: 2688 x 2880 pixels
 
 The script also emits PDF versions for vector reuse.
 """
@@ -44,6 +45,7 @@ EXPECTED_PNG_SIZES: Final[Mapping[str, tuple[int, int]]] = {
     "bounded_campaign_profiles.png": (2034, 1072),
     "marginal_complexity_profiles.png": (2448, 912),
     "source_charge_comparison.png": (2448, 912),
+    "marginal_complexity_all_games.png": (2688, 2880),
 }
 
 
@@ -74,6 +76,12 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         default=Path(__file__).resolve().parents[1] / "generated/source_charge_comparison.json",
         help="Authenticated paired recorded-charge/promoted-growth audit JSON.",
+    )
+    parser.add_argument(
+        "--marginal-data",
+        type=Path,
+        default=Path(__file__).resolve().parents[1] / "generated/conditional_marginal_profiles.json",
+        help="Conditional AST novelty at exact winning-source boundaries.",
     )
     parser.add_argument(
         "--skip-size-check",
@@ -127,18 +135,14 @@ def _save_pair(
 
 
 def make_ls20_sawtooth(
-    output_dir: Path, charges: Sequence[int],
+    output_dir: Path, profile: dict,
 ) -> None:
-    """Create the seven-level ls20 historical marginal-charge profile."""
-    levels = tuple(range(1, len(charges) + 1))
+    """Show the conditional marginal, rather than its source-charge surrogate."""
     fig, ax = plt.subplots(figsize=(7.2, 3.8))
-    ax.plot(
-        levels,
-        charges,
-        marker="o",
-        linewidth=1.8,
-    )
-    _set_common_axes(ax, levels)
+    _plot_conditional_marginal(ax, profile)
+    ax.set_xlabel("Solved level")
+    ax.set_ylabel(r"Conditional AST novelty $M_L$ (compressed bytes)")
+    ax.legend(frameon=False, fontsize=9)
     fig.tight_layout()
     _save_pair(fig, output_dir, "ls20_sawtooth", tight_bbox=False)
     plt.close(fig)
@@ -178,47 +182,75 @@ def make_bounded_campaign_profiles(
     plt.close(fig)
 
 
-def make_marginal_complexity_profiles(
-    output_dir: Path, profiles: Mapping[str, Sequence[int]],
-) -> None:
-    """Contrast the strongest raw sawtooth with the two uniform histories.
+def _plot_conditional_marginal(ax: plt.Axes, profile: dict) -> None:
+    levels, values = profile["levels"], profile["M_bytes"]
+    ax.plot(levels, values, color="#245e91", marker="o", markersize=4,
+            linewidth=1.6, label=r"Conditional novelty $M_L$")
+    drops = [i for i in range(1, len(values)) if values[i] is not None
+             and values[i - 1] is not None and values[i] < values[i - 1]]
+    ax.scatter([levels[i] for i in drops], [values[i] for i in drops],
+               facecolors="none", edgecolors="#d46a1f", s=67, linewidths=1.6,
+               zorder=4, label="Marginal decrease")
+    coupled = profile["sharp_drop_with_static_call_levels"]
+    ax.scatter(coupled, [values[level - 1] for level in coupled],
+               marker="D", color="#008060", s=29, zorder=5,
+               label="Sharp drop + static call site")
+    ax.set_xticks(levels)
+    ax.set_xlim(0.6, len(levels) + 0.4)
+    ax.set_ylim(bottom=0)
+    ax.grid(True, alpha=0.22)
 
-    ``su15`` is selected mechanically by direction reversals in the stored
-    ledger. Charges use the source before each harness cycle as their baseline,
-    not necessarily the previous promotion. Scalar shape does not establish
-    runtime reuse. ``wa30`` and ``ls20`` are the complete uniform promotion
-    histories used for the manuscript's source-level case studies.
-    """
-    order = ("su15", "wa30", "ls20")
+
+def make_marginal_complexity_profiles(output_dir: Path, payload: dict) -> None:
+    """Show the three declared cases; all other games appear in the suite figure."""
+    order = ("dc22", "wa30", "ls20")
+    profiles = {g["game"]: g for g in payload["games"]}
     fig, axes = plt.subplots(1, 3, figsize=(10.2, 3.8))
-    colors = {"su15": "#6a3d9a", "wa30": "#c23b22", "ls20": "#007c91"}
     subtitles = {
-        "su15": "strongest raw oscillation",
-        "wa30": "uniform sawtooth history",
-        "ls20": "uniform source audit",
+        "dc22": "conditional dips despite source growth",
+        "wa30": "complete uniform history",
+        "ls20": "unchanged-leg call site",
     }
     for ax, game in zip(axes, order):
-        charges = profiles[game]
-        levels = tuple(range(1, len(charges) + 1))
-        ax.plot(
-            levels,
-            charges,
-            marker="o",
-            linewidth=1.8,
-            color=colors[game],
-        )
+        _plot_conditional_marginal(ax, profiles[game])
         ax.set_title(f"{game}: {subtitles[game]}", fontsize=9)
-        ax.set_xlabel("Promoted level")
-        ax.set_xticks(levels)
-        ax.grid(True, alpha=0.25)
-    axes[0].set_ylabel(r"Recorded workspace charge $C_k$")
-    fig.tight_layout()
+        ax.set_xlabel("Solved level")
+    axes[0].set_ylabel(r"Conditional AST novelty $M_L$ (compressed bytes)")
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="upper center", ncol=3, frameon=False, fontsize=10)
+    fig.tight_layout(rect=(0, 0, 1, 0.87))
     _save_pair(
         fig,
         output_dir,
         "marginal_complexity_profiles",
         tight_bbox=False,
     )
+    plt.close(fig)
+
+
+def make_all_marginal_profiles(output_dir: Path, payload: dict) -> None:
+    """Publish every game, including missing and unsolved boundaries, without smoothing."""
+    games = payload["games"]
+    if len(games) != 25:
+        raise ValueError("the frozen suite must contain 25 games")
+    fig, axes = plt.subplots(5, 5, figsize=(11.2, 12.0))
+    for index, (ax, profile) in enumerate(zip(axes.flat, games)):
+        _plot_conditional_marginal(ax, profile)
+        observed = sum(value is not None for value in profile["M_bytes"])
+        ax.set_title(f"{profile['game']}  ({observed}/{profile['total_levels']} measured)", fontsize=10)
+        ax.tick_params(labelsize=8)
+        if not observed:
+            ax.text(0.5, 0.5, "No exact-source\nmarginal available", ha="center", va="center",
+                    transform=ax.transAxes, fontsize=8, wrap=True)
+            ax.set_ylim(0, 1)
+            ax.set_yticks([])
+        if index // 5 == 4:
+            ax.set_xlabel("Solved level", fontsize=9)
+    handles, labels = axes.flat[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="upper center", ncol=3, frameon=False, fontsize=11)
+    fig.supylabel(r"Conditional AST novelty $M_L$ (compressed bytes; separate linear scales)", fontsize=12)
+    fig.tight_layout(rect=(0.02, 0, 1, 0.965), h_pad=1.3)
+    _save_pair(fig, output_dir, "marginal_complexity_all_games", tight_bbox=False)
     plt.close(fig)
 
 
@@ -299,21 +331,18 @@ def main() -> int:
     output_dir: Path = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
     solutions_dir: Path = args.solutions_dir
-    ls20_charges = _load_profile(solutions_dir, "ls20")
+    marginals = json.loads(args.marginal_data.read_text())
     bounded_profiles = {
         game: _load_profile(solutions_dir, game)
         for game in BOUNDED_GAMES
     }
-    comparison_profiles = {
-        game: _load_profile(solutions_dir, game)
-        for game in ("su15", "wa30", "ls20")
-    }
 
     # Ignore user matplotlibrc files so the paper's defaults remain reproducible.
     plt.rcdefaults()
-    make_ls20_sawtooth(output_dir, ls20_charges)
+    make_ls20_sawtooth(output_dir, next(g for g in marginals["games"] if g["game"] == "ls20"))
     make_bounded_campaign_profiles(output_dir, bounded_profiles)
-    make_marginal_complexity_profiles(output_dir, comparison_profiles)
+    make_marginal_complexity_profiles(output_dir, marginals)
+    make_all_marginal_profiles(output_dir, marginals)
     make_source_charge_comparison(output_dir, json.loads(args.comparison_data.read_text()))
 
     if not args.skip_size_check:
@@ -323,6 +352,7 @@ def main() -> int:
         "ls20_sawtooth",
         "bounded_campaign_profiles",
         "marginal_complexity_profiles",
+        "marginal_complexity_all_games",
         "source_charge_comparison",
     ):
         print(output_dir / f"{stem}.png")

@@ -32,7 +32,8 @@ Docs: \url{https://sashakolpakov.github.io/gkm/} \;·\;
 Manuscript: \texttt{arc/manuscript/arc\_agi3.tex}}
 
 The G\"odel--Kolmogorov Machine (GKM) retains verified executable solver components
-and exposes their source history for audit. The proposer contract, public Arena
+and exposes their source history for audit. The central question is how much new
+description the next verified solution needs, given the retained program. The public Arena
 interface, blank scaffold, and gate are shared across games; learned programs remain
 game- and level-dependent. The intellectual lineage is Schmidhuber's G\"odel machine,
 PowerPlay, and artificial curiosity.
@@ -62,30 +63,32 @@ Stored paths contain 7001 actions and the scorecard records 7069 API calls. Disc
 with cloned environments, failed proposals, and inference cost exceed these replay
 totals. This public-set result does not measure held-out generalization.
 
-\section*{Source evidence and corrections}
-The source proxy counts nonblank, noncomment lines plus AST container-literal elements
-in \texttt{legs.py} and \texttt{players.py}. For \texttt{dc22}, the recorded workspace-local
-charge totals 650. On authenticated L2--L6 pairs, $C$ sums to 601 and $G$ to 801,
-taking retained size from 50 to 851; initial $G_1$ is excluded. The earlier manuscript conflated these baselines and its audit
-used an incomplete source reconstruction. The solver, replay, and counters were valid.
+\section*{Conditional marginal complexity and the sawtooth}
+The ideal coordinate is $K(P_k\mid P_{k-1})$, not a difference in source size.
+The empirical proxy $M_k$ compresses novel normalized-AST statements after removing
+literal matches to the preceding exact winning program. It is representation-dependent,
+omits complete decoding metadata and is not a calibrated estimate of ideal $K$.
 
-The exact acquisition-source audit admits 171 checkpoints, 144 adjacent transitions,
-and 141 marginal comparisons. It excludes \texttt{ft09} L2, \texttt{tr87} L1--L6,
-\texttt{g50t} L3/L4, and \texttt{r11l} L3; missing source is not bridged. There are
-54 static call-site cases referencing unchanged earlier legs, including 13 with
-half-or-more conditional novelty drops. Runtime call execution is unmeasured.
+The exact-source audit admits 171 winning checkpoints and 141 comparable marginals:
+64 decrease, including 21 half-or-more drops. Thirteen sharp drops coincide with
+static calls to unchanged earlier legs; runtime call execution is unmeasured. Missing
+sources are not bridged. The main figure plots three cases and the appendix all 25 games.
 
-\textbf{\texttt{ls20}.} The complete history has a conditional-AST drop from 737 to 247
-compressed novelty bytes at L2, with a static call site to unchanged
-\texttt{follow\_cardinal\_runs}. The line/literal ledger separately totals 760.
-\textbf{\texttt{wa30}.} Its complete nine-level ledger totals 318 and oscillates without
-an adjacent unchanged-leg case under the narrow test. Its replay has 597 actions.
-Sawtooth shape is observed, not enforced or shown to cause performance.
+\textbf{\texttt{dc22}.} Conditional novelty is
+$1058,604,716,885,828,1379$ bytes: two dips despite increasing promoted-source growth.
+\textbf{\texttt{wa30}.} Its conditional profile has troughs at L2 and L6.
+\textbf{\texttt{ls20}.} The L2 drop from 737 to 247 bytes coincides with a static
+call to unchanged \texttt{follow\_cardinal\_runs}; later route data add novelty
+while that leg remains unchanged. New machinery followed by economical reuse is
+the proposed explanation, not a demonstrated cause of every trough.
 
-The paired audit has 134 values in 24 games; 18 of 20 histories with enough
-consecutive values reverse in both series. On aligned ranges, \texttt{wa30} has two
-$C/G$ reversals each, \texttt{ls20} one each, and \texttt{dc22} two in $C$ versus none
-in $G$. Its recorded L5 trough is a baseline effect. Missing pairs are not bridged.
+\section*{Supporting source accounting}
+Recorded $C$ compares with the working workspace before a winning cycle; $G$ compares
+authenticated adjacent promoted states. For \texttt{dc22}, L2--L6 totals are $C=601$
+and $G=801$, with retained size growing from 50 to 851; full recorded $C$ stays 650.
+The manuscript interpretation and source reconstruction were corrected without
+repairing the valid solver, counters or replay. These counters neither replace
+conditional complexity nor reconstruct all failed discovery work.
 
 \section*{Limits and next evaluation}
 Actual calls need instrumentation. Causal search savings require a matched-model,

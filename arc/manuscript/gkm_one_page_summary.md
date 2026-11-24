@@ -3,7 +3,8 @@
 *Alexander Kolpakov* — [code and artifacts](https://github.com/sashakolpakov/gkm) · [manuscript](arc_agi3.tex)
 
 The Gödel–Kolmogorov Machine (GKM) retains verified executable solver components and
-exposes their source history for audit. The proposer contract, public Arena interface,
+exposes their source history for audit. Its central question is how much new description
+the next verified solution needs, given the retained program. The proposer contract, public Arena interface,
 blank scaffold, and admission gate are shared across games; learned programs remain
 game- and level-dependent. The intellectual lineage is Schmidhuber’s Gödel machine,
 PowerPlay, and artificial curiosity.
@@ -27,7 +28,7 @@ no-debrief setting is distinct from inherited paid-debrief histories.
 | `wa30` uniform history | 9/9 | 597 | 318 |
 | `ls20` uniform history | 7/7 | 365 | 760 |
 
-The frozen release contains one checkpoint record for every promoted level. The generated all-game marginal table is `arc/manuscript/generated/marginal_complexity_by_level.md`. The `wa30` and `ls20` rows additionally have one uniform, audited history sidecar per level. `marginal_C` means positive net retained-description growth per source file. Additions and deletions within the same file are netted before the positive part, so same-size replacement can receive zero. Its baseline is the source in the working workspace before that harness cycle; resumed WIP can already be present, so it is not necessarily growth from the preceding promoted source.
+The frozen release contains one checkpoint record for every promoted level. The supporting source-charge table is `arc/manuscript/generated/marginal_complexity_by_level.md`. The `wa30` and `ls20` rows additionally have one uniform, audited history sidecar per level. `marginal_C` means positive net retained-description growth per source file. Additions and deletions within the same file are netted before the positive part, so same-size replacement can receive zero. Its baseline is the source in the working workspace before that harness cycle; resumed WIP can already be present, so it is not necessarily growth from the preceding promoted source. The conditional marginal-complexity proxy is published separately in `arc/manuscript/generated/conditional_marginal_profiles.md`; the source-growth counter is not a conditional-complexity measurement.
 <!-- END GENERATED: ARC_ARTIFACT_STATUS -->
 
 The Competition-Mode replay scores 98.1166%; raw coverage is 181/183 = 98.9071%.
@@ -35,33 +36,33 @@ The stored paths contain 7001 actions; the official scorecard records 7069 API c
 These figures exclude clone-enabled discovery interaction, failed proposals, and
 model inference. They do not measure held-out generalization or full discovery cost.
 
-**Source accounting and reuse evidence.** The proxy counts nonblank, noncomment lines
-plus AST container-literal elements in `legs.py` and `players.py`. The historical
-`dc22` recorded total is 650 relative to winning-iteration working baselines. On
-authenticated L2–L6 pairs, C sums to 601 and G to 801, taking retained size from 50
-to 851; the initial scaffold is excluded from primary G comparisons.
-The manuscript had conflated these baselines. The solver, replay, and counters were
-valid; the audit now uses its complete source snapshot.
+**Conditional marginal complexity.** The ideal question is K(next program | retained
+program), not the difference in their source sizes. The empirical proxy M compresses
+novel normalized-AST statements after removing literal matches to the preceding exact
+winning program. It is representation-dependent, omits complete decoding metadata,
+and does not estimate ideal K with a calibrated error bound.
 
-The strict acquisition-source audit admits 171 checkpoints, with 144 adjacent
-transitions and 141 comparable marginals. Ten replay-verified boundaries lack exact
-acquisition source: `ft09` L2, `tr87` L1–L6, `g50t` L3/L4, and `r11l` L3. Missing
-levels are not bridged. The audit finds 54 static call-site cases referencing unchanged
-earlier legs, including 13 with half-or-more novelty drops. Runtime call execution
-is unmeasured; source calls plus whole-program replay do not prove executed reuse.
+The audit admits 171 exact winning checkpoints and 141 comparable marginals: 64
+decrease, including 21 half-or-more drops. Thirteen sharp drops coincide with static
+calls to unchanged earlier legs; runtime call execution remains unmeasured. Missing
+source is not bridged. The main figure compares three cases; the appendix plots all
+25 games, including unknown and unclaimed boundaries.
 
-The complete `ls20` history has a conditional-AST novelty drop from 737 to 247 bytes
-at L2, with a static call site to unchanged `follow_cardinal_runs`. `wa30` has a
-complete oscillating historical ledger without an adjacent unchanged-leg case under
-that narrow test. Sawtooth shape is observed, not enforced or shown to cause performance.
+The `dc22` proxy is 1058, 604, 716, 885, 828, 1379 compressed bytes: it has two dips
+despite strictly increasing promoted-source growth. `wa30` has troughs at L2 and L6.
+In `ls20`, M falls from 737 to 247 at L2, with a static call site to unchanged
+`follow_cardinal_runs`; later route data add novelty while the leg remains unchanged.
+These patterns motivate the explanation of new machinery followed by economical
+reuse, without establishing that every dip was caused by an executed retained call.
 
-The primary paired C/G audit has 134 values across 24 games. Eighteen of the 20
-histories with enough consecutive values reverse in both series. On aligned domains,
-`wa30` has two C/G reversals each and `ls20` one each. `dc22` has two in C but none
-in G: its recorded L5 trough is a baseline effect. Missing pairs are not bridged;
-phase-fallback candidates are reported separately. See the paired table and figure
-in manuscript §6.5 and `generated/source_charge_comparison.md`.
+**Supporting source counters.** Recorded C compares with the workspace before a
+winning cycle; G compares authenticated adjacent promoted states. For `dc22`, paired
+L2–L6 totals are C=601 and G=801 as retained size rises from 50 to 851. The full
+recorded C remains 650. The earlier manuscript interpretation and incomplete source
+reconstruction were corrected without repairing the valid solver, counter or replay.
+These counters neither replace conditional marginals nor reconstruct all failed
+work over the discovery process.
 
 A matched-model, matched-budget library ablation and runtime call instrumentation
-are needed to test causal search savings. See [revision evidence](REVISION_EVIDENCE.md)
-and [response to comments](RESPONSE_TO_REVIEWS.md) for the corrections and limits.
+are needed to test causal search savings. See [marginal profiles](generated/conditional_marginal_profiles.md),
+[revision evidence](REVISION_EVIDENCE.md) and [response to comments](RESPONSE_TO_REVIEWS.md).

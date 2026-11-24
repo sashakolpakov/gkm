@@ -180,14 +180,17 @@ def summary_markdown(artifacts: tuple[Artifact, ...]) -> str:
         [
             "",
             "The frozen release contains one checkpoint record for every promoted "
-            "level. The generated all-game marginal table is "
+            "level. The supporting source-charge table is "
             "`arc/manuscript/generated/marginal_complexity_by_level.md`. The `wa30` "
             "and `ls20` rows additionally have one uniform, audited history sidecar "
             "per level. "
             f"`{MARGINAL_COMPLEXITY_CONTRACT['field']}` means "
             f"{MARGINAL_COMPLEXITY_CONTRACT['label']}. "
             f"{MARGINAL_COMPLEXITY_CONTRACT['limitation'].capitalize()}. "
-            f"{WORKSPACE_BASELINE_NOTE}",
+            f"{WORKSPACE_BASELINE_NOTE} "
+            "The conditional marginal-complexity proxy is published separately in "
+            "`arc/manuscript/generated/conditional_marginal_profiles.md`; "
+            "the source-growth counter is not a conditional-complexity measurement.",
         ]
     )
     return "\n".join(rows)

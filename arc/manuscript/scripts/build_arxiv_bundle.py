@@ -25,6 +25,7 @@ SOURCE_FILES = (
     Path("generated/comparator_stats.tex"),
     Path("generated/source_charge_comparison.tex"),
     Path("figures/marginal_complexity_profiles.png"),
+    Path("figures/marginal_complexity_all_games.png"),
     Path("figures/bounded_campaign_profiles.png"),
     Path("figures/source_charge_comparison.png"),
 )

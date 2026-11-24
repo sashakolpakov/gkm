@@ -1,0 +1,1017 @@
+{
+  "schema": 1,
+  "dataset": "frozen GPT-5.6 campaign",
+  "measurement": "zlib-9 bytes of normalized top-level AST statements in the current exact winning program that are not literal members of the preceding exact winning program",
+  "initial_boundary": "M1 describes the initial winning program against an empty AST dictionary; it is not growth from an authenticated earlier promotion",
+  "missing_values": "unknown winning source, missing predecessor, or unclaimed level; never zero-filled or connected across gaps",
+  "interpretation": "conditional AST novelty proxy, not ideal K, a complete decoding code, runtime reuse, discovery cost, or an admission rule",
+  "summary": {
+    "exact_winning_checkpoints": 171,
+    "transitions_with_level_to_level_marginal_comparison": 141,
+    "marginal_decreases": 64,
+    "sharp_half_or_more_marginal_drops": 21,
+    "hard_literal_world_model_reuse_witnesses": 54,
+    "sharp_drops_with_static_call": 13,
+    "games_with_direction_reversals": 22,
+    "direction_reversals": 62
+  },
+  "games": [
+    {
+      "game": "ar25",
+      "reached": 8,
+      "total_levels": 8,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "M_bytes": [
+        622,
+        175,
+        196,
+        181,
+        189,
+        199,
+        198,
+        198
+      ],
+      "exact_winning_source": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "static_unchanged_leg_call_levels": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "sharp_drop_with_static_call_levels": [
+        2
+      ],
+      "direction_reversals": 4
+    },
+    {
+      "game": "bp35",
+      "reached": 9,
+      "total_levels": 9,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "M_bytes": [
+        3373,
+        3707,
+        1940,
+        1786,
+        2418,
+        568,
+        2895,
+        1554,
+        1418
+      ],
+      "exact_winning_source": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "static_unchanged_leg_call_levels": [],
+      "sharp_drop_with_static_call_levels": [],
+      "direction_reversals": 5
+    },
+    {
+      "game": "cd82",
+      "reached": 6,
+      "total_levels": 6,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "M_bytes": [
+        613,
+        344,
+        511,
+        486,
+        498,
+        520
+      ],
+      "exact_winning_source": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "static_unchanged_leg_call_levels": [
+        6
+      ],
+      "sharp_drop_with_static_call_levels": [],
+      "direction_reversals": 3
+    },
+    {
+      "game": "cn04",
+      "reached": 6,
+      "total_levels": 6,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "M_bytes": [
+        710,
+        337,
+        245,
+        250,
+        376,
+        243
+      ],
+      "exact_winning_source": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "static_unchanged_leg_call_levels": [
+        2,
+        4,
+        5,
+        6
+      ],
+      "sharp_drop_with_static_call_levels": [
+        2
+      ],
+      "direction_reversals": 2
+    },
+    {
+      "game": "dc22",
+      "reached": 6,
+      "total_levels": 6,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "M_bytes": [
+        1058,
+        604,
+        716,
+        885,
+        828,
+        1379
+      ],
+      "exact_winning_source": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "static_unchanged_leg_call_levels": [],
+      "sharp_drop_with_static_call_levels": [],
+      "direction_reversals": 3
+    },
+    {
+      "game": "ft09",
+      "reached": 6,
+      "total_levels": 6,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "M_bytes": [
+        1981,
+        null,
+        null,
+        2672,
+        5008,
+        3730
+      ],
+      "exact_winning_source": [
+        true,
+        false,
+        true,
+        true,
+        true,
+        true
+      ],
+      "static_unchanged_leg_call_levels": [
+        6
+      ],
+      "sharp_drop_with_static_call_levels": [],
+      "direction_reversals": 1
+    },
+    {
+      "game": "g50t",
+      "reached": 7,
+      "total_levels": 7,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "M_bytes": [
+        2998,
+        3297,
+        null,
+        null,
+        null,
+        2528,
+        1091
+      ],
+      "exact_winning_source": [
+        true,
+        true,
+        false,
+        false,
+        true,
+        true,
+        true
+      ],
+      "static_unchanged_leg_call_levels": [],
+      "sharp_drop_with_static_call_levels": [],
+      "direction_reversals": 0
+    },
+    {
+      "game": "ka59",
+      "reached": 7,
+      "total_levels": 7,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "M_bytes": [
+        810,
+        301,
+        227,
+        275,
+        189,
+        239,
+        376
+      ],
+      "exact_winning_source": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "static_unchanged_leg_call_levels": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "sharp_drop_with_static_call_levels": [
+        2
+      ],
+      "direction_reversals": 3
+    },
+    {
+      "game": "lf52",
+      "reached": 8,
+      "total_levels": 10,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "M_bytes": [
+        1758,
+        1602,
+        157,
+        2196,
+        3028,
+        1992,
+        3708,
+        576,
+        null,
+        null
+      ],
+      "exact_winning_source": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false
+      ],
+      "static_unchanged_leg_call_levels": [
+        3
+      ],
+      "sharp_drop_with_static_call_levels": [
+        3
+      ],
+      "direction_reversals": 4
+    },
+    {
+      "game": "lp85",
+      "reached": 8,
+      "total_levels": 8,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "M_bytes": [
+        698,
+        189,
+        186,
+        177,
+        192,
+        213,
+        193,
+        195
+      ],
+      "exact_winning_source": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "static_unchanged_leg_call_levels": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "sharp_drop_with_static_call_levels": [
+        2
+      ],
+      "direction_reversals": 3
+    },
+    {
+      "game": "ls20",
+      "reached": 7,
+      "total_levels": 7,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "M_bytes": [
+        737,
+        247,
+        259,
+        270,
+        289,
+        299,
+        292
+      ],
+      "exact_winning_source": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "static_unchanged_leg_call_levels": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "sharp_drop_with_static_call_levels": [
+        2
+      ],
+      "direction_reversals": 2
+    },
+    {
+      "game": "m0r0",
+      "reached": 6,
+      "total_levels": 6,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "M_bytes": [
+        673,
+        265,
+        584,
+        868,
+        574,
+        314
+      ],
+      "exact_winning_source": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "static_unchanged_leg_call_levels": [
+        2,
+        5,
+        6
+      ],
+      "sharp_drop_with_static_call_levels": [
+        2
+      ],
+      "direction_reversals": 2
+    },
+    {
+      "game": "r11l",
+      "reached": 6,
+      "total_levels": 6,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "M_bytes": [
+        1714,
+        4565,
+        null,
+        null,
+        6193,
+        3404
+      ],
+      "exact_winning_source": [
+        true,
+        true,
+        false,
+        true,
+        true,
+        true
+      ],
+      "static_unchanged_leg_call_levels": [],
+      "sharp_drop_with_static_call_levels": [],
+      "direction_reversals": 0
+    },
+    {
+      "game": "re86",
+      "reached": 8,
+      "total_levels": 8,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "M_bytes": [
+        1857,
+        1853,
+        2687,
+        3408,
+        4196,
+        1737,
+        1649,
+        2870
+      ],
+      "exact_winning_source": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "static_unchanged_leg_call_levels": [],
+      "sharp_drop_with_static_call_levels": [],
+      "direction_reversals": 3
+    },
+    {
+      "game": "s5i5",
+      "reached": 8,
+      "total_levels": 8,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "M_bytes": [
+        1984,
+        1941,
+        1051,
+        1073,
+        952,
+        958,
+        1160,
+        1099
+      ],
+      "exact_winning_source": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "static_unchanged_leg_call_levels": [],
+      "sharp_drop_with_static_call_levels": [],
+      "direction_reversals": 4
+    },
+    {
+      "game": "sb26",
+      "reached": 8,
+      "total_levels": 8,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "M_bytes": [
+        1535,
+        1796,
+        158,
+        158,
+        2080,
+        2297,
+        5655,
+        3904
+      ],
+      "exact_winning_source": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "static_unchanged_leg_call_levels": [
+        3,
+        4
+      ],
+      "sharp_drop_with_static_call_levels": [
+        3
+      ],
+      "direction_reversals": 3
+    },
+    {
+      "game": "sc25",
+      "reached": 6,
+      "total_levels": 6,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "M_bytes": [
+        1131,
+        279,
+        295,
+        325,
+        352,
+        358
+      ],
+      "exact_winning_source": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "static_unchanged_leg_call_levels": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "sharp_drop_with_static_call_levels": [
+        2
+      ],
+      "direction_reversals": 1
+    },
+    {
+      "game": "sk48",
+      "reached": 8,
+      "total_levels": 8,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "M_bytes": [
+        2164,
+        900,
+        512,
+        573,
+        807,
+        1526,
+        1056,
+        1073
+      ],
+      "exact_winning_source": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "static_unchanged_leg_call_levels": [],
+      "sharp_drop_with_static_call_levels": [],
+      "direction_reversals": 3
+    },
+    {
+      "game": "sp80",
+      "reached": 6,
+      "total_levels": 6,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "M_bytes": [
+        1525,
+        1450,
+        1288,
+        2011,
+        486,
+        274
+      ],
+      "exact_winning_source": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "static_unchanged_leg_call_levels": [
+        2,
+        3,
+        5
+      ],
+      "sharp_drop_with_static_call_levels": [
+        5
+      ],
+      "direction_reversals": 2
+    },
+    {
+      "game": "su15",
+      "reached": 9,
+      "total_levels": 9,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "M_bytes": [
+        1183,
+        1517,
+        1433,
+        3143,
+        3486,
+        1246,
+        161,
+        2364,
+        5316
+      ],
+      "exact_winning_source": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "static_unchanged_leg_call_levels": [
+        3,
+        7
+      ],
+      "sharp_drop_with_static_call_levels": [
+        7
+      ],
+      "direction_reversals": 4
+    },
+    {
+      "game": "tn36",
+      "reached": 7,
+      "total_levels": 7,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "M_bytes": [
+        986,
+        923,
+        2028,
+        2203,
+        4968,
+        5533,
+        5378
+      ],
+      "exact_winning_source": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "static_unchanged_leg_call_levels": [],
+      "sharp_drop_with_static_call_levels": [],
+      "direction_reversals": 2
+    },
+    {
+      "game": "tr87",
+      "reached": 6,
+      "total_levels": 6,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "M_bytes": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "exact_winning_source": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "static_unchanged_leg_call_levels": [],
+      "sharp_drop_with_static_call_levels": [],
+      "direction_reversals": 0
+    },
+    {
+      "game": "tu93",
+      "reached": 9,
+      "total_levels": 9,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "M_bytes": [
+        3069,
+        3613,
+        1792,
+        1302,
+        186,
+        1440,
+        212,
+        210,
+        210
+      ],
+      "exact_winning_source": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "static_unchanged_leg_call_levels": [
+        5,
+        7,
+        8,
+        9
+      ],
+      "sharp_drop_with_static_call_levels": [
+        5,
+        7
+      ],
+      "direction_reversals": 3
+    },
+    {
+      "game": "vc33",
+      "reached": 7,
+      "total_levels": 7,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "M_bytes": [
+        1307,
+        1456,
+        1506,
+        1722,
+        1868,
+        1392,
+        3437
+      ],
+      "exact_winning_source": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "static_unchanged_leg_call_levels": [
+        6,
+        7
+      ],
+      "sharp_drop_with_static_call_levels": [],
+      "direction_reversals": 2
+    },
+    {
+      "game": "wa30",
+      "reached": 9,
+      "total_levels": 9,
+      "levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "M_bytes": [
+        899,
+        339,
+        503,
+        521,
+        534,
+        343,
+        386,
+        684,
+        1313
+      ],
+      "exact_winning_source": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "static_unchanged_leg_call_levels": [],
+      "sharp_drop_with_static_call_levels": [],
+      "direction_reversals": 3
+    }
+  ],
+  "input_sha256": {
+    "source_audit": "8e1305eb382f1429fc3ea1904686e979a942f5bc664b89f67215dc824d2a5aac",
+    "release_table": "9c5c089aa85ed27cd54bf68823fbe61007caf53d59c502a77ff7e99196f20836"
+  }
+}

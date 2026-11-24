@@ -10,14 +10,17 @@ RELEASE_RECEIPT ?=
 RELEASE_VERIFIER_ROOT ?=
 export RELEASE_VERIFIER_ROOT
 
-.PHONY: all figures source-comparison tables diagram bibliography paper one-page arxiv-bundle arxiv-check reproduce reproduce-full manifest verify-manifest test clean
+.PHONY: all figures marginal-profiles source-comparison tables diagram bibliography paper one-page arxiv-bundle arxiv-check reproduce reproduce-full manifest verify-manifest test clean
 
 all: diagram paper
 
 source-comparison:
 	$(PYTHON) scripts/compare_source_charges.py --output-dir generated
 
-figures: source-comparison
+marginal-profiles: tables
+	$(PYTHON) scripts/generate_marginal_profiles.py
+
+figures: source-comparison marginal-profiles
 	mkdir -p $(MPLCONFIGDIR) $(XDG_CACHE_HOME) figures
 	MPLCONFIGDIR=$(MPLCONFIGDIR) XDG_CACHE_HOME=$(XDG_CACHE_HOME) \
 		$(PYTHON) scripts/generate_figures.py --output-dir figures \
@@ -41,6 +44,7 @@ test:
 		arc/crack_lab/test_arc_agi3_leaderboard_v3_gate.py \
 		arc/crack_lab/test_verify_frozen_release.py \
 		arc/manuscript/scripts/test_generate_figures.py \
+		arc/manuscript/scripts/test_generate_marginal_profiles.py \
 		arc/manuscript/scripts/test_compare_source_charges.py \
 		arc/manuscript/scripts/test_generate_empirical_tables.py \
 		arc/manuscript/scripts/test_build_arxiv_bundle.py \

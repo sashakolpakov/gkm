@@ -164,17 +164,48 @@ GKM is universal at the producer level: every game uses the same proposer contra
 Arena interface, blank scaffold, complexity coordinate, and replay gate. The learned
 programs retained by that producer are game- and level-dependent executable outputs.
 
-Marginal complexity by game and level
--------------------------------------
+Conditional Marginal Complexity
+-------------------------------
+
+The central question is how much new description a verified next solver requires,
+given the retained program. Ideal conditional Kolmogorov complexity is uncomputable.
+The fixed empirical proxy ``M`` compresses novel normalized-AST statements after
+removing literal matches to the preceding exact winning program; it is not a
+calibrated estimate of ideal complexity or a complete decoding code.
+
+The frozen GPT-5.6 source audit finds 64 decreases in 141 comparable marginals,
+including 21 half-or-more drops. Thirteen sharp drops coincide with static calls
+to unchanged earlier legs. Runtime call execution remains unmeasured.
+
+.. image:: ../arc/manuscript/figures/marginal_complexity_profiles.png
+   :alt: Conditional marginal novelty for dc22, wa30 and ls20, with decreases and static call-site cases marked
+   :width: 100%
+
+For ``dc22``, M is ``1058, 604, 716, 885, 828, 1379`` compressed bytes: two dips,
+even though growth between promoted source versions increases. ``wa30`` has
+conditional troughs at L2 and L6. ``ls20`` falls from 737 to 247 bytes at L2,
+with a static call to unchanged ``follow_cardinal_runs``; later route data add
+novelty while that leg remains unchanged. Learning new machinery followed by
+using retained machinery is the proposed explanation for a sawtooth, rather than
+a demonstrated cause of every trough or a requirement on every game.
+
+.. image:: ../arc/manuscript/figures/marginal_complexity_all_games.png
+   :alt: Conditional marginal-complexity proxy for every game in the frozen 25-game suite; missing boundaries remain gaps
+   :width: 100%
+
+Complete per-level values, source-audit hashes and missing-value conventions are in
+``arc/manuscript/generated/conditional_marginal_profiles.json`` and its Markdown table.
+The first point uses an empty dictionary. Missing sources and unclaimed levels
+are never replaced with zero or connected across gaps.
+
+Supporting Source-Growth Counters
+---------------------------------
 
 .. include:: generated/marginal_complexity_by_level.rst
 
-The uniform ``ls20`` ledger is ``40, 54, 86, 114, 138, 170, 158``. Its sharp
-conditional-AST drop at L2, from 737 to 247 compressed novelty bytes, is coupled to a
-static call site naming unchanged ``follow_cardinal_runs``; runtime call execution
-is unmeasured. The uniform ``wa30``
-ledger is ``43, 20, 32, 50, 39, 23, 28, 34, 49``. These are auditable construction
-histories, not estimators of Kolmogorov complexity.
+The following counters describe source growth at successful working-cycle and
+promotion boundaries. They do not replace conditional marginals or reconstruct
+all intermediate and failed edits over the complete discovery process.
 
 Recorded Charges and Promoted Growth
 -------------------------------------

@@ -204,20 +204,24 @@
     "canonical-taint-audit.json": "7a6432185959f9b3cdbdcb77767d878a5b8bf5a8f0dd6a55e630ddec1d1c81d8",
     "comparator_stats.md": "1e3bdaf19018fbc1dd8da15bb60fca804f49a1ba8f67fcf5e3922bc5f4eba4ab",
     "comparator_stats.tex": "cba29e02d35302b6add03baadd18358981733488ba7ba2ef4c885a04189b1998",
-    "ls20_sawtooth.pdf": "e22640a325f0d56e64713bbd379cd477366d1b6461daa08ecb184d4d1e052e18",
-    "ls20_sawtooth.png": "0d45869a63ad0ed20c464b399247e9a7aabfaf28911cadef038a838faabee181",
+    "ls20_sawtooth.pdf": "5de019b3073096b206daa671f24038a1b16675a4c6341a8f7023c93b6422eae9",
+    "ls20_sawtooth.png": "9ad430032b532c075063b9b0231e889a408b3cb451fcbd793c714662d3d2ff5e",
     "marginal_complexity_by_level.json": "9c5c089aa85ed27cd54bf68823fbe61007caf53d59c502a77ff7e99196f20836",
     "marginal_complexity_by_level.md": "7f01e7bc7ccda1767406b7ec41f9746e7767be256774d31f7efabe92d5637096",
     "marginal_complexity_by_level.rst": "0184b4d3576a4bfcbad900b795c22dcb9d63fc46514cbd41613bc776d43a5a42",
     "marginal_complexity_by_level.tex": "797e08757c55a72fd38a462e220ee0904d9167b4cc2e0ae9bde58097b76d4d50",
-    "marginal_complexity_profiles.pdf": "c9234ba508785fc9b47cdd318b5768108628cd87afed9ee0f631b6373f3efda2",
-    "marginal_complexity_profiles.png": "3cb4126d3db3d1ab787779ae367e24fb727ecca0fc367dd794ff7a54c5e42ef6",
+    "marginal_complexity_profiles.pdf": "844df07b1ebcd60dd4a8f3e0db5459d0a2af60cf584c0be78e46383d6d5fea4d",
+    "marginal_complexity_profiles.png": "4889dda4a72b91dbc63b00482ffccbf6ad173ec3f769ab55b7a5b2c3c61eed6f",
     "revision_source_audit.json": "39f8c2523be1d1eee67b2a38d44a7d9e477065b409fbbf1a7b474837047cc01f",
     "source_charge_comparison.json": "1f804bc4f1581edce95c225e01b7e98f138b431509a654ff88f975febefa376e",
     "source_charge_comparison.md": "fb7a5bd89f715f10194533126aa38195f11e404fc4399ed93bef61cb0e2f9992",
     "source_charge_comparison.tex": "5b56e6be76a3562693a8ff9a83ce48024ef94b73aa349645fff38f1f8a5c98fa",
     "source_charge_comparison.png": "834e94e14f7e0f965f55e520b4ef0662aaf2a4b68ae0ade78f45c54fa5325b6a",
-    "source_charge_comparison.pdf": "6c8d8ba0ff12984214bb0a6fe931a6dbde55ec655867e75d7c0f32fafa6581a5"
+    "source_charge_comparison.pdf": "6c8d8ba0ff12984214bb0a6fe931a6dbde55ec655867e75d7c0f32fafa6581a5",
+    "conditional_marginal_profiles.json": "8c5fb4e6b18411f9925b8cfa34ee61a7878e38b5dde797bd657b6e9b7e1f4c04",
+    "conditional_marginal_profiles.md": "601cfa66c56555886bbd0eec42bb1ef4cb0a724d867eadc8dadb0690fc7bfd43",
+    "marginal_complexity_all_games.png": "99c912e2fc5e6fdb117b1d09cfe915d8a59057cc4d2646d4e574b2c66023cff2",
+    "marginal_complexity_all_games.pdf": "61e5311ed9bbba66a58d0ddd085faae60cab7aed23549e4224ee48de441e553f"
   },
   "revision_validation": {
     "date": "2026-11-24",
@@ -249,6 +253,25 @@
       "growth_strict_troughs": 19,
       "unequal_values": 1
     },
-    "primary_G_excludes_initial_scaffold_and_reconstructions": true
+    "primary_G_excludes_initial_scaffold_and_reconstructions": true,
+    "marginal_analysis": "Conditional marginal novelty is central; source-growth counters are supporting accounting.",
+    "source_audit_regenerated_byte_identically": true,
+    "conditional_marginal_profiles": {
+      "exact_winning_checkpoints": 171,
+      "transitions_with_level_to_level_marginal_comparison": 141,
+      "marginal_decreases": 64,
+      "sharp_half_or_more_marginal_drops": 21,
+      "hard_literal_world_model_reuse_witnesses": 54,
+      "sharp_drops_with_static_call": 13,
+      "games_with_direction_reversals": 22,
+      "direction_reversals": 62
+    },
+    "conditional_profile_inputs": {
+      "source_audit": "8e1305eb382f1429fc3ea1904686e979a942f5bc664b89f67215dc824d2a5aac",
+      "release_table": "9c5c089aa85ed27cd54bf68823fbe61007caf53d59c502a77ff7e99196f20836"
+    },
+    "targeted_tests_passed": 64,
+    "all_game_figures_preserve_unknown_boundaries": true,
+    "admission_policy_changed": false
   }
 }

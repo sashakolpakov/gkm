@@ -1,111 +1,77 @@
 # Current submission verification
 
-The canonical empirical manuscript, response, companion, and source ZIP report the
-selected **GPT-5.6 campaign** throughout. They are overwritten in place; no alternate
-manuscript versions or submission backups are retained. The separate theoretical
-manuscript and its cover-letter files are outside this revision.
+The canonical manuscript and submission files use the selected **GPT-5.6 campaign**.
+The manuscript title is unchanged. Conditional marginal complexity is the central
+question; working-cycle and admitted-state source-growth counters are supporting
+accounting. Canonical outputs are overwritten in place, with no alternate drafts.
+The separate theoretical manuscript and active discovery campaign are unchanged.
 
 ## Submission files
 
-- `arc_agi3.pdf`: **20 pages**, 1,150,243 bytes. The original manuscript
-  title and Alexander Kolpakov author metadata are preserved.
-- `response_to_reviews.pdf`: **one page**, 163,208 bytes, with matching Markdown
-  and TeX sources.
-- `gkm_one_page_summary.pdf`: **one page**, 211,769 bytes, with matching Markdown
-  and TeX sources.
-- `build/arxiv/arc_agi3_arxiv.zip`: **eight source files**; isolated PDFLaTeX/BibTeX
-  compilation passed. SHA-256:
-  `456fd0fa34671321788c8d1388bfaa37761b2257e16d05fa8b2b7078fd7f14af`.
+- `arc_agi3.pdf`: **23 pages**, 1,800,239 bytes.
+- `response_to_reviews.pdf`: **one page**, 92,536 bytes.
+- `gkm_one_page_summary.pdf`: **one page**, 212,602 bytes.
+- `build/arxiv/arc_agi3_arxiv.zip`: **nine source files**, 1,212,466 bytes.
+  Its main source matches the canonical TeX; isolated PDFLaTeX/BibTeX compilation
+  passed. SHA-256: `bd1463e2b0d4cfd46a7c13c0f3705b7c2b67a36a346750466b85ff21c712558a`.
 
-The three PDFs and ZIP are canonical versioned submission outputs. The source
-checksum manifest excludes PDFs because of build-time metadata; Git records their
-output blobs. Compiler intermediates are removed after log inspection.
+The three PDFs and ZIP are canonical versioned outputs. Source checksums exclude
+compiled PDFs; Git records their exact blobs. PDFLaTeX logs contain no warnings,
+undefined references/citations, or overfull/underfull boxes. The main marginal
+figure and full-suite figure were inspected both directly and on rendered PDF pages.
 
-All three PDF builds passed without LaTeX warnings, undefined references/citations,
-or overfull/underfull boxes. Layout checks cover the front page, accounting formulas,
-`dc22`, paired C/G table and figure, source-audit table, response, and companion.
+## Marginal-complexity evidence
 
-## Frozen dataset and source interpretation
+The fixed compressed-AST novelty proxy M is defined separately from ideal
+K(P_k | P_{k-1}), source-growth counters C/G and discovery effort. M1 uses an
+empty AST dictionary. Missing exact source, missing predecessors and unclaimed
+levels remain unknown; plots never bridge those gaps or fill them with zero.
 
-- Publication: `9235ed26627140460efa1f6ca5e4041470cddc14`.
-- Schema-1 partial-release receipt:
-  `140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681`.
-- Receipt-bound verifier: `c1f8168f230732f2d745c234555b3e3dfcb8aefa`.
-- Source history: `4d0e42f34d7b1db8305f03d725528dfdefe22511`, tree
-  `85543629cfcafc70eb7230493f394059c8e0ac45`.
-- Endpoint evidence: **25 games, 181/183 levels**, 7001 stored actions, 7069 official
-  API calls, and **98.1166%** Competition-Mode score. Raw coverage is separately
-  **98.9071%**. These are replay results, not discovery cost.
-- Exact winning-source audit: **171 checkpoints, 144 adjacent transitions, 141
-  marginal comparisons, 64 decreases, 21 sharp drops, 54 static call-site cases,
-  13 coupled static cases, and eight uncoupled sharp drops**. Calls are not
-  instrumented and missing source is not bridged.
-- `D` is retained source size; `C_recorded` uses the working baseline saved at the
-  start of the winning iteration. `G` uses authenticated adjacent promoted states.
-  `F_diag` uses recorded C after candidate fixation, without ranking candidates.
-- `dc22` retains its recorded full charge of **650**. On authenticated L2–L6 pairs,
-  **C sums to 601 and G to 801**, taking **D from 50 to 851**. The different
-  baselines explain C=2 versus G=202 at L5. The manuscript interpretation and an
-  incomplete audit reconstruction were corrected; **the solver, counters, and
-  replay were valid, and no solver repair was required**. Corrected conditional-AST
-  novelty at L5/L6 is **828/1379 bytes**.
+The main figure plots dc22, wa30 and ls20; the full-suite appendix plots all 25 games.
+Orange rings mark decreases; green diamonds mark sharp drops with static unchanged-leg
+call sites. Both PNG and vector PDF outputs were generated. The ls20 standalone
+figure also now plots M rather than its source-growth surrogate. The five figure
+pairs have checked PNG geometry: 1728×912, 2034×1072, two at 2448×912, and 2688×2880.
+The data and input hashes are in `generated/conditional_marginal_profiles.{json,md}`.
 
-## Paired recorded charges and promoted growth
+The source-only audit was regenerated from immutable Git blobs and matched both
+`marginal-literal-reuse.json` and `revision_source_audit.json` byte for byte. It admits
+**171 exact winning sources, 144 adjacent transitions and 141 comparable marginals**,
+with **64 decreases, 21 half-or-more drops, 54 static call-site cases and 13 sharp
+coupled static cases**. Runtime call execution remains unmeasured.
 
-The primary audit has **158 manifest-bound states and 134 paired values in 24
-games**. Of 20 games with at least three consecutive paired values, **18 reverse in
-both series**. Aggregate C/G reversal counts are **45/43**, with only one unequal
-primary value: `dc22` L5. Initial G1 is excluded, flat differences are ignored within
-known contiguous segments, and gaps are not bridged.
+For dc22, M is 1058, 604, 716, 885, 828, 1379 bytes: it has dips at L2 and L5 even
+though G increases strictly over authenticated L2–L6. Its corrected L5 dip is modest,
+not a sharp contraction or an established reuse case. ls20 supplies the inspectable
+sharp-drop/static-call example. The novelty-then-reuse explanation is discussed as
+a hypothesis, without imposing a sawtooth or changing candidate admission.
 
-- `dc22`, L2–L6: **2/0** C/G reversals; its recorded trough is absent from G.
-- `wa30`, L2–L9: **2/2** reversals; the rise–fall–rise pattern persists in both.
-- `ls20`, L2–L7: **1/1** reversals; a shared final downturn rather than repeated
-  alternation.
+## Supporting accounting and frozen scope
 
-Six `tr87` reconstruction capsules are excluded from historical retained growth.
-An extended analysis adds 15 retained-phase candidates without independent promotion
-authentication (147 pairs, 52/50 reversals); it is not pooled with the primary sample.
-The initial standard-scaffold extension is explicitly conditional and not primary.
-Promoted-state evidence here is separate from pre-debrief winning-source evidence for M.
+The endpoint release remains **181/183** public levels, **98.1166%** Competition-Mode
+score, 7001 stored actions and 7069 official API calls. These do not measure discovery
+cost. The publication is `9235ed26627140460efa1f6ca5e4041470cddc14`; the schema-1
+partial receipt is `140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681`.
+The receipt-bound verifier is `c1f8168f230732f2d745c234555b3e3dfcb8aefa`.
+Source history is `4d0e42f34d7b1db8305f03d725528dfdefe22511`, tree
+`85543629cfcafc70eb7230493f394059c8e0ac45`.
 
-All 25 table rows, the paired comparison artifacts, and all four PNG/PDF figure pairs
-were regenerated from frozen evidence. Geometry checks passed: 1728×912, 2034×1072,
-and 2448×912 for each of the two three-panel figures. Sources, hashes, provenance
-tiers, paired ranges, and exclusions are recorded in `REVISION_EVIDENCE.md` and
-`generated/source_charge_comparison.json`.
+The separate paired counter audit has 158 manifest-bound retained states and 134 C/G
+pairs in 24 games, with initial-scaffold and reconstruction exclusions. It remains
+supporting evidence. Recorded C refers to working source before the winning cycle;
+G compares authenticated adjacent promotions. Neither reconstructs all failed edits.
+The dc22 full recorded total remains 650; paired L2–L6 sums are C=601 and G=801,
+with retained size rising from 50 to 851. The solver, counter and replay were valid.
 
-## Checks
+## Checks and scope
 
-**59 targeted tests passed**, including the paired-source comparison, figure,
-artifact-document, source-scope, source-package, and checksum tests. The 10 paired
-comparison/package tests also passed after the final placement-only change. The main PDF and eight-file ZIP
-were rebuilt after increasing the paired-figure legend font for print legibility;
-the data, plot geometry, response, and companion are unchanged. Five figure/package
-tests passed after that legend-only refresh.
+**64 targeted tests passed**, covering source reconstruction and reuse analysis,
+profile gap handling, conditional-versus-growth data, figure series, artifact docs,
+package closure, reproduction helpers and the source checksum manifest.
 
-```bash
-PYTHONPATH=arc python3 -m pytest -q \
-  arc/test_audit_gkm_solved_checkpoints.py \
-  arc/test_audit_marginal_literal_reuse.py \
-  arc/test_build_artifact_docs.py \
-  arc/manuscript/scripts/test_reproduce_manuscript.py \
-  arc/manuscript/scripts/test_generate_empirical_tables.py \
-  arc/manuscript/scripts/test_generate_figures.py \
-  arc/manuscript/scripts/test_compare_source_charges.py \
-  arc/manuscript/scripts/test_build_arxiv_bundle.py \
-  arc/manuscript/scripts/test_update_sha256_manifest.py
-```
-
-Each canonical TeX document passed
-`latexmk -pdf -interaction=nonstopmode -halt-on-error`; the eight-file source ZIP
-passed `python3 scripts/build_arxiv_bundle.py --compile-check`.
-
-Strict Sphinx 9.1.0 HTML (`python3 -m sphinx -W -b html docs <temporary>/html`)
-passed all 10 sources, including the paired comparison and image. Temporary build
-output was removed. The source checksum manifest and `git diff --check` passed.
-
-All new source analysis is static: no solver/game implementation, discovery campaign,
-or active campaign was executed or changed. Frozen endpoint/taint/action/receipt
-evidence was retained rather than rerun. Actual calls, causal search savings, full
-discovery cost, and held-out generalization remain unmeasured.
+Strict Sphinx HTML passed all 10 documentation sources, including both new marginal
+figures. The three canonical PDFs compiled; the nine-file source ZIP compiled in
+isolation. Source analysis is static: no discovery run, game implementation, runtime
+harness or frozen solver was modified. Earlier endpoint/receipt/taint/action evidence
+was retained; no new online replay or endpoint gate is claimed here. Runtime calls,
+causal search savings, full discovery cost and held-out performance remain unmeasured.

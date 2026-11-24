@@ -12,6 +12,37 @@ The manuscript uses the selected GPT-5.6 campaign throughout. This document iden
 
 The implemented admission contract, later frozen endpoint certification, and older acquisition controls are distinguished. Endpoint certification does not establish that every acquisition used later containment controls.
 
+## Central marginal-complexity analysis
+
+The manuscript's central coordinate is the additional description of the next
+verified solver given the retained program: ideal K(P_k | P_{k-1}), distinguished
+from changes in total size and from discovery effort. The fixed empirical proxy M
+compresses normalized top-level AST statements not literally present in the preceding
+exact winning program. It omits complete decoding metadata; it is not a calibrated
+Kolmogorov estimate or a complete code length.
+
+`scripts/generate_marginal_profiles.py` consumes the corrected exact-source audit and
+the frozen-release level inventory. It independently checks the 171-source scope,
+141 comparable marginals, 64 decreases, 21 half-or-more drops, 54 static call-site
+cases and 13 sharp coupled cases. Its two outputs are
+`generated/conditional_marginal_profiles.{json,md}`; the JSON binds both input hashes.
+`figures/marginal_complexity_profiles.{png,pdf}` now plots M for the declared dc22,
+wa30 and ls20 cases. `figures/marginal_complexity_all_games.{png,pdf}` publishes all
+25 games without selecting for oscillation. M1 uses an empty AST dictionary; missing
+source, missing predecessors and unclaimed levels remain gaps. Static call sites
+are marked separately from scalar decreases.
+
+The earlier 4d0e42f3 and 0210e785 manuscript versions already separated conditional
+AST novelty from the net-growth ledger and proposed that retained components could
+make later descriptions cheaper. This revision restores that central question while
+retaining the corrections to source provenance and implemented candidate selection.
+For dc22, M is 1058, 604, 716, 885, 828, 1379 bytes: the L2 and L5 dips exist despite
+strictly increasing promoted-source growth. No static unchanged-leg case is present
+under the narrow direct-call test, so those dips are not attributed to proven reuse.
+
+The source-growth comparisons below are supporting accounting. The recorded-cycle
+counter does not reconstruct all failed edits or the full discovery process.
+
 ## Source measurements and baselines
 
 For a charged file `f`, `d(f)` counts nonblank, noncomment lines plus AST list/tuple/set literal elements and dictionary entries. These are source units, not bits, tokens, or ideal Kolmogorov complexity.

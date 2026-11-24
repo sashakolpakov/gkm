@@ -2,7 +2,9 @@
 
 This directory contains the canonical manuscript and reproduction sources for the
 Gödel–Kolmogorov Machine ARC-AGI-3 study. The Gödel–Kolmogorov Machine retains replay-verified solver programs and makes their
-source histories auditable. Pushout and structure-function language supplies a concise
+source histories auditable. The central analysis measures conditional marginal novelty:
+how much new description the next verified solver requires given its predecessor.
+Source-growth counters are supporting accounting. Pushout and structure-function language supplies a concise
 specification and accounting background; free energy selection and curiosity control
 remain proposed extensions. After this full
 introduction, **GKM** is used as the abbreviation in filenames and dense comparisons.
@@ -13,9 +15,11 @@ introduction, **GKM** is used as the abbreviation in filenames and dense compari
 - `arc_agi3.pdf`: the current submission PDF, generated from the canonical TeX source.
 - `response_to_reviews.tex` and `response_to_reviews.pdf`: the current response source
   and PDF. `gkm_one_page_summary.{md,tex,pdf}` is the companion summary.
-- `scripts/generate_figures.py`: source for the recorded-charge and paired source-growth figures.
+- `scripts/generate_figures.py`: source for conditional marginal profiles and supporting source-growth figures.
+- `scripts/generate_marginal_profiles.py`: exact-winning-boundary profile generation,
+  preserving missing predecessors and reproducing the audited marginal totals.
 - `scripts/generate_empirical_tables.py`: the release-bound 25-game, per-level
-  marginal-complexity table generator for TeX, Markdown, JSON, and Sphinx.
+  supporting source-charge table generator for TeX, Markdown, JSON, and Sphinx.
 - `figure_sources/inverse_colimit_attachment_standalone.tex`: standalone source for
   the inverse-colimit attachment diagram, which also appears inline in the paper.
 - `requirements-figures.txt`: the Matplotlib version used for the delivered figure
@@ -72,8 +76,8 @@ make -C arc/manuscript arxiv-check
 ```
 
 The canonical, versioned submission source ZIP is
-`arc/manuscript/build/arxiv/arc_agi3_arxiv.zip`. Its eight files are the main TeX
-source, the BibTeX database, the three included generated TeX tables, and the three included
+`arc/manuscript/build/arxiv/arc_agi3_arxiv.zip`. Its nine files are the main TeX
+source, the BibTeX database, the three included generated TeX tables, and the four included
 PNG figures. It excludes companion documents, repository evidence, scripts, caches,
 and all LaTeX output/intermediate files.
 
@@ -82,7 +86,8 @@ The figure generator validates the expected PNG dimensions under Matplotlib 3.10
 - `figures/ls20_sawtooth.png`: 1728 × 912 pixels;
 - `figures/bounded_campaign_profiles.png`: 2034 × 1072 pixels;
 - `figures/marginal_complexity_profiles.png`: 2448 × 912 pixels;
-- `figures/source_charge_comparison.png`: 2448 × 912 pixels.
+- `figures/source_charge_comparison.png`: 2448 × 912 pixels;
+- `figures/marginal_complexity_all_games.png`: 2688 × 2880 pixels.
 
 Matplotlib 3.10.8 reproduces the supplied bundle byte-for-byte. Compatible later
 versions can preserve the numerical data and validated geometry while changing raster
@@ -115,7 +120,8 @@ python arc/crack_lab/replay_scorecard.py \
 The two roots are deliberately distinct. The normalized endpoint capsules are the
 authority for receipt, replay, taint, action, hash, and manifest checks. The frozen
 acquisition programs are the authority for retained description length (D(s)), the
-marginal-complexity table, and figures. Source-coupled reuse is recomputed from the
+supporting source-charge table. Conditional marginal profiles and source-call evidence
+are recomputed from the
 manuscript's frozen source-history snapshot at commit
 `4d0e42f34d7b1db8305f03d725528dfdefe22511`, which the target extracts from local
 Git rather than reading the mutable live campaign. That authority is distinct from the
@@ -190,3 +196,17 @@ tainted, or incomplete aggregates fail closed. This mechanism postdates the froz
 181-boundary result and is not part of the historical release claim. The release
 continues to be interpreted solely under the verifier/control revision bound by its
 schema-1 partial-release receipt.
+
+## Conditional marginal-complexity figures
+
+`figures/marginal_complexity_profiles.{png,pdf}` plots the declared dc22, wa30 and
+ls20 cases using the compressed conditional-AST proxy M, not recorded C or promoted
+growth G. `figures/marginal_complexity_all_games.{png,pdf}` publishes all 25 games
+with independent linear scales and missing values left as gaps. Orange rings mark
+decreases; green diamonds mark sharp drops with static unchanged-leg call sites.
+
+The source audit gives 64 decreases among 141 comparable marginals, including 21
+half-or-more drops and 13 sharp static cases. The complete values and input hashes
+are in `generated/conditional_marginal_profiles.{json,md}`. The novelty/reuse explanation
+of a sawtooth is discussed without assuming all games must oscillate or that a
+static call was executed. No complexity rule is added to admission.

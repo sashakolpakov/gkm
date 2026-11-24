@@ -71,3 +71,14 @@ def test_paired_plot_keeps_unknown_pairs_missing_and_zero_values_observed() -> N
     assert levels == (1, 2, 3, 4)
     assert recorded == (None, 0, None, 7)
     assert growth == (None, 0, None, 8)
+
+
+def test_conditional_plot_uses_marginal_bytes_and_does_not_connect_unknowns():
+    profile = {"levels": [1, 2, 3, 4, 5], "M_bytes": [800, 200, None, 500, 400],
+               "sharp_drop_with_static_call_levels": [2]}
+    fig, ax = generate_figures.plt.subplots()
+    generate_figures._plot_conditional_marginal(ax, profile)
+    assert tuple(ax.lines[0].get_ydata()) == (800, 200, None, 500, 400)
+    assert list(ax.collections[0].get_offsets()[:, 0]) == [2, 5]
+    assert list(ax.collections[1].get_offsets()[:, 0]) == [2]
+    generate_figures.plt.close(fig)

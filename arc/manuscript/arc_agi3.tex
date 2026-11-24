@@ -49,6 +49,7 @@
 \newcommand{\Prb}{\mathbb{P}}
 \newcommand{\Pos}[1]{[#1]_{+}}
 \newcommand{\RepoURL}{https://github.com/sashakolpakov/gkm}
+\input{generated/comparator_stats.tex}
 
 \title{Kolmogorov Structure Functions, Inverse-Colimits, and Cofibrations: Solving ARC-AGI-3 with Compute-Bounded Self-Improving Agents}
 
@@ -61,8 +62,9 @@
 
 \begin{abstract}
 We present the G\"odel--Kolmogorov Machine (GKM), an architecture that retains
-verified executable solver components for interactive ARC-AGI-3, and audit how later
-solutions refer to those components. A coding language model proposes game- and
+verified executable solver components for interactive ARC-AGI-3. The central question
+is how much new description each successive solution requires, given the solver
+already retained. A coding language model proposes game- and
 level-dependent programs. The implemented host promotes the first candidate that reaches
 the exact next level and passes fresh execution, independent full-path replay,
 taint/provenance, and containment checks. Older acquisition histories are distinguished
@@ -70,11 +72,13 @@ from later endpoint certification. Source cost and a free energy diagnostic
 are recorded after that candidate is fixed; they do not rank candidates or decide
 admission. The selected GPT-5.6 campaign replays 181 of 183 public levels
 ($98.9071\%$ raw coverage; $98.1166\%$ Competition-Mode score). The source audit
-admits 171 exact winning checkpoints and finds 54 adjacent transitions with static
-call sites to unchanged earlier legs, including 13 with a sharp decrease in
-conditional source novelty. Of 20 games with at least three consecutive paired
-measurements, 18 show direction reversals in both recorded charges and growth
-between promotions. These are source and replay observations; runtime call
+admits 171 exact winning checkpoints. A computable conditional-AST novelty proxy
+decreases in 64 of 141 comparable marginals, including 21 half-or-more drops;
+13 of those coincide with static call sites to unchanged earlier legs. We publish
+the conditional marginal profiles for all 25 games and discuss their sawtooth
+patterns as observations consistent with alternating novelty and reuse, rather
+than a universal law. Source-growth counters are supporting accounting and are
+not substituted for conditional complexity. These are source and replay observations; runtime call
 execution and causal search savings are unmeasured. We use pushout attachments and
 computable structure functions as concise specifications of retention and accounting,
 while distinguishing this mathematical background from the implemented system.
@@ -88,10 +92,13 @@ curiosity; self-improving coding agent; program synthesis.
 \section{Introduction}
 ARC-AGI-3 is an interactive benchmark in which objects, action semantics, mechanics,
 and goals must be inferred through interaction~\cite{chollet2019measure,arcagi3}.
-This paper studies an auditable form of solver growth: retain executable components
-that have passed verification, then inspect the source of later successful programs
-for references to those components. Endpoint coverage, retained source, and the cost
-of discovering a solution answer different questions.
+This paper studies the marginal description cost of acquiring another verified
+ability: given the executable solver already retained, how much new code or data
+is needed for the next successful program? A reusable component is described once;
+later applications may need only a binding and residual instructions. A new mechanism
+may instead require substantial new source. Alternation between those situations
+motivates the marginal-complexity sawtooth examined here. Total source size,
+conditional novelty, endpoint coverage, and discovery effort answer different questions.
 
 The G\"odel--Kolmogorov Machine (GKM) separates a fallible coding proposer from a
 fixed verifier. The proposer works from the highest clean promotion and may add
@@ -109,12 +116,14 @@ The contribution is the verified architecture and its inspectable evidence:
 and explicit separation between proposer claims and host verification.
 \item A frozen 25-game release covering 181/183 public levels, with endpoint replay
 separated from the narrower set of 171 exact winning-source checkpoints.
-\item A source-history audit that measures conditional novelty, identifies static
-call sites to unchanged earlier components, and separates those observations from
-runtime call execution and causal effects on search effort.
+\item Conditional marginal profiles at exact winning boundaries across all 25 games,
+with a source-history audit of their rises and falls and static call sites to unchanged
+earlier components. Supporting source-growth counters are separated from these
+marginals, runtime call execution, and causal effects on search effort.
 \end{enumerate}
-The two complete uniform histories, \texttt{wa30} and \texttt{ls20}, illustrate
-why a small marginal source charge alone does not establish reuse.
+The complete uniform histories \texttt{wa30} and \texttt{ls20}, together with the
+accounting contrast in \texttt{dc22}, illustrate both the marginal patterns and
+the evidence needed before attributing a trough to reuse.
 
 The title's mathematical terms describe the specification and accounting vocabulary.
 Pushouts state how unchanged interfaces can be extended; structure functions organize
@@ -316,9 +325,56 @@ transient \texttt{vc33} connection-reset recovery.}
 \label{tab:numerical-reconciliation}
 \end{table}
 
-\section{Description Accounting and Structure-Function Background}
+\section{Conditional Marginal Complexity and Source Accounting}
 \label{sec:accounting}
-\subsection{Implemented source coordinate and post-admission diagnostics}
+\subsection{The marginal-complexity question}
+\label{sec:marginal-definition}
+For successive exact winning programs $P_{k-1},P_k$, the ideal conditional
+description coordinate is
+\begin{equation}
+ m_k^{\mathrm{ideal}}=K(P_k\mid P_{k-1}).
+ \label{eq:ideal-marginal}
+\end{equation}
+It asks for the shortest description of the chosen next program when the earlier
+one is available. It is not the difference of their unconditional complexities,
+their difference in source size, or the time spent discovering either program.
+Nor does it assert that $P_k$ is the shortest solver for the new level. Ideal $K$
+is uncomputable; our empirical analysis therefore uses a declared conditional
+source-novelty proxy, not numerical estimates of Eq.~\eqref{eq:ideal-marginal}.
+
+Let $A(P)$ be the multiset of normalized top-level Python AST statements in $P$.
+For consecutive exact winning states we measure
+\begin{equation}
+ M_k=\left|\operatorname{zlib}_9\!\left(
+ A(P_k)\setminus_{\mathrm{multi}}A(P_{k-1})\right)\right|.
+ \label{eq:conditional-ast}
+\end{equation}
+The unmatched, location-free AST dumps are emitted in sorted filename order and
+current top-level statement order within each file, each prefixed by its eight-byte
+big-endian length, then compressed with zlib level~9. Literal matches in the
+preceding program are omitted; a same-size replacement is charged. $M_1$ uses an
+empty AST dictionary and describes initial construction, rather than change from
+an authenticated prior promotion. Unknown source and missing predecessors yield
+unknown marginals, not zeros, and comparisons never bridge those gaps.
+
+This measurement expresses the paper's central empirical question in compressed
+bytes. It is representation-dependent and omits a full reconstruction protocol,
+including ordering and dictionary-reference metadata. It is neither a complete
+prefix-code length nor a calibrated estimate or upper bound for ideal $K$.
+It also cannot recognize all algorithmically equivalent rewrites. We retain the
+same encoding throughout the selected campaign instead of changing the measure
+to obtain a desired curve.
+
+A new mechanism can raise the conditional marginal because a new routine must be
+described. A later variant can lower it if retained machinery suffices with small
+bindings or residual instructions. A further unfamiliar mechanism can raise it
+again. Repetition produces the sawtooth hypothesis, not a requirement on every
+game or every adjacent pair. Different layouts can share mechanics; similar
+layouts can require new logic. The level's appearance alone does not establish
+how much is reusable or whether the proposer found it. The source and call-site
+audit is therefore needed alongside the marginal curve.
+
+\subsection{Supporting source-growth counters and post-admission diagnostics}
 For a source file $f$, $d(f)$ counts nonblank, noncomment lines plus the number of
 elements in Python list, tuple, set, and dictionary literals in its AST. A long
 one-line action list therefore incurs a literal surcharge. For retained library and
@@ -348,7 +404,7 @@ These quantities use source-accounting units, not bits, tokens, elapsed time, or
 Kolmogorov complexity. Within one file, changes are netted before taking the positive
 part. Comments, identifier lengths, the fixed dispatcher, temporary probes, inference,
 and environment interactions are outside this coordinate. The all-game table and
-scalar plots preserve the recorded workspace-local charges. We report $G_k$ only
+source-counter plots preserve the recorded workspace-local charges. We report $G_k$ only
 where both adjacent retained states are authenticated; the recorded-charge table
 does not impute missing $G_k$ values. After fixing a winning source and exact
 boundary, the harness reported
@@ -397,8 +453,11 @@ With $\inf\varnothing=+\infty$, this finite profile is computable by comparison 
 the evaluated entries. No such computability is asserted for an arbitrary effective
 set of unevaluated programs. This specializes the structure-function framework
 of~\cite{losscomplexity}.
-It clarifies the empirical question: how much retained description accompanies a
-given verified frontier, and how much new description appears at the next win?
+It organizes retained description against a verified frontier. The conditional
+coordinate in Eq.~\eqref{eq:ideal-marginal} then asks what additional description
+is required at the next win, with the retained program supplied as context;
+Eq.~\eqref{eq:conditional-ast} provides the empirical novelty profile. A difference
+between two values of $D_\kappa$ is not substituted for that conditional coordinate.
 A promoted history supplies feasible points, hence upper bounds on the best size
 within any proposal set containing those points. Because the campaign retains one
 first-success lineage rather than a population of alternatives, it does not estimate
@@ -509,15 +568,41 @@ coverage is $181/183=98.9071\%$; the stored paths contain 7001 actions and the
 scorecard records 7069 API calls. Neither quantity measures the larger clone-enabled
 interaction and model-inference cost of discovery.
 
-\input{generated/marginal_complexity_by_level.tex}
+\subsection{Conditional marginals and the sawtooth pattern}
+\label{sec:marginal-results}
+Figure~\ref{fig:marginal-profiles} plots $M_k$, the conditional-novelty proxy in
+Eq.~\eqref{eq:conditional-ast}, for three declared case studies: \texttt{dc22}
+tests the distinction from source growth, \texttt{wa30} supplies a complete uniform
+history with two troughs, and \texttt{ls20} supplies an unchanged-leg call-site case.
+These examples were not selected as the largest oscillations. Appendix~\ref{sec:all-marginals}
+plots all 25 games, including missing and unclaimed boundaries; the complete values
+are published in \path{generated/conditional_marginal_profiles.json} and its
+Markdown table. All source remains from the selected GPT-5.6 campaign.
 
-Table~\ref{tab:all-marginal-complexities} supplies the retained-description coordinate
-$D(s)$ required by Eq.~\eqref{eq:structure-function}, the stored replay path length,
-and one $C_k^{\mathrm{recorded}}$ cell for every promoted level. Values across games are descriptive rather
-than a shared frontier because the risks, level counts, move budgets, mechanics, and
-useful representations differ. They do not justify one fixed linear weighting of
-library source, attachment glue, and path length across all games. The two
-\texttt{lf52} cells marked pending are explicit gaps rather than imputed zeros.
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.98\textwidth]{figures/marginal_complexity_profiles.png}
+\caption{Conditional marginal-complexity proxy at exact winning boundaries,
+in compressed normalized-AST novelty bytes. Orange rings mark decreases; green
+diamonds mark half-or-more drops accompanied by a static call site to an unchanged
+earlier leg. These are marginal profiles, not line-growth counters. Each panel has
+its own linear ordinate. The first point describes initial construction against an
+empty AST dictionary. A trough alone does not establish executed reuse.}
+\label{fig:marginal-profiles}
+\end{figure}
+
+Across the authenticated source history, \GKMDecreases{} of \GKMComparable{}
+comparable marginals decrease and \GKMSharpDrops{} fall by at least half.
+\GKMCoupledWitnesses{} of those sharp drops coincide with the static unchanged-leg
+call-site condition; the remaining \GKMUncoupledSharp{} do not. The figures display
+both small and large fluctuations, rather than retaining only the sharp cases.
+No sawtooth formula was imposed on admission. These observations address the
+conditional description of admitted solutions; the supporting counters below
+instead describe source growth at working-cycle and promotion boundaries. Neither
+the figures nor those counters reconstruct all failed search, inference, or
+within-cycle development effort.
+
+Supporting source-growth ledgers and the paired counter comparison are reported in Appendix~\ref{sec:source-counters}.
 
 \subsection{\texttt{dc22}: accounting baselines and winning-source provenance}
 \label{sec:dc22}
@@ -553,7 +638,18 @@ normalization. Section~\ref{sec:source-audit} reports the resulting conservative
 source denominator and static-call counts. Exact paths, hashes, baseline definitions,
 and a source-only reproduction command are in \path{REVISION_EVIDENCE.md} and
 \path{generated/revision_source_audit.json}. The solver and recorded counters are
-preserved.
+preserved. Crucially, increasing $G$ does not mean increasing conditional marginal
+complexity. The complete corrected $M$ profile is
+\[
+ (1058,604,716,885,828,1379)\ \text{compressed bytes}.
+\]
+It falls at L2 and L5 and rises between and after those falls: a nonmonotone marginal
+profile despite increasing source-growth charges. The L5 decrease is modest
+($885\to828$), not a sharp contraction. More line/literal source can contain a
+smaller compressed description of novel AST structure. Neither that accounting
+fact nor the two dips establishes which level mechanics changed. Under the narrow
+direct-call test, \texttt{dc22} has no static unchanged-leg case, so its dips are
+not attributed to demonstrated reuse.
 
 \subsection{The \texttt{wa30} artifact}
 The promoted \texttt{wa30} checkpoint records nine levels reached, successful fresh
@@ -569,9 +665,11 @@ The canonical manuscript history supplies a value for every level:
   \label{eq:wa30-ledger}
 \end{equation}
 Each value is bound to a sequential replay-validated promotion manifest containing the
-exact winning source and parent-manifest hash. The profile drops from 43 to 20, rises
-through 50, falls to 23, and rises again to 49. The corresponding exact conditional-AST
-profile is \(899,339,503,521,534,343,386,684,1313\) compressed bytes. These alternating
+exact winning source and parent-manifest hash. The source-charge profile drops from 43 to 20, rises
+through 50, falls to 23, and rises again to 49. The conditional marginal profile in
+Fig.~\ref{fig:marginal-profiles} is
+\(899,339,503,521,534,343,386,684,1313\) compressed bytes. Its troughs occur at L2
+and L6. These alternating
 decreases and novelty increases are observable dynamics, but \texttt{wa30} supplies no
 coupled static case because its adjacent winning entry points name newly introduced
 level-specific routines. The claim is therefore a measured sawtooth, not an unsupported
@@ -588,26 +686,27 @@ substituted into the uniform canonical trace.
 \toprule
 Level & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 \\
 \midrule
+$M_k$ (bytes) & 899 & 339 & 503 & 521 & 534 & 343 & 386 & 684 & 1313 \\
 $C_k^{\mathrm{recorded}}$ & 43 & 20 & 32 & 50 & 39 & 23 & 28 & 34 & 49 \\
 \bottomrule
 \end{tabular}
-\caption{Complete uniform \texttt{wa30} marginal record from nine sequential,
-replay-validated promotion manifests.}
+\caption{Conditional marginals and supporting source charges for the complete
+uniform \texttt{wa30} history. $M$ is compressed AST novelty in bytes; $C$ counts
+lines and literal elements against each winning-cycle workspace.}
 \label{tab:wa30-ledger}
 \end{table}
 
 \subsection{The \texttt{ls20} artifact}
 The promoted \texttt{ls20} checkpoint records seven levels reached, successful fresh
 replay, a 365-action path, and a complete seven-entry marginal ledger totaling 760
-units. Every winning player contains a direct call site to unchanged
+units. From L2 through L7, each winning player contains a direct call site to unchanged
 \texttt{follow\_cardinal\_runs}, parameterized by a level-specific route. This makes the
 source reference literal and inspectable while still charging the growing route data.
 
-\subsection{The marginal ledger accounting}
-Table~\ref{tab:marg} and Fig.~\ref{fig:marginal-profiles} show the complete uniform
-\texttt{ls20} harness-native acquisition trace. These recorded winning-iteration charges are distinct
-from the exact winning-checkpoint marginal of Eq.~\eqref{eq:conditional-ast}. Under
-the stricter test, \(M_L\) falls sharply from 737 bytes at L1 to 247 at L2 while the
+\subsection{Conditional marginals versus route-source growth in \texttt{ls20}}
+Table~\ref{tab:marg} shows the supporting \texttt{ls20} source-charge ledger;
+Fig.~\ref{fig:marginal-profiles} shows its conditional marginal. The latter
+falls sharply from 737 bytes at L1 to 247 at L2 while the
 winning player contains a direct call site to unchanged \texttt{follow\_cardinal\_runs}; this is a
 coupled complexity-drop and static call-site case. Later exact marginals are
 \(259,270,289,299,292\): novelty accumulates in the route literals while the same leg
@@ -623,80 +722,23 @@ factorization candidate, with runtime use still unmeasured.
 \toprule
 Level & 1 & 2 & 3 & 4 & 5 & 6 & 7 \\
 \midrule
+$M_k$ (bytes) & 737 & 247 & 259 & 270 & 289 & 299 & 292 \\
 $C_k^{\mathrm{recorded}}$ & 40 & 54 & 86 & 114 & 138 & 170 & 158 \\
 $\sum_{j\le k}C_j^{\mathrm{recorded}}$ & 40 & 94 & 180 & 294 & 432 & 602 & 760 \\
 \bottomrule
 \end{tabular}
-\caption{Complete uniform acquisition ledger for the promoted \texttt{ls20}
-artifact. Recorded charges use the working baseline in
+\caption{Conditional marginal profile and supporting source-growth ledger for
+\texttt{ls20}. Recorded charges use the working baseline in
 Eq.~\eqref{eq:recorded-workspace-charge}; they are distinct from
 the exact winning-checkpoint marginal in Eq.~\eqref{eq:conditional-ast}.}
 \label{tab:marg}
 \end{table}
 
-\begin{figure}[H]
-\centering
-% Generated by scripts/generate_figures.py
-\includegraphics[width=0.98\textwidth]{figures/marginal_complexity_profiles.png}
-\caption{Three full recorded-$C$ profiles. \texttt{su15} has seven direction reversals
-over L1--L9, the strongest raw oscillation in these recorded profiles,
-but the scalar shape alone is not a reuse claim. \texttt{wa30} is the strongest
-complete uniform-history sawtooth, while \texttt{ls20} supplies a static
-unchanged-leg call-site case. Runtime use of the call is unmeasured.}
-\label{fig:marginal-profiles}
-\end{figure}
-
-\subsection{Recorded charges and adjacent promoted growth}
-The full recorded-$C$ profiles above and a comparison of $C$ with $G$ answer
-different questions. For the paired analysis in
-Table~\ref{tab:charge-growth-comparison} and Fig.~\ref{fig:charge-growth-comparison},
-we restrict both curves to the same boundaries with authenticated adjacent original
-promoted states. The initial scaffold is not an authenticated promotion, so $G_1$
-is excluded. Missing pairs are not bridged. Reversal counts ignore flat differences within each contiguous known segment and
-are computed separately for each series on the aligned observed domain; they need not equal counts from the
-full recorded-$C$ profile.
-
-\input{generated/source_charge_comparison.tex}
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.98\textwidth]{figures/source_charge_comparison.png}
-\caption{Recorded workspace-local charges $C^{\mathrm{recorded}}$ and adjacent
-promoted-state growth $G$, using the same source units and aligned authenticated
-boundary domains. The initial boundary is excluded, and gaps are not connected.
-Differences between the curves reflect their different baselines; neither curve is
-an admission rule or a measure of complete discovery cost.}
-\label{fig:charge-growth-comparison}
-\end{figure}
-
-The primary audit authenticates 158 retained states, yielding 134 paired values
-across 24 games. Twenty games have at least three consecutive paired values, enough
-to observe a direction reversal; 18 have reversals in both series. Summed over the
-aligned contiguous domains, $C$ has 45 reversals and $G$ has 43. The scalar values
-agree at 133 of the 134 paired boundaries; the only difference is \texttt{dc22} L5.
-Equality of the scalar charges does not establish identity of the working baselines.
-
-For \texttt{wa30}, the two curves coincide on L2--L9 and each reverses twice:
-the rise to L4, fall to L6, and subsequent rise survive the change of accounting
-baseline. This supports the descriptive sawtooth reading for that range. The full
-L1--L9 recorded-$C$ profile has three reversals because it also includes the initial
-fall to L2; the paired count deliberately excludes that first boundary.
-For \texttt{ls20}, both curves coincide on L2--L7 and have one reversal, a final
-downturn after L6 rather than repeated alternation. Thus nonmonotone patterns occur
-in both coordinates, but not every recorded trough survives in promoted-state growth.
-The primary comparison uses manifest-bound original promoted source. A separate
-extended analysis of uniquely identified retained-phase snapshots is recorded in
-\path{generated/source_charge_comparison.json}; it is not merged into the primary
-coverage or reversal counts. These source-unit profiles remain separate from the
-compressed-AST novelty $M_L$ and static-call conditions used below. A shape shared
-by $C$ and $G$ would establish an observed growth pattern, not executed reuse or a
-causal saving in search effort.
-
 \subsection{Bounded cross-game campaign}
 The same proposer contract and promotion protocol were applied across the suite. The resulting learned
 programs are game- and level-dependent, but their production contract is unchanged.
 The frozen release promotes at least one boundary in every game, completes 24 games,
-and reaches \texttt{lf52} 8/10. Figure~\ref{fig:bounded-profiles} retains the five
+and reaches \texttt{lf52} 8/10. The supporting Fig.~\ref{fig:bounded-profiles} in Appendix~\ref{sec:source-counters} retains the five
 multi-level profiles from the first portability experiment, now extended to their
 frozen frontiers on a common scale. They place small recorded workspace charges
 beside larger charges, without asserting that either is adjacent retained-state
@@ -740,26 +782,17 @@ policy or an estimate of search savings from retained legs. A controlled compari
 would hold the proposer model, budget, tasks, and admission rules fixed and vary
 access to the library; no such ablation is reported here.
 
-\begin{figure}[t]
-\centering
-% Generated by scripts/generate_figures.py
-\includegraphics[width=0.92\textwidth]{figures/bounded_campaign_profiles.png}
-\caption{Marginal profiles for the five bounded runs, read directly from frozen
-checkpoints. Curves end at each verified frontier (levels 6--7). A shared ordinate preserves cross-game
-magnitude. Low points are small recorded workspace-local charges; they need separate
-source-call and replay checks before supporting a reuse
-interpretation. Runtime execution of particular calls was not measured.}
-\label{fig:bounded-profiles}
-\end{figure}
 
-This interpretation yields two testable predictions for future, prospectively logged
-runs. Repeated layout variants under stable mechanics should produce low marginal
-increments after the first successful abstraction. A mechanic change should produce an
-increment whose source diff localizes to new state representation, control, or glue,
-provided offsetting deletions do not hide it under Eq.~\eqref{eq:marginal-c}. A scalar
-score makes neither prediction inspectable; the promoted transition history does.
 
-\input{generated/comparator_stats.tex}
+The marginal-complexity hypothesis yields two testable predictions for future,
+prospectively logged runs. After a successful reusable abstraction, variants of
+the same mechanism should tend to require less conditional novelty $M$ than its
+initial acquisition. An unfamiliar mechanism can require more novel representation,
+control, or glue. Testing these predictions requires the source diff and evidence
+of which retained components the later solver uses. Added lines or a scalar endpoint
+score alone cannot establish either explanation; unchanged mechanics also need not
+produce a dip if the proposer writes a fresh solution instead of reusing its library.
+
 \section{Artifact-Level Comparison}
 \subsection{Related systems and comparison scope}
 A public action-replay score validates the submitted path, while discovery provenance
@@ -798,20 +831,14 @@ It excludes \texttt{ft09} L2 and \texttt{tr87} L1--L6 path reconstructions, plus
 snapshots survive. A parent plus a call stub does not authenticate the workspace that
 ran before debrief. An unknown level also prevents a one-level marginal for its next
 neighbor; we do not bridge the gap. Comparing two successive marginals requires the
-corresponding three consecutive exact source states.
+corresponding three consecutive exact source states, except the initial $M_2$
+versus $M_1$ comparison, which uses $P_1,P_2$ and the declared empty-dictionary
+convention for $M_1$.
 
-For exact winning programs $P_{L-1},P_L$, let $A(P)$ be the multiset of normalized
-top-level AST statements. Our novelty statistic is
-\begin{equation}
- M_L=\left|\operatorname{zlib}_9\!\left(
- A(P_L)\setminus_{\mathrm{multi}}A(P_{L-1})\right)\right|.
- \label{eq:conditional-ast}
-\end{equation}
-The remaining statements are serialized canonically. Literal matches are available
-as a dictionary; a same-size replacement is charged. $M_L$ is a representation-dependent
-novelty proxy in compressed bytes. It omits a full reconstruction protocol, including
-ordering and dictionary-reference metadata, and is not by itself a prefix-code length
-or a calibrated estimate of ideal conditional Kolmogorov complexity.
+The conditional novelty $M_L$ is defined in Eq.~\eqref{eq:conditional-ast}, and
+the complete per-game profiles are plotted in Appendix~\ref{sec:all-marginals}.
+The following audit asks which marginal drops coincide with static source evidence
+of a reference to retained machinery, rather than treating every trough as reuse.
 
 We call $M_L\le M_{L-1}/2$ a sharp drop, a descriptive threshold. Separately, the
 static test asks whether the AST of the later winning entry point contains a direct
@@ -928,25 +955,38 @@ a document build substitutes for a new online replay or stochastic discovery run
 
 \section{Discussion}
 \label{sec:discussion}
-The release demonstrates retained executable solver growth under a finite verification
-gate. Its source history permits a narrower analysis than endpoint scores alone:
-\GKMHardReuse{} adjacent transitions contain a static call site to an unchanged
-earlier leg, and \GKMCoupledWitnesses{} also show a half-or-more conditional novelty
-drop. These counts identify inspectable source factorizations. Whole-program replay
-certifies the admitted path; it does not by itself show which branch or helper call
-ran. The audit did not collect runtime call traces, so executed-call reuse remains
-unmeasured. The \texttt{dc22} case shows why the accounting baseline and complete winning source
-must be established before interpreting a scalar decrease.
+The central object of this study is the conditional marginal description of a
+newly verified solver, not the growth of its source files. A retained library can
+continue to grow while the extra description needed for another variant falls.
+Conversely, a solver can reuse an unchanged routine and still need a larger
+marginal description because its route data or residual control become more
+complicated. Neither reuse nor successful retention requires a decreasing curve.
 
-The observed oscillations are diagnostics. No sawtooth formula was enforced, and
-no result shows that oscillation caused coverage or reduced search effort. In
-\texttt{ls20}, route literals accumulate while the shared leg remains unchanged;
-in \texttt{wa30}, scalar troughs coexist with newly named adjacent-level routines.
-The structure-function vocabulary separates retained description, conditional
-novelty, and historical charge. The paired comparison shows which changes persist
-under both baselines and identifies the recorded-only \texttt{dc22} trough. It adds
-an accounting interpretation, not an
-implemented optimizer or a proof that the observed lineage is shortest.
+The measured $M_k$ profiles show repeated rises and falls in several games, with
+\GKMDecreases{} decreases among \GKMComparable{} comparable marginals. Alternation
+between learning new machinery and applying retained machinery is the proposed
+explanation for a marginal-complexity sawtooth. It is supported most specifically
+when a decrease coincides with source evidence of a retained call: the audit finds
+\GKMHardReuse{} static unchanged-leg cases, including \GKMCoupledWitnesses{} with
+half-or-more novelty drops. In \texttt{ls20}, for example, the L2 drop accompanies
+a static call to unchanged \texttt{follow\_cardinal\_runs}; later route literals
+add novelty while that leg remains unchanged. A matched experiment would still
+be needed to attribute a reduction in discovery effort to access to the library.
+
+The other cases show why the pattern and its cause must be distinguished.
+\texttt{wa30} has marginal troughs but names newly introduced level-specific
+routines under the narrow adjacent direct-call test. \texttt{dc22} has two dips
+in $M$ even though its positive source-growth charges increase at every measured
+step. Its L5 marginal dip survives correction of the source reconstruction but
+is much smaller than the earlier incomplete audit implied. Those cases establish
+nonmonotone conditional novelty, without establishing that an executed old leg
+caused the decrease. Whole-program replay does not instrument individual calls.
+
+No sawtooth formula was enforced and no result shows that oscillation caused
+coverage. The structure-function account separates retained description from
+conditional novelty; the source-counter appendix separately reconciles working
+and promoted baselines. These measurements describe a first-success lineage,
+not an optimized Kolmogorov frontier or a free energy selection mechanism.
 
 \subsection{Limits and controlled follow-up}
 The 181/183 result is replay of solutions on the public set. It is not a held-out
@@ -976,26 +1016,127 @@ ranking, curiosity-based probe allocation, and broader open-ended growth are pro
 extensions; none is used to explain the frozen score causally.
 
 \section{Conclusion}
-GKM retains verified solver programs and exposes their construction history for audit.
+GKM studies the marginal description needed to extend a retained verified solver.
 The selected GPT-5.6 release replays 181/183 public levels, scoring $98.1166\%$ in
-Competition Mode with 7001 stored path actions and 7069 official API calls. The source
-audit covers 171 exact winning checkpoints and reports \GKMHardReuse{} static
-unchanged-leg call-site cases, including \GKMCoupledWitnesses{} with sharp conditional
-novelty drops. Correcting the \texttt{dc22} reconstruction removes a spurious sharp
-drop while preserving the frozen historical ledger and endpoint result. A separate
-comparison of authenticated promoted-source growth with recorded charges finds
-reversals in both series in 18 eligible game histories, while exposing the
-baseline-dependent \texttt{dc22} trough.
+Competition Mode with 7001 stored path actions and 7069 official API calls. At the
+171 exact winning-source checkpoints, the conditional-AST novelty proxy decreases
+in \GKMDecreases{} of \GKMComparable{} comparable steps, including \GKMSharpDrops{}
+half-or-more drops and \GKMCoupledWitnesses{} sharp static call-site cases. The
+complete marginal profiles expose sawtooth patterns and exceptions, while the
+source-growth counters provide separate supporting accounting. The corrected
+\texttt{dc22} profile is nonmonotone despite increasing promoted-source growth.
 
 Admission uses first success at the exact next level under execution, replay,
-provenance, taint, and containment checks. Source complexity and free energy are
-post-admission diagnostics. Standard pushout and structure-function language specifies
-retention and accounting, separately from the empirical contribution. The present
-evidence supports source-level reuse opportunities and reproducible replay; actual
-call execution, causal search savings, full discovery cost, and private-set
-performance require further measurement.
+provenance, taint, and containment checks. Complexity and free energy do not rank
+candidates. The conditional-complexity and structure-function framework formulates
+the question; the computable source proxy supplies reproducible observations,
+not ideal Kolmogorov values. Actual call execution, causal search savings, full
+discovery cost, and private-set performance require further measurement.
 
 \appendix
+\section{Conditional Marginal Profiles for the Full Suite}
+\label{sec:all-marginals}
+Figure~\ref{fig:all-marginals} publishes every game from the frozen GPT-5.6 release,
+not a ranking by the strength of oscillation. The ordinate is the conditional-AST
+novelty proxy of Eq.~\eqref{eq:conditional-ast}; source charges $C$ and $G$ are
+reported separately in Appendix~\ref{sec:source-counters}. Missing exact source,
+missing predecessors, and the two unclaimed levels remain gaps. An initial point,
+where available, uses an empty dictionary. No line is drawn through an unknown
+marginal. The complete values and input hashes are in
+\path{generated/conditional_marginal_profiles.json}.
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=\textwidth,height=0.88\textheight,keepaspectratio]{figures/marginal_complexity_all_games.png}
+\caption{Conditional marginal profiles for all 25 public games, using separate
+linear scales. Orange rings mark decreases and green diamonds mark sharp decreases
+with static unchanged-leg call sites. Panel counts report measured marginals, not
+solved levels: a replay-verified level can lack the exact source needed for this
+analysis. Gaps are unknown, not zero. Some games show repeated rises and falls;
+others provide only a short or incomplete segment. The figure does not assert a
+universal sawtooth law or instrument runtime call execution.}
+\label{fig:all-marginals}
+\end{figure}
+\clearpage
+
+\section{Supporting Source-Growth Counters}
+\label{sec:source-counters}
+These counters describe available working-cycle and admitted-state source
+accounting, not conditional marginal complexity. The working-cycle charge is
+recorded at successful cycles; it does not reconstruct all intermediate or failed
+edits over the whole discovery process. The latter would require a complete
+prospective workspace history.
+
+\subsection{Supporting source-growth ledger}
+\input{generated/marginal_complexity_by_level.tex}
+
+Table~\ref{tab:all-marginal-complexities} supplies the retained-description coordinate
+$D(s)$ required by Eq.~\eqref{eq:structure-function}, the stored replay path length,
+and one $C_k^{\mathrm{recorded}}$ cell for every promoted level. Values across games are descriptive rather
+than a shared frontier because the risks, level counts, move budgets, mechanics, and
+useful representations differ. They do not justify one fixed linear weighting of
+library source, attachment glue, and path length across all games. The two
+\texttt{lf52} cells marked pending are explicit gaps rather than imputed zeros.
+
+\subsection{Recorded charges and adjacent promoted growth}
+The full recorded-$C$ profiles above and a comparison of $C$ with $G$ answer
+different questions. For the paired analysis in
+Table~\ref{tab:charge-growth-comparison} and Fig.~\ref{fig:charge-growth-comparison},
+we restrict both curves to the same boundaries with authenticated adjacent original
+promoted states. The initial scaffold is not an authenticated promotion, so $G_1$
+is excluded. Missing pairs are not bridged. Reversal counts ignore flat differences within each contiguous known segment and
+are computed separately for each series on the aligned observed domain; they need not equal counts from the
+full recorded-$C$ profile.
+
+\input{generated/source_charge_comparison.tex}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.98\textwidth]{figures/source_charge_comparison.png}
+\caption{Recorded workspace-local charges $C^{\mathrm{recorded}}$ and adjacent
+promoted-state growth $G$, using the same source units and aligned authenticated
+boundary domains. The initial boundary is excluded, and gaps are not connected.
+Differences between the curves reflect their different baselines; neither curve is
+an admission rule or a measure of complete discovery cost.}
+\label{fig:charge-growth-comparison}
+\end{figure}
+
+The primary audit authenticates 158 retained states, yielding 134 paired values
+across 24 games. Twenty games have at least three consecutive paired values, enough
+to observe a direction reversal; 18 have reversals in both series. Summed over the
+aligned contiguous domains, $C$ has 45 reversals and $G$ has 43. The scalar values
+agree at 133 of the 134 paired boundaries; the only difference is \texttt{dc22} L5.
+Equality of the scalar charges does not establish identity of the working baselines.
+
+For \texttt{wa30}, the two curves coincide on L2--L9 and each reverses twice:
+the rise to L4, fall to L6, and subsequent rise survive the change of accounting
+baseline. This supports the descriptive sawtooth reading for that range. The full
+L1--L9 recorded-$C$ profile has three reversals because it also includes the initial
+fall to L2; the paired count deliberately excludes that first boundary.
+For \texttt{ls20}, both curves coincide on L2--L7 and have one reversal, a final
+downturn after L6 rather than repeated alternation. Thus nonmonotone patterns occur
+in both coordinates, but not every recorded trough survives in promoted-state growth.
+The primary comparison uses manifest-bound original promoted source. A separate
+extended analysis of uniquely identified retained-phase snapshots is recorded in
+\path{generated/source_charge_comparison.json}; it is not merged into the primary
+coverage or reversal counts. These source-unit profiles remain separate from the
+compressed-AST novelty $M_L$ and static-call conditions in the main analysis. A shape shared
+by $C$ and $G$ would establish an observed growth pattern, not executed reuse or a
+causal saving in search effort.
+
+\begin{figure}[t]
+\centering
+% Generated by scripts/generate_figures.py
+\includegraphics[width=0.92\textwidth]{figures/bounded_campaign_profiles.png}
+\caption{Supporting recorded-source-charge profiles for the five bounded runs, read directly from frozen
+checkpoints. Curves end at each verified frontier (levels 6--7). A shared ordinate preserves cross-game
+magnitude. Low points are small recorded workspace-local charges; they need separate
+source-call and replay checks before supporting a reuse
+interpretation. Runtime execution of particular calls was not measured.}
+\label{fig:bounded-profiles}
+\end{figure}
+\clearpage
+
 \section{Conditional Search Completeness}
 \label{sec:compute}
 Let $\mathcal A_B$ be the retained archive along one run after cumulative compute

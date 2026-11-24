@@ -46,3 +46,10 @@ L5. Wa30 reverses twice in both on L2–L9; ls20 has one final reversal in both 
 L2–L7. Initial values, missing pairs, and unauthenticated phase candidates do not
 enter primary reversal counts. See `generated/source_charge_comparison.json` and
 `REVISION_EVIDENCE.md`.
+
+The central empirical analysis is the conditional marginal proxy M, not the C/G
+source-growth comparison. Its 25-game figure and per-level JSON preserve missing
+exact sources, predecessor gaps and unclaimed levels. dc22 has marginal dips at L2
+and L5 despite increasing G; no executed reuse is inferred from that shape. The
+novelty/reuse explanation of a sawtooth is a hypothesis checked against static call
+evidence, with no complexity-based admission rule.

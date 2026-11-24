@@ -1204,33 +1204,6 @@ def main() -> int:
                 f"{comparator_drift['GKM']}"
             )
 
-        comparison_dir = tmp / "generated"
-        _run(
-            [sys.executable, "scripts/compare_source_charges.py",
-             "--output-dir", str(comparison_dir)],
-            cwd=manuscript,
-        )
-        comparison_files = tuple(sorted(comparison_dir.glob("source_charge_comparison.*")))
-        if len(comparison_files) != 3:
-            raise RuntimeError("paired source comparison did not produce JSON, Markdown, and TeX")
-
-        figure_dir = tmp / "figures"
-        env = os.environ.copy()
-        env.setdefault("MPLCONFIGDIR", str(tmp / "matplotlib"))
-        env.setdefault("XDG_CACHE_HOME", str(tmp / "cache"))
-        command = [
-            sys.executable,
-            "scripts/generate_figures.py",
-            "--output-dir",
-            str(figure_dir),
-            "--solutions-dir",
-            str(acquisition_root),
-            "--comparison-data",
-            str(comparison_dir / "source_charge_comparison.json"),
-        ]
-        print("+", " ".join(command))
-        subprocess.run(command, cwd=manuscript, env=env, check=True)
-
         generated_dir = tmp / "generated"
         rst_out = tmp / "marginal_complexity_by_level.rst"
         _run(
@@ -1250,6 +1223,48 @@ def main() -> int:
             sorted(generated_dir.glob("marginal_complexity_by_level.*"))
         )
 
+
+        comparison_dir = tmp / "generated"
+        _run(
+            [sys.executable, "scripts/compare_source_charges.py",
+             "--output-dir", str(comparison_dir)],
+            cwd=manuscript,
+        )
+        comparison_files = tuple(sorted(comparison_dir.glob("source_charge_comparison.*")))
+        if len(comparison_files) != 3:
+            raise RuntimeError("paired source comparison did not produce JSON, Markdown, and TeX")
+
+        _run(
+            [sys.executable, "scripts/generate_marginal_profiles.py",
+             "--audit", str(joint_out),
+             "--release-table", str(generated_dir / "marginal_complexity_by_level.json"),
+             "--output-dir", str(generated_dir)],
+            cwd=manuscript,
+        )
+        marginal_files = tuple(sorted(generated_dir.glob("conditional_marginal_profiles.*")))
+        if len(marginal_files) != 2:
+            raise RuntimeError("conditional marginal profiles did not produce JSON and Markdown")
+
+        figure_dir = tmp / "figures"
+        env = os.environ.copy()
+        env.setdefault("MPLCONFIGDIR", str(tmp / "matplotlib"))
+        env.setdefault("XDG_CACHE_HOME", str(tmp / "cache"))
+        command = [
+            sys.executable,
+            "scripts/generate_figures.py",
+            "--output-dir",
+            str(figure_dir),
+            "--solutions-dir",
+            str(acquisition_root),
+            "--comparison-data",
+            str(comparison_dir / "source_charge_comparison.json"),
+            "--marginal-data",
+            str(generated_dir / "conditional_marginal_profiles.json"),
+        ]
+        print("+", " ".join(command))
+        subprocess.run(command, cwd=manuscript, env=env, check=True)
+
+
         if args.write:
             shutil.copy2(joint_out, tracked_joint)
             for path in figure_dir.iterdir():
@@ -1260,7 +1275,7 @@ def main() -> int:
                 shutil.copy2(path, tracked_generated / path.name)
             for path in generated_tables:
                 shutil.copy2(path, tracked_generated / path.name)
-            for path in comparison_files:
+            for path in (*comparison_files, *marginal_files):
                 shutil.copy2(path, tracked_generated / path.name)
             docs_generated = repo / "docs" / "generated"
             docs_generated.mkdir(parents=True, exist_ok=True)
@@ -1346,6 +1361,7 @@ def main() -> int:
                         *generated_stats,
                         *generated_tables,
                         *comparison_files,
+                        *marginal_files,
                         rst_out,
                         taint_out,
                         action_boundary_out,
@@ -1371,6 +1387,7 @@ def main() -> int:
             "-q",
             "arc/test_audit_marginal_literal_reuse.py",
             "arc/manuscript/scripts/test_generate_figures.py",
+            "arc/manuscript/scripts/test_generate_marginal_profiles.py",
             "arc/manuscript/scripts/test_compare_source_charges.py",
             "arc/manuscript/scripts/test_generate_empirical_tables.py",
             "arc/manuscript/scripts/test_reproduce_manuscript.py",
