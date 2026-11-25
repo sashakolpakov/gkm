@@ -1,0 +1,161 @@
+{
+  "schema": 1,
+  "boundaries": 182,
+  "games": [
+    {
+      "game": "ar25",
+      "reached": 8,
+      "actions": 255,
+      "checkpoint_sha256": "99fcf194c9bee6cb85c7859982af5f0fd58c8b1f04cee98c744f7f01db7a76d4"
+    },
+    {
+      "game": "bp35",
+      "reached": 9,
+      "actions": 356,
+      "checkpoint_sha256": "d4ec1e0593658c21eec50771a9b2d1ee4799c322d996535637b592f367830b39"
+    },
+    {
+      "game": "cd82",
+      "reached": 6,
+      "actions": 73,
+      "checkpoint_sha256": "3babb8b5fdf99de64980fdf700497afd0082cb6a7ac193057d0e0076feff4483"
+    },
+    {
+      "game": "cn04",
+      "reached": 6,
+      "actions": 191,
+      "checkpoint_sha256": "4c1ae1f87f62b16f16260ee3478c41866607c18ec3b135908b70df71155393ae"
+    },
+    {
+      "game": "dc22",
+      "reached": 6,
+      "actions": 473,
+      "checkpoint_sha256": "4bbebb35989d7629fe8bd5c75f04d43ca5bc9164fa319040f24226fbbff01cad"
+    },
+    {
+      "game": "ft09",
+      "reached": 6,
+      "actions": 75,
+      "checkpoint_sha256": "a92970d1dbcc85402507d114c81752572d47543e4ca369917fc9ffd35ca1cb14"
+    },
+    {
+      "game": "g50t",
+      "reached": 7,
+      "actions": 293,
+      "checkpoint_sha256": "9bd1cdb203405ac76431471efa17ad546a2e4d12364a762b2f9cbcf450b37dd9"
+    },
+    {
+      "game": "ka59",
+      "reached": 7,
+      "actions": 350,
+      "checkpoint_sha256": "770e4c3e2c14dc96f84c29fe3fe9fef8a348f8c4b1f9ae9336515cf18d111d11"
+    },
+    {
+      "game": "lf52",
+      "reached": 9,
+      "actions": 598,
+      "checkpoint_sha256": "4d5f591f1a32bf584380b4fc66163c6a32e91ed49317491c6d94a9e9f16beefe"
+    },
+    {
+      "game": "lp85",
+      "reached": 8,
+      "actions": 79,
+      "checkpoint_sha256": "77aa98751a3eb9059cb10a8f90a14fafc0f51cb3799e78e21f32a2b6494f25cc"
+    },
+    {
+      "game": "ls20",
+      "reached": 7,
+      "actions": 353,
+      "checkpoint_sha256": "e83bd76a3a5370c314c3314ac87cee056ff415c06f8f621d3d95512fa3792d07"
+    },
+    {
+      "game": "m0r0",
+      "reached": 6,
+      "actions": 202,
+      "checkpoint_sha256": "240c83d37ae1c9f846afd8aea013392567de4b7ae98b65f22409c16d9750a17d"
+    },
+    {
+      "game": "r11l",
+      "reached": 6,
+      "actions": 95,
+      "checkpoint_sha256": "220b57644853995de131a0cda56d21e2dd96da666563b27959abad6fc3812b5e"
+    },
+    {
+      "game": "re86",
+      "reached": 8,
+      "actions": 596,
+      "checkpoint_sha256": "04e2852fab10162192cffa823a439287a3ac71d4accfe8437c08b0395977dc44"
+    },
+    {
+      "game": "s5i5",
+      "reached": 8,
+      "actions": 269,
+      "checkpoint_sha256": "feef948a079394a5dbffd614c78941d40cff22b83006db17dc4a2092bcdff7e9"
+    },
+    {
+      "game": "sb26",
+      "reached": 8,
+      "actions": 124,
+      "checkpoint_sha256": "f4285a2bd2a0491c63751921cc7f2ad018e481b51a1f4a4971c13f6be41b95e7"
+    },
+    {
+      "game": "sc25",
+      "reached": 6,
+      "actions": 149,
+      "checkpoint_sha256": "bc275a21b616eadff5809e800b921f90f986edaa96acfbb9a46e9ef89209e5ec"
+    },
+    {
+      "game": "sk48",
+      "reached": 8,
+      "actions": 580,
+      "checkpoint_sha256": "709a2095a706437e90f824c6c1367334eb44c14053745d435cc317cca4510b8e"
+    },
+    {
+      "game": "sp80",
+      "reached": 6,
+      "actions": 166,
+      "checkpoint_sha256": "ecb6be0d72fcb2f6edd7ba93ef3553f12fb10120d7f43841b797062b1fbcbdd0"
+    },
+    {
+      "game": "su15",
+      "reached": 9,
+      "actions": 141,
+      "checkpoint_sha256": "2cec1754d0b1e7915c288b6b461ff14335527442002273ec7638b8eb90b176ca"
+    },
+    {
+      "game": "tn36",
+      "reached": 7,
+      "actions": 168,
+      "checkpoint_sha256": "6aa60f99743d74214489b7771e442171a2f8a227d416851b54d2156b7e6e4102"
+    },
+    {
+      "game": "tr87",
+      "reached": 6,
+      "actions": 153,
+      "checkpoint_sha256": "00529d15adaa7766484d9a39f676f3e8a30e1e1c0f9058c096a4bda1f4dc2bac"
+    },
+    {
+      "game": "tu93",
+      "reached": 9,
+      "actions": 185,
+      "checkpoint_sha256": "1d82c322bac71751042d030c2179bd6358d58a8a2b98bbfca98a3d7027603b3d"
+    },
+    {
+      "game": "vc33",
+      "reached": 7,
+      "actions": 167,
+      "checkpoint_sha256": "f0baa9a2e636ec730354a729b7734963d897b753261047e8df0e7067dfdfadc5"
+    },
+    {
+      "game": "wa30",
+      "reached": 9,
+      "actions": 594,
+      "checkpoint_sha256": "6b484c5c8cbe0e2a8497cd5e494d6d70848f369dfc35957140b851c7d9bed55d"
+    }
+  ],
+  "stored_actions": 6685,
+  "cutoff_thread": "01a20cc3-31b4-76d3-88d4-389b77a8bef5",
+  "cutoff_at_utc": "2026-11-24T09:56:21.358595+00:00",
+  "latest_promotion_at_utc": "2026-11-21T05:34:12.729601+00:00",
+  "source_selection": "Exact highest admitted promotion files, original complete promotion chains; excludes all failed WIP and post-cutoff attempts."
+}

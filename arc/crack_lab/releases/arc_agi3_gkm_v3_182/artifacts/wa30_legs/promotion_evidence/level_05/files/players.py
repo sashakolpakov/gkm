@@ -1,0 +1,21 @@
+from legs import fill_marked_cells, handoff_across_barrier, deliver_with_moving_carrier
+
+
+def play_level_1(env):
+    fill_marked_cells(env)
+
+
+def play_level_2(env):
+    fill_marked_cells(env, cooperative=True)
+
+
+def play_level_3(env):
+    handoff_across_barrier(env)
+
+
+def play_level_4(env):
+    handoff_across_barrier(env)
+
+
+def play_level_5(env):
+    deliver_with_moving_carrier(env)

@@ -1,0 +1,568 @@
+{
+  "canonical": {
+    "files": 150,
+    "hits": [],
+    "verdict": "clean"
+  },
+  "successful_candidate_wip": {
+    "snapshots": 0,
+    "files": 0,
+    "hits": []
+  },
+  "discarded_wip": {
+    "snapshots": 0,
+    "files": 0,
+    "hits": []
+  },
+  "frontier_scaffolds": {
+    "files": 0,
+    "hits": [],
+    "verdict": "clean"
+  },
+  "proposer_containment": {
+    "transcript_paths": 353,
+    "unique_transcripts": 172,
+    "completed_commands": 3210,
+    "completed_file_changes": 311,
+    "web_search_events": 0,
+    "public_action_protocol_violations": 0,
+    "incidents": [],
+    "verdict": "clean"
+  },
+  "promotion_chains": {
+    "ar25_legs": {
+      "manifests": 8,
+      "expected_reached": 8,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "bp35_legs": {
+      "manifests": 9,
+      "expected_reached": 9,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "cd82_legs": {
+      "manifests": 6,
+      "expected_reached": 6,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "cn04_legs": {
+      "manifests": 6,
+      "expected_reached": 6,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "dc22_legs": {
+      "manifests": 6,
+      "expected_reached": 6,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "ft09_legs": {
+      "manifests": 6,
+      "expected_reached": 6,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "g50t_legs": {
+      "manifests": 7,
+      "expected_reached": 7,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "ka59_legs": {
+      "manifests": 7,
+      "expected_reached": 7,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "lf52_legs": {
+      "manifests": 9,
+      "expected_reached": 9,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "lp85_legs": {
+      "manifests": 8,
+      "expected_reached": 8,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "ls20_legs": {
+      "manifests": 7,
+      "expected_reached": 7,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "m0r0_legs": {
+      "manifests": 6,
+      "expected_reached": 6,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "r11l_legs": {
+      "manifests": 6,
+      "expected_reached": 6,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "re86_legs": {
+      "manifests": 8,
+      "expected_reached": 8,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "s5i5_legs": {
+      "manifests": 8,
+      "expected_reached": 8,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "sb26_legs": {
+      "manifests": 8,
+      "expected_reached": 8,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "sc25_legs": {
+      "manifests": 6,
+      "expected_reached": 6,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "sk48_legs": {
+      "manifests": 8,
+      "expected_reached": 8,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "sp80_legs": {
+      "manifests": 6,
+      "expected_reached": 6,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "su15_legs": {
+      "manifests": 9,
+      "expected_reached": 9,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "tn36_legs": {
+      "manifests": 7,
+      "expected_reached": 7,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "tr87_legs": {
+      "manifests": 6,
+      "expected_reached": 6,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "tu93_legs": {
+      "manifests": 9,
+      "expected_reached": 9,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "vc33_legs": {
+      "manifests": 7,
+      "expected_reached": 7,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    },
+    "wa30_legs": {
+      "manifests": 9,
+      "expected_reached": 9,
+      "manifest_levels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "missing_levels": [],
+      "unexpected_levels": [],
+      "complete": true,
+      "integrity_errors": [],
+      "taint_hits": [],
+      "informational_harness_introspection": [],
+      "informational_operational_monitoring": [],
+      "verdict": "clean"
+    }
+  },
+  "ancestry_note": "WIP adjacency is not promotion ancestry. Historical ancestry needs an explicit manifest or an independently reconstructed file-hash chain.",
+  "automated_verdict": "PASS"
+}

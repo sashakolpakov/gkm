@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "scope": "New GPT-6.1 acquisition; separate from the selected GPT-5.6 manuscript dataset.",
+  "discovery_producer_revision": "1492eeb7817950e2e943b05880907f5edcc6f445",
+  "verification_context_revision": "194b3a16af6ac0e1dcbd436aace15dc4783d99ea",
+  "release_receipt_sha256": "a6530210eb8e7b98a41c907551bbd2b8aba1374cbc52323c839a2435568022b0",
+  "source_and_independent_path_replayed_boundaries": 182,
+  "action_cap": 600,
+  "canonical_stored_actions": 6685,
+  "deterministic_reconstructions": 0,
+  "historical_source_boundaries": 150,
+  "retrospective_certifications": 32,
+  "full_frozen_acquisition_taint": "PASS; 25 complete promotion chains",
+  "focused_producer_tests_passed": 124,
+  "release_context_and_gate_tests_passed": 38,
+  "cost_accounting_tests_passed": 5,
+  "all_sealed_captures_hash_checked": 502,
+  "terminal_usage_reports_checked": 499,
+  "missing_terminal_usage_reports": 3,
+  "unmodified_legacy_test_collection": {
+    "passed": 249,
+    "failed": 9,
+    "scope": "Retired status-policy/synthetic frontier fixtures, changed prompt wording, and absent historical artifact directories in the sparse toolchain tree; production bytes remain unchanged."
+  },
+  "scorecard_scope": "Official remote scorecards are added after immutable source publication; local certification is not an official score."
+}

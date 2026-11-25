@@ -1,0 +1,21 @@
+{
+  "codex_transcripts": [],
+  "created_at": "2026-11-16T22:04:26.318846+00:00",
+  "game": "cn04",
+  "level": 4,
+  "parent_manifest": "promotion_evidence/level_03/manifest.json",
+  "parent_manifest_sha256": "cb2da601fb9a2ca8178104c90a50329e8af5ead3f051c67d877b228f8a2daa7c",
+  "promoted_files_sha256": {
+    "auto_solve_attempts.json": "9e73d07cd6c036daac1e6cac8b0f85181dc3b3fa90adf2d17cfcf295a9c57cb2",
+    "checkpoint.json": "628fac4e6425a05853975b26e0eb801af84fdbbdddfffd3b12c5cdd87ccee066",
+    "legs.py": "1b943d9eeff4c0ed5a16a03968e5278b70b2fbd47c5a79273932c458067c6062",
+    "legs_log.md": "3e6f5865c7307ffcbd1c9f835b9d24d8263622bcf66934d03f8730587a090636",
+    "players.py": "d22cfff945343e025b9dec9ed8a28ff277f13b4bf840bb8402bb5f051c59953b",
+    "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+  },
+  "schema": 1,
+  "taint_verdict": "clean",
+  "transcript": "proposer_last.log",
+  "transcript_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "validated": true
+}

@@ -1,0 +1,54 @@
+name: Verify GPT-6.1 ARC release
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - arc/crack_lab/releases/arc_agi3_gkm_v3_182/**
+      - arc/campaign_costs.py
+      - arc/test_campaign_costs.py
+      - .github/workflows/gpt61-release.yml
+  pull_request:
+    paths:
+      - arc/crack_lab/releases/arc_agi3_gkm_v3_182/**
+      - arc/campaign_costs.py
+      - arc/test_campaign_costs.py
+      - .github/workflows/gpt61-release.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: python -m pip install pytest
+      - name: Test token accounting
+        run: PYTHONPATH=arc python -m pytest -q arc/test_campaign_costs.py
+      - name: Verify the frozen 182-level receipt
+        run: >-
+          python arc/crack_lab/verify_frozen_release.py
+          --canonical-root arc/crack_lab/releases/arc_agi3_gkm_v3_182/artifacts
+          --receipt arc/crack_lab/releases/arc_agi3_gkm_v3_182/receipts/*.json
+      - name: Recompute token and cost totals from the published ledger
+        run: |
+          PYTHONPATH=arc python - <<'PY'
+          import json
+          from pathlib import Path
+          from campaign_costs import build_report
+          p = Path('arc/crack_lab/releases/arc_agi3_gkm_v3_182/accounting')
+          stored = json.loads((p / 'token_costs.json').read_text())
+          actual = build_report((p / 'usage.jsonl').read_bytes(),
+                                stored['cutoff']['thread_id'],
+                                json.loads((p / 'capture_usage.json').read_text()))
+          assert actual == stored, 'published token/cost totals do not reproduce'
+          print('Published token totals and pricing scenarios reproduce exactly.')
+          PY

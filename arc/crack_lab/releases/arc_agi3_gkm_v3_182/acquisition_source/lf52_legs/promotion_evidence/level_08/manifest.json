@@ -1,0 +1,26 @@
+{
+  "codex_transcripts": [
+    {
+      "path": "codex_turns/codex_turn_20261121T013041496618Z_lf52_L8_propose.jsonl",
+      "sha256": "c34ab8cbb82a79d99df419aa61850f414c2762655effb2dbf33e0046b703426e"
+    }
+  ],
+  "created_at": "2026-11-21T01:39:44.207744+00:00",
+  "game": "lf52",
+  "level": 8,
+  "parent_manifest": "promotion_evidence/level_07/manifest.json",
+  "parent_manifest_sha256": "facb5273e92112dfac996ca7df0f82b2b90c5e80df0856a8c6bf41ea741f46b8",
+  "promoted_files_sha256": {
+    "auto_solve_attempts.json": "f47ad2aca3d1c9ddf3a57d84d93abf2eedc0161fb6be8c33cf2da9692549c2a5",
+    "checkpoint.json": "408f13070ce9169ea43725cc89556033a9957bd462404c8140a8a13b921e4d3b",
+    "legs.py": "ae295a4d99ec4bd6fde82d87c7c8bb0f1a1b3d00273c0c1dc1fd43885651d2b2",
+    "legs_log.md": "f20c968430104c8221b20c1d4936d4b639ceea4ebb012a8d792aaf283593a14e",
+    "players.py": "d21e86fc8d2f1ffc65e63bbebab15d35d2a6f57ecc4886bc56ab5f629107483d",
+    "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+  },
+  "schema": 1,
+  "taint_verdict": "clean",
+  "transcript": "proposer_last.log",
+  "transcript_sha256": "c34ab8cbb82a79d99df419aa61850f414c2762655effb2dbf33e0046b703426e",
+  "validated": true
+}

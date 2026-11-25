@@ -1,0 +1,781 @@
+{
+  "authoritative_levels": 183,
+  "claimed_levels": 182,
+  "deterministic_reconstructions": [],
+  "games": 25,
+  "historical_source_boundaries": [
+    {
+      "game": "ar25",
+      "level": 1
+    },
+    {
+      "game": "ar25",
+      "level": 2
+    },
+    {
+      "game": "ar25",
+      "level": 3
+    },
+    {
+      "game": "ar25",
+      "level": 4
+    },
+    {
+      "game": "ar25",
+      "level": 5
+    },
+    {
+      "game": "ar25",
+      "level": 6
+    },
+    {
+      "game": "ar25",
+      "level": 7
+    },
+    {
+      "game": "ar25",
+      "level": 8
+    },
+    {
+      "game": "bp35",
+      "level": 1
+    },
+    {
+      "game": "bp35",
+      "level": 3
+    },
+    {
+      "game": "bp35",
+      "level": 5
+    },
+    {
+      "game": "bp35",
+      "level": 7
+    },
+    {
+      "game": "bp35",
+      "level": 8
+    },
+    {
+      "game": "bp35",
+      "level": 9
+    },
+    {
+      "game": "cd82",
+      "level": 1
+    },
+    {
+      "game": "cd82",
+      "level": 2
+    },
+    {
+      "game": "cd82",
+      "level": 3
+    },
+    {
+      "game": "cn04",
+      "level": 1
+    },
+    {
+      "game": "cn04",
+      "level": 2
+    },
+    {
+      "game": "cn04",
+      "level": 3
+    },
+    {
+      "game": "cn04",
+      "level": 5
+    },
+    {
+      "game": "cn04",
+      "level": 6
+    },
+    {
+      "game": "dc22",
+      "level": 1
+    },
+    {
+      "game": "dc22",
+      "level": 2
+    },
+    {
+      "game": "dc22",
+      "level": 3
+    },
+    {
+      "game": "dc22",
+      "level": 4
+    },
+    {
+      "game": "dc22",
+      "level": 5
+    },
+    {
+      "game": "dc22",
+      "level": 6
+    },
+    {
+      "game": "ft09",
+      "level": 1
+    },
+    {
+      "game": "ft09",
+      "level": 2
+    },
+    {
+      "game": "ft09",
+      "level": 3
+    },
+    {
+      "game": "ft09",
+      "level": 4
+    },
+    {
+      "game": "ft09",
+      "level": 5
+    },
+    {
+      "game": "ft09",
+      "level": 6
+    },
+    {
+      "game": "g50t",
+      "level": 1
+    },
+    {
+      "game": "g50t",
+      "level": 2
+    },
+    {
+      "game": "g50t",
+      "level": 3
+    },
+    {
+      "game": "g50t",
+      "level": 4
+    },
+    {
+      "game": "g50t",
+      "level": 5
+    },
+    {
+      "game": "g50t",
+      "level": 6
+    },
+    {
+      "game": "g50t",
+      "level": 7
+    },
+    {
+      "game": "ka59",
+      "level": 1
+    },
+    {
+      "game": "ka59",
+      "level": 2
+    },
+    {
+      "game": "ka59",
+      "level": 3
+    },
+    {
+      "game": "ka59",
+      "level": 4
+    },
+    {
+      "game": "ka59",
+      "level": 5
+    },
+    {
+      "game": "ka59",
+      "level": 6
+    },
+    {
+      "game": "ka59",
+      "level": 7
+    },
+    {
+      "game": "lf52",
+      "level": 1
+    },
+    {
+      "game": "lf52",
+      "level": 2
+    },
+    {
+      "game": "lf52",
+      "level": 3
+    },
+    {
+      "game": "lf52",
+      "level": 4
+    },
+    {
+      "game": "lf52",
+      "level": 5
+    },
+    {
+      "game": "lp85",
+      "level": 1
+    },
+    {
+      "game": "lp85",
+      "level": 2
+    },
+    {
+      "game": "lp85",
+      "level": 3
+    },
+    {
+      "game": "lp85",
+      "level": 5
+    },
+    {
+      "game": "lp85",
+      "level": 6
+    },
+    {
+      "game": "lp85",
+      "level": 8
+    },
+    {
+      "game": "ls20",
+      "level": 1
+    },
+    {
+      "game": "ls20",
+      "level": 2
+    },
+    {
+      "game": "ls20",
+      "level": 3
+    },
+    {
+      "game": "ls20",
+      "level": 4
+    },
+    {
+      "game": "m0r0",
+      "level": 1
+    },
+    {
+      "game": "m0r0",
+      "level": 2
+    },
+    {
+      "game": "m0r0",
+      "level": 3
+    },
+    {
+      "game": "m0r0",
+      "level": 4
+    },
+    {
+      "game": "m0r0",
+      "level": 5
+    },
+    {
+      "game": "m0r0",
+      "level": 6
+    },
+    {
+      "game": "r11l",
+      "level": 1
+    },
+    {
+      "game": "re86",
+      "level": 1
+    },
+    {
+      "game": "re86",
+      "level": 2
+    },
+    {
+      "game": "re86",
+      "level": 3
+    },
+    {
+      "game": "s5i5",
+      "level": 1
+    },
+    {
+      "game": "s5i5",
+      "level": 2
+    },
+    {
+      "game": "s5i5",
+      "level": 3
+    },
+    {
+      "game": "s5i5",
+      "level": 4
+    },
+    {
+      "game": "s5i5",
+      "level": 5
+    },
+    {
+      "game": "s5i5",
+      "level": 6
+    },
+    {
+      "game": "s5i5",
+      "level": 7
+    },
+    {
+      "game": "s5i5",
+      "level": 8
+    },
+    {
+      "game": "sb26",
+      "level": 1
+    },
+    {
+      "game": "sb26",
+      "level": 2
+    },
+    {
+      "game": "sb26",
+      "level": 3
+    },
+    {
+      "game": "sb26",
+      "level": 4
+    },
+    {
+      "game": "sb26",
+      "level": 5
+    },
+    {
+      "game": "sb26",
+      "level": 6
+    },
+    {
+      "game": "sb26",
+      "level": 8
+    },
+    {
+      "game": "sc25",
+      "level": 1
+    },
+    {
+      "game": "sc25",
+      "level": 2
+    },
+    {
+      "game": "sc25",
+      "level": 3
+    },
+    {
+      "game": "sc25",
+      "level": 4
+    },
+    {
+      "game": "sc25",
+      "level": 5
+    },
+    {
+      "game": "sc25",
+      "level": 6
+    },
+    {
+      "game": "sk48",
+      "level": 1
+    },
+    {
+      "game": "sk48",
+      "level": 2
+    },
+    {
+      "game": "sk48",
+      "level": 3
+    },
+    {
+      "game": "sk48",
+      "level": 4
+    },
+    {
+      "game": "sk48",
+      "level": 5
+    },
+    {
+      "game": "sk48",
+      "level": 6
+    },
+    {
+      "game": "sk48",
+      "level": 7
+    },
+    {
+      "game": "sk48",
+      "level": 8
+    },
+    {
+      "game": "sp80",
+      "level": 1
+    },
+    {
+      "game": "sp80",
+      "level": 2
+    },
+    {
+      "game": "sp80",
+      "level": 3
+    },
+    {
+      "game": "sp80",
+      "level": 4
+    },
+    {
+      "game": "sp80",
+      "level": 6
+    },
+    {
+      "game": "su15",
+      "level": 1
+    },
+    {
+      "game": "su15",
+      "level": 3
+    },
+    {
+      "game": "su15",
+      "level": 4
+    },
+    {
+      "game": "su15",
+      "level": 5
+    },
+    {
+      "game": "su15",
+      "level": 6
+    },
+    {
+      "game": "su15",
+      "level": 7
+    },
+    {
+      "game": "su15",
+      "level": 8
+    },
+    {
+      "game": "su15",
+      "level": 9
+    },
+    {
+      "game": "tn36",
+      "level": 1
+    },
+    {
+      "game": "tn36",
+      "level": 2
+    },
+    {
+      "game": "tn36",
+      "level": 3
+    },
+    {
+      "game": "tn36",
+      "level": 4
+    },
+    {
+      "game": "tn36",
+      "level": 5
+    },
+    {
+      "game": "tn36",
+      "level": 6
+    },
+    {
+      "game": "tn36",
+      "level": 7
+    },
+    {
+      "game": "tr87",
+      "level": 1
+    },
+    {
+      "game": "tr87",
+      "level": 2
+    },
+    {
+      "game": "tr87",
+      "level": 3
+    },
+    {
+      "game": "tr87",
+      "level": 4
+    },
+    {
+      "game": "tr87",
+      "level": 5
+    },
+    {
+      "game": "tr87",
+      "level": 6
+    },
+    {
+      "game": "tu93",
+      "level": 1
+    },
+    {
+      "game": "tu93",
+      "level": 2
+    },
+    {
+      "game": "tu93",
+      "level": 3
+    },
+    {
+      "game": "tu93",
+      "level": 4
+    },
+    {
+      "game": "tu93",
+      "level": 5
+    },
+    {
+      "game": "tu93",
+      "level": 6
+    },
+    {
+      "game": "vc33",
+      "level": 1
+    },
+    {
+      "game": "vc33",
+      "level": 2
+    },
+    {
+      "game": "vc33",
+      "level": 3
+    },
+    {
+      "game": "vc33",
+      "level": 4
+    },
+    {
+      "game": "vc33",
+      "level": 5
+    },
+    {
+      "game": "vc33",
+      "level": 6
+    },
+    {
+      "game": "vc33",
+      "level": 7
+    },
+    {
+      "game": "wa30",
+      "level": 1
+    },
+    {
+      "game": "wa30",
+      "level": 2
+    },
+    {
+      "game": "wa30",
+      "level": 3
+    },
+    {
+      "game": "wa30",
+      "level": 4
+    },
+    {
+      "game": "wa30",
+      "level": 5
+    },
+    {
+      "game": "wa30",
+      "level": 6
+    },
+    {
+      "game": "wa30",
+      "level": 7
+    },
+    {
+      "game": "wa30",
+      "level": 8
+    },
+    {
+      "game": "wa30",
+      "level": 9
+    }
+  ],
+  "kind": "partial_campaign_freeze",
+  "output_root": "artifacts",
+  "retrospective_certifications": [
+    {
+      "game": "bp35",
+      "level": 2,
+      "source_phase": "reached_before_debrief"
+    },
+    {
+      "game": "bp35",
+      "level": 4,
+      "source_phase": "reached_before_debrief"
+    },
+    {
+      "game": "bp35",
+      "level": 6,
+      "source_phase": "reached_before_debrief"
+    },
+    {
+      "game": "cd82",
+      "level": 4,
+      "source_phase": "legacy_schema1_promoted_source"
+    },
+    {
+      "game": "cd82",
+      "level": 5,
+      "source_phase": "legacy_schema1_promoted_source"
+    },
+    {
+      "game": "cd82",
+      "level": 6,
+      "source_phase": "legacy_schema1_promoted_source"
+    },
+    {
+      "game": "cn04",
+      "level": 4,
+      "source_phase": "legacy_schema1_promoted_source"
+    },
+    {
+      "game": "lf52",
+      "level": 6,
+      "source_phase": "reached_before_debrief"
+    },
+    {
+      "game": "lf52",
+      "level": 7,
+      "source_phase": "reached_before_debrief"
+    },
+    {
+      "game": "lf52",
+      "level": 8,
+      "source_phase": "reached_before_debrief"
+    },
+    {
+      "game": "lf52",
+      "level": 9,
+      "source_phase": "reached_before_debrief"
+    },
+    {
+      "game": "lp85",
+      "level": 4,
+      "source_phase": "legacy_schema1_promoted_source"
+    },
+    {
+      "game": "lp85",
+      "level": 7,
+      "source_phase": "legacy_schema1_promoted_source"
+    },
+    {
+      "game": "ls20",
+      "level": 5,
+      "source_phase": "reached_before_debrief"
+    },
+    {
+      "game": "ls20",
+      "level": 6,
+      "source_phase": "reached_before_debrief"
+    },
+    {
+      "game": "ls20",
+      "level": 7,
+      "source_phase": "reached_before_debrief"
+    },
+    {
+      "game": "r11l",
+      "level": 2,
+      "source_phase": "reached_before_debrief"
+    },
+    {
+      "game": "r11l",
+      "level": 3,
+      "source_phase": "legacy_schema1_promoted_source"
+    },
+    {
+      "game": "r11l",
+      "level": 4,
+      "source_phase": "reached_before_debrief"
+    },
+    {
+      "game": "r11l",
+      "level": 5,
+      "source_phase": "reached_before_debrief"
+    },
+    {
+      "game": "r11l",
+      "level": 6,
+      "source_phase": "reached_before_debrief"
+    },
+    {
+      "game": "re86",
+      "level": 4,
+      "source_phase": "reached_before_debrief"
+    },
+    {
+      "game": "re86",
+      "level": 5,
+      "source_phase": "reached_before_debrief"
+    },
+    {
+      "game": "re86",
+      "level": 6,
+      "source_phase": "reached_before_debrief"
+    },
+    {
+      "game": "re86",
+      "level": 7,
+      "source_phase": "reached_before_debrief"
+    },
+    {
+      "game": "re86",
+      "level": 8,
+      "source_phase": "reached_before_debrief"
+    },
+    {
+      "game": "sb26",
+      "level": 7,
+      "source_phase": "legacy_schema1_promoted_source"
+    },
+    {
+      "game": "sp80",
+      "level": 5,
+      "source_phase": "reached_before_debrief"
+    },
+    {
+      "game": "su15",
+      "level": 2,
+      "source_phase": "reached_before_debrief"
+    },
+    {
+      "game": "tu93",
+      "level": 7,
+      "source_phase": "legacy_schema1_promoted_source"
+    },
+    {
+      "game": "tu93",
+      "level": 8,
+      "source_phase": "legacy_schema1_promoted_source"
+    },
+    {
+      "game": "tu93",
+      "level": 9,
+      "source_phase": "legacy_schema1_promoted_source"
+    }
+  ],
+  "schema": 1,
+  "source_root": "acquisition_source (original campaign archive used for exact selection)",
+  "status": "PASS",
+  "unclaimed_boundaries": [
+    {
+      "game": "lf52",
+      "level": 10
+    }
+  ]
+}

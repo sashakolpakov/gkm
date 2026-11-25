@@ -1,0 +1,26 @@
+{
+  "codex_transcripts": [
+    {
+      "path": "codex_turns/codex_turn_20261117T030634134616Z_s5i5_L5_propose.jsonl",
+      "sha256": "78748ea68695e2a6927bfdd4f8e055ae299a66b07890e75480cff4305dfa8cdf"
+    }
+  ],
+  "created_at": "2026-11-17T03:08:09.724663+00:00",
+  "game": "s5i5",
+  "level": 5,
+  "parent_manifest": "promotion_evidence/level_04/manifest.json",
+  "parent_manifest_sha256": "b74cbad23d177002d1bfef3e59b51259929849d798a25cfa5d173687884db86a",
+  "promoted_files_sha256": {
+    "auto_solve_attempts.json": "7fed723a5310222d6664586e118cb180b2517cdb635f31b0ee70606b69f238d7",
+    "checkpoint.json": "b57347f7ffca430728c69cc5251de3928c7f4f4a46da23d1c03b494488539566",
+    "legs.py": "b63c19ac1194bbc19bd47b5ba3d345096651e01799eb764711089f4618c2de1f",
+    "legs_log.md": "a2abeedbf42babe400df6dac58c2f8726bbc3a23f6b8991a1ffcb12a759330b9",
+    "players.py": "4f2a502a9c2f3d8e91f19028fe3ca99ae05c02c4f963d04bdc5e751811175574",
+    "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+  },
+  "schema": 1,
+  "taint_verdict": "clean",
+  "transcript": "proposer_last.log",
+  "transcript_sha256": "78748ea68695e2a6927bfdd4f8e055ae299a66b07890e75480cff4305dfa8cdf",
+  "validated": true
+}

@@ -1,5 +1,10 @@
 # Gödel–Kolmogorov Machine: Auditable Program-Growth Experiments
 
+The newest [GPT-6.1 campaign release](arc/crack_lab/releases/arc_agi3_gkm_v3_182/README.md)
+contains **182/183 replay-validated public levels**, with a frozen producer,
+complete retained promotion chains and [token/cost accounting](arc/crack_lab/releases/arc_agi3_gkm_v3_182/accounting/README.md).
+The selected manuscript continues to analyse the older GPT-5.6 dataset shown below.
+
 The Gödel–Kolmogorov Machine is a collection of verifier-driven program-growth
 experiments. In the ARC-AGI-3 study, the Gödel–Kolmogorov Machine uses a proposer
 to write solver code and a simulator to validate promoted behavior by fresh replay.
@@ -19,7 +24,7 @@ description-length selection; it does not claim proof-search optimality or exact
 Kolmogorov complexity. After this full introduction, the repository uses **GKM**
 as its abbreviation.
 
-## Current replay-validated ARC-AGI-3 artifacts
+## Frozen ARC-AGI-3 manuscript dataset (v2)
 
 <!-- BEGIN GENERATED: ARC_ARTIFACT_STATUS -->
 | Scope | Verified levels | Stored replay actions | Ledger charge |

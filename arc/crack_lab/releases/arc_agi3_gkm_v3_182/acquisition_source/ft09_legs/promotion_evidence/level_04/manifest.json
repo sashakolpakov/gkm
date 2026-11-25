@@ -1,0 +1,26 @@
+{
+  "codex_transcripts": [
+    {
+      "path": "codex_turns/codex_turn_20261116T205930684418Z_ft09_L4_propose.jsonl",
+      "sha256": "a22e7f99e3627724607fa691c15ccdfa4c24ed96270ae716ae667fbe9322a2cb"
+    }
+  ],
+  "created_at": "2026-11-16T21:01:08.938925+00:00",
+  "game": "ft09",
+  "level": 4,
+  "parent_manifest": "promotion_evidence/level_03/manifest.json",
+  "parent_manifest_sha256": "e69c0d089f897fc65bdacfca90408444749783f2fcb3395b735d6dcb576224d0",
+  "promoted_files_sha256": {
+    "auto_solve_attempts.json": "5ac621334e877e2cf23a7dd1740030e5c9163ad193b18f280d9bba09cd937248",
+    "checkpoint.json": "680602340469a265a223c664e2c655f58392b8ab97d55422b4dae653a3a4c2fe",
+    "legs.py": "a9c26a42a33818113530961dd875ce89c83fe2d134a1558977d3d190c0709553",
+    "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
+    "players.py": "c9a57b378e6642a324d9d0953ecf3634837486fec8ef869951bd435c85076c9a",
+    "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+  },
+  "schema": 1,
+  "taint_verdict": "clean",
+  "transcript": "proposer_last.log",
+  "transcript_sha256": "a22e7f99e3627724607fa691c15ccdfa4c24ed96270ae716ae667fbe9322a2cb",
+  "validated": true
+}

@@ -1,0 +1,22 @@
+{
+  "authoritative_levels": 183,
+  "canonical_tree_sha256": "5f29eb6a580651f80c55af3f9b1aabc677f878b3b983725ce4ca5769c76b6e2b",
+  "claimed_inventory_sha256": "71491f4ab29ca204ef95342842f1a0b872146733d0143906af8fb14eae37b525",
+  "claimed_levels": 182,
+  "control_contract_sha256": "71d121f65d0fe50352a0c651f2f40b53f6464e2af640953497ec2c95b8be05ea",
+  "evidence_sha256": "be007967bd31951ef2e99a5d5df0c4b79439536dbf1542a3926978360daa1f21",
+  "games": 25,
+  "inventory_sha256": "31144058543d7d30fa695cb0a9df410c3711d25c21264dc8c41a86efeeece5ab",
+  "kind": "partial_campaign_freeze",
+  "receipt": "receipts/a6530210eb8e7b98a41c907551bbd2b8aba1374cbc52323c839a2435568022b0.json",
+  "receipt_sha256": "a6530210eb8e7b98a41c907551bbd2b8aba1374cbc52323c839a2435568022b0",
+  "status": "PASS",
+  "unclaimed_boundaries": [
+    {
+      "game": "lf52",
+      "level": 10
+    }
+  ],
+  "verification_context_source_revision": "194b3a16af6ac0e1dcbd436aace15dc4783d99ea",
+  "verifier_sha256": "070610f9c0b8063ed241fc0aae03bbda1ff2573ad2621f73c1f73fa1b2da3bd5"
+}

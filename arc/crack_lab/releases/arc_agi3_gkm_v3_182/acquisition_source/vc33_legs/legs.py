@@ -1,0 +1,578 @@
+"""Small reusable skills based only on public frame observations."""
+from perception import connected_components, safe_step
+from collections import deque
+
+
+def align_horizontal_indicator(env, max_moves=16):
+    """Use paired vertical buttons to align a movable marker with a rail mark.
+
+    Clone observations: the upper color-9 button moves the color-11 indicator
+    right by four pixels; the lower button moves it left. The rail's color-11
+    mark is four pixels high, while the moving indicator is six pixels high.
+    Absolute horizontal separation supplies progress before the level reward.
+    """
+    initial_level = env.levels_completed
+    for _ in range(max_moves):
+        if env.terminal() or env.levels_completed > initial_level:
+            return
+        blobs = connected_components(env.frame())
+        marks = [b for b in blobs if b.color == 11]
+        buttons = sorted((b for b in blobs if b.color == 9),
+                         key=lambda b: b.centroid[0])
+        rail_marks = [b for b in marks if b.size[0] == 4]
+        indicators = [b for b in marks if b.size[0] == 6]
+        if len(buttons) != 2 or len(rail_marks) != 1 or len(indicators) != 1:
+            return
+        separation = indicators[0].bbox[1] - rail_marks[0].bbox[1]
+        if separation == 0:
+            return
+        button = buttons[1 if separation > 0 else 0]
+        y, x = button.centroid
+        safe_step(env, (6, int(x), int(y)))
+
+
+def align_indicator_with_transfers(env, max_moves=32):
+    """Align a marker by transferring width through an intermediate reservoir.
+
+    Four vertically ordered buttons transfer four pixels between adjacent
+    regions. The bottom pair moves the six-high marker; moving it right
+    requires width in the middle region, replenished by the second button.
+    Marker separation and intermediate width provide observable progress.
+    """
+    initial_level = env.levels_completed
+    for _ in range(max_moves):
+        if env.terminal() or env.levels_completed > initial_level:
+            return
+        frame = env.frame()
+        blobs = connected_components(frame)
+        buttons = sorted((b for b in blobs if b.color == 9),
+                         key=lambda b: b.centroid[0])
+        targets = [b for b in blobs if b.color == 14 and b.size[0] == 4]
+        markers = [b for b in blobs if b.color == 14 and b.size[0] == 6]
+        if len(buttons) != 4 or len(targets) != 1 or len(markers) != 1:
+            return
+        separation = targets[0].bbox[1] - markers[0].bbox[1]
+        if separation == 0:
+            return
+        if separation < 0:
+            button = buttons[2]
+        else:
+            middle_row = int((buttons[1].centroid[0] +
+                              buttons[2].centroid[0]) / 2)
+            stock = sum(int(pixel) == 0 for pixel in frame[middle_row])
+            button = buttons[3] if stock else buttons[1]
+        y, x = button.centroid
+        safe_step(env, (6, int(x), int(y)))
+
+
+def align_reservoir_chain(env, max_moves=64):
+    """Route stock through adjacent reservoirs to match colored height marks.
+
+    Paired buttons on each boundary transfer two pixels of height. Reservoir
+    capacity can block a transfer, so verify each proposed move on a clone.
+    Prefix stock error measures the remaining transport distance, including
+    work through reservoirs without a marker. Unmarked reservoirs finish empty.
+    """
+    initial_level = env.levels_completed
+    blobs = connected_components(env.frame())
+    buttons = sorted((b for b in blobs if b.color == 9),
+                     key=lambda b: b.centroid[1])
+    if not buttons or len(buttons) % 2:
+        return
+    boundaries = [int((buttons[i].centroid[1] +
+                       buttons[i + 1].centroid[1]) / 2)
+                  for i in range(0, len(buttons), 2)]
+    edges = [0] + boundaries + [len(env.frame()[0])]
+    bottom = max(b.bbox[2] for b in buttons)
+    targets = [0] * (len(boundaries) + 1)
+    for marker in blobs:
+        if marker.size != (1, 3):
+            continue
+        marks = [b for b in blobs if b.color == marker.color
+                 and b.size == (1, 2)]
+        if len(marks) != 1:
+            continue
+        tank = sum(marker.centroid[1] >= edge for edge in boundaries)
+        targets[tank] = bottom - marks[0].bbox[0]
+
+    def heights(arena):
+        frame = arena.frame()
+        return [bottom + 1 - min(
+            (r for r in range(bottom + 1)
+             if any(int(frame[r][x]) == 0 for x in range(left, right))),
+            default=bottom + 1)
+            for left, right in zip(edges, edges[1:])]
+
+    def distance(stock):
+        return sum(abs(sum(stock[:i]) - sum(targets[:i]))
+                   for i in range(1, len(stock)))
+
+    for _ in range(max_moves):
+        if env.terminal() or env.levels_completed > initial_level:
+            return
+        stock = heights(env)
+        score = distance(stock)
+        if not score or sum(stock) != sum(targets):
+            return
+        for i in range(len(boundaries)):
+            deficit = sum(targets[:i + 1]) - sum(stock[:i + 1])
+            if not deficit:
+                continue
+            source = i + 1 if deficit > 0 else i
+            if not stock[source]:
+                continue
+            button = buttons[2 * i + (deficit < 0)]
+            y, x = button.centroid
+            action = (6, int(x), int(y))
+            clone = env.clone()
+            safe_step(clone, action)
+            if (clone.levels_completed > initial_level or
+                    distance(heights(clone)) < score):
+                safe_step(env, action)
+                break
+        else:
+            return
+
+
+def float_through_locks(env, max_states=4000):
+    """Equalize lock levels, cross, then lift a floating figure to its mark.
+
+    Observed buttons move three rows of liquid between neighboring tanks.
+    A lock becomes traversable at equal surfaces at its lower edge; clicking
+    it moves the figure to the neighboring tank. The figure rides the surface,
+    and reaching the two-row goal mark completes the level automatically.
+    Search liquid heights and figure compartment, ignoring the top-row timer.
+    Verify the entire symbolic plan on a clone before committing it.
+    """
+    blobs = connected_components(env.frame())
+    locks = sorted((b for b in blobs if b.color == 1 and b.size[1] == 3),
+                   key=lambda b: b.centroid[1])
+    walls = sorted({int(b.centroid[1]) for b in blobs
+                    if b.color in (1, 5, 11) and b.size[1] == 3},
+                   key=int)
+    goals = [b for b in blobs if b.color == 11 and b.size == (2, 3)]
+    rafts = [b for b in blobs if b.color == 11 and b.size == (2, 6)]
+    buttons = [b for b in blobs if b.color == 9]
+    if not locks or len(goals) != 1 or len(rafts) != 1 or not buttons:
+        return
+    frame = env.frame()
+    bottom = len(frame)
+    edges = [0] + [x + 2 for x in walls] + [len(frame[0])]
+    samples = [(a + b - 1) // 2 for a, b in zip(edges, edges[1:])]
+    stock = tuple(bottom - next((y for y in range(1, bottom)
+                                if int(frame[y][x]) == 0), bottom)
+                  for x in samples)
+    position = sum(rafts[0].centroid[1] > x for x in walls)
+    goal_wall = walls.index(int(goals[0].centroid[1]))
+    goal_height = bottom - goals[0].bbox[2] - 1
+    transfers = []
+    for button in buttons:
+        y, x = button.centroid
+        boundary = min(range(len(walls)), key=lambda i: abs(walls[i] - x))
+        left, right = boundary, boundary + 1
+        source, dest = (right, left) if x < walls[boundary] else (left, right)
+        transfers.append((source, dest, (6, int(x), int(y))))
+    crossings = [(walls.index(int(b.centroid[1])), bottom - b.bbox[2] - 1,
+                  (6, int(b.centroid[1]), int(b.centroid[0]))) for b in locks]
+    start = (stock, position)
+    queue = deque([start])
+    parents = {start: None}
+    finish = None
+    while queue and len(parents) <= max_states:
+        state = queue.popleft()
+        heights, tank = state
+        if tank in (goal_wall, goal_wall + 1) and heights[tank] == goal_height:
+            finish = state
+            break
+        successors = []
+        for source, dest, action in transfers:
+            if heights[source] < 3 or heights[dest] + 3 >= bottom:
+                continue
+            changed = list(heights)
+            changed[source] -= 3
+            changed[dest] += 3
+            successors.append(((tuple(changed), tank), action))
+        for boundary, height, action in crossings:
+            if (tank in (boundary, boundary + 1) and
+                    heights[boundary] == heights[boundary + 1] == height):
+                successors.append(((heights, 2 * boundary + 1 - tank), action))
+        for successor, action in successors:
+            if successor not in parents:
+                parents[successor] = (state, action)
+                queue.append(successor)
+    if finish is None:
+        return
+    path = []
+    while parents[finish] is not None:
+        finish, action = parents[finish]
+        path.append(action)
+    path.reverse()
+    initial_level = env.levels_completed
+    clone = env.clone()
+    for action in path:
+        safe_step(clone, action)
+        if clone.terminal() or clone.levels_completed > initial_level:
+            break
+    if clone.levels_completed <= initial_level:
+        return
+    for action in path:
+        if env.terminal() or env.levels_completed > initial_level:
+            return
+        safe_step(env, action)
+
+
+def exchange_figures_through_locks(env, max_states=100000):
+    """Route several colored figures through horizontal reservoir locks.
+
+    Buttons transfer three columns of fill. Equal fill at a gate's right
+    edge allows a click to exchange every figure in its adjacent reservoirs.
+    Barrier starts bound reservoir drainage. All figures must simultaneously
+    meet their matching marks. Search stock and figure locations, then verify
+    the complete route on a clone before spending real moves.
+    """
+    blobs = connected_components(env.frame())
+    gates = sorted((b for b in blobs if b.color == 1 and b.size[0] == 3),
+                   key=lambda b: b.centroid[0])
+    if not gates:
+        return
+    boundaries = [int(b.centroid[0]) for b in gates]
+    buttons = sorted((b for b in blobs if b.color == 9),
+                     key=lambda b: b.centroid[0])
+    if len(buttons) != 2 * len(gates):
+        return
+    figures = sorted((b for b in blobs if b.size == (6, 2)),
+                     key=lambda b: b.color)
+    goals = []
+    for figure in figures:
+        marks = [b for b in blobs if b.color == figure.color
+                 and b.size == (3, 2)]
+        if len(marks) != 1:
+            return
+        mark = marks[0]
+        goals.append((min(range(len(gates)),
+                          key=lambda i: abs(boundaries[i] - mark.centroid[0])),
+                      mark.bbox[3] + 1))
+    if not figures:
+        return
+    limits = [min(b.bbox[1] for b in blobs if b.color == 5
+                  and b.bbox[0] <= y <= b.bbox[2]) for y in boundaries]
+    minimum = [max(limits[max(0, i - 1):min(len(limits), i + 1)])
+               for i in range(len(gates) + 1)]
+    edges = [1] + [b.bbox[2] + 1 for b in gates] + [64]
+    ends = [b.bbox[0] for b in gates] + [64]
+    rows = [(a + b - 1) // 2 for a, b in zip(edges, ends)]
+    frame = env.frame()
+    stock = tuple(next((x for x in range(64) if int(frame[y][x]) == 0),
+                       64) for y in rows)
+    positions = tuple(sum(b.centroid[0] > y for y in boundaries)
+                      for b in figures)
+    transfers = []
+    for i, button in enumerate(buttons):
+        y, x = button.centroid
+        transfers.append((i // 2, -1 if i % 2 == 0 else 1,
+                          (6, int(x), int(y))))
+    crossings = [(b.bbox[3] + 1,
+                  (6, int(b.centroid[1]), int(b.centroid[0]))) for b in gates]
+    start = (stock, positions)
+    parents = {start: None}
+    queue = deque([start])
+    finish = None
+    while queue and len(parents) <= max_states:
+        state = queue.popleft()
+        heights, occupants = state
+        if all(p in (wall, wall + 1) and heights[p] == height
+               for p, (wall, height) in zip(occupants, goals)):
+            finish = state
+            break
+        successors = []
+        for i, direction, action in transfers:
+            changed = list(heights)
+            changed[i] += 3 * direction
+            changed[i + 1] -= 3 * direction
+            if all(lo <= v <= 64 for lo, v in zip(minimum, changed)):
+                successors.append(((tuple(changed), occupants), action))
+        for i, (height, action) in enumerate(crossings):
+            if heights[i] == heights[i + 1] == height:
+                moved = tuple(2 * i + 1 - p if p in (i, i + 1) else p
+                              for p in occupants)
+                successors.append(((heights, moved), action))
+        for successor, action in successors:
+            if successor not in parents:
+                parents[successor] = (state, action)
+                queue.append(successor)
+    if finish is None:
+        return
+    path = []
+    while parents[finish] is not None:
+        finish, action = parents[finish]
+        path.append(action)
+    path.reverse()
+    initial_level = env.levels_completed
+    clone = env.clone()
+    for action in path:
+        if clone.terminal() or clone.levels_completed > initial_level:
+            break
+        safe_step(clone, action)
+    if clone.levels_completed <= initial_level:
+        return
+    for action in path:
+        if env.terminal() or env.levels_completed > initial_level:
+            break
+        safe_step(env, action)
+
+
+def route_through_shared_reservoir(env, max_states=4000):
+    """Route a floating figure through parallel locks sharing a reservoir.
+
+    Observed transfers shift adjacent surfaces by opposite three-column
+    increments. A lock crosses at equal surfaces at its left edge. The
+    six-row figure reaches a three-row mark at the mark's left column.
+    Search surface positions and figure region, verifying reward on a clone.
+    """
+    frame = env.frame()
+    blobs = connected_components(frame)
+    gates = sorted((b for b in blobs if b.color == 1 and b.size[0] == 3),
+                   key=lambda b: b.bbox[1])
+    figures = [b for b in blobs if b.color == 11 and b.size == (6, 2)]
+    marks = [b for b in blobs if b.color == 11 and b.size == (3, 2)]
+    buttons = [b for b in blobs if b.color == 9]
+    if not gates or len(figures) != 1 or len(marks) != 1:
+        return
+    top, bottom = gates[0].bbox[0], gates[0].bbox[2]
+    if any((g.bbox[0], g.bbox[2]) != (top, bottom) for g in gates):
+        return
+
+    def intervals(y):
+        spans = []
+        start = None
+        for x in range(len(frame[0]) + 1):
+            open_cell = x < len(frame[0]) and int(frame[y][x]) != 5
+            if open_cell and start is None:
+                start = x
+            if not open_cell and start is not None:
+                spans.append((start, x))
+                start = None
+        return spans
+
+    regions = [(0, top, a, b) for a, b in intervals(top - 1)]
+    regions += [(bottom + 1, len(frame), a, b)
+                for a, b in intervals(bottom + 1)]
+
+    def region_at(y, x):
+        return next(i for i, (r0, r1, a, b) in enumerate(regions)
+                    if r0 <= y < r1 and a <= x < b)
+
+    stock = tuple(next((x for x in range(a, b)
+                        if int(frame[r0 + 1][x]) == 3), b)
+                  for r0, r1, a, b in regions)
+    figure = figures[0]
+    position = region_at(*figure.centroid)
+    crossings = []
+    transfers = []
+    for gate in gates:
+        y, x = gate.centroid
+        above = region_at(top - 1, x)
+        below = region_at(bottom + 1, x)
+        crossings.append((above, below, gate.bbox[1],
+                          (6, int(x), int(y))))
+    for button in buttons:
+        y, x = button.centroid
+        own = region_at(y, x)
+        candidates = [c for c in crossings if own in c[:2]]
+        if not candidates:
+            return
+        a, b, height, action = min(candidates,
+                                   key=lambda c: abs(c[3][1] - x))
+        other = b if own == a else a
+        transfers.append((own, other, (6, int(x), int(y))))
+    mark = marks[0]
+    target = mark.bbox[1]
+    destinations = {region_at(y, target) for y in (top - 1, bottom + 1)}
+    start = (stock, position)
+    queue = deque([start])
+    parents = {start: None}
+    finish = None
+    while queue and len(parents) <= max_states:
+        state = queue.popleft()
+        heights, tank = state
+        if tank in destinations and heights[tank] == target:
+            finish = state
+            break
+        successors = []
+        for own, other, action in transfers:
+            changed = list(heights)
+            changed[own] += 3
+            changed[other] -= 3
+            if all(a <= v <= b - 6
+                   for v, (_, _, a, b) in zip(changed, regions)):
+                successors.append(((tuple(changed), tank), action))
+        for a, b, height, action in crossings:
+            if tank in (a, b) and heights[a] == heights[b] == height:
+                successors.append(((heights, b if tank == a else a), action))
+        for successor, action in successors:
+            if successor not in parents:
+                parents[successor] = (state, action)
+                queue.append(successor)
+    if finish is None:
+        return
+    path = []
+    while parents[finish] is not None:
+        finish, action = parents[finish]
+        path.append(action)
+    path.reverse()
+    initial_level = env.levels_completed
+    clone = env.clone()
+    for action in path:
+        if clone.terminal() or clone.levels_completed > initial_level:
+            break
+        safe_step(clone, action)
+    if clone.levels_completed <= initial_level:
+        return
+    for action in path:
+        if env.terminal() or env.levels_completed > initial_level:
+            break
+        safe_step(env, action)
+
+
+def exchange_through_shared_reservoirs(env, max_states=100000):
+    """Exchange colored floating figures on a reservoir graph.
+
+    Paired buttons drain their own chamber by two rows into its neighbor.
+    Gates exchange occupants when both surfaces meet the gate's top row.
+    Plan figure exchanges, stage each pair of surfaces, then align every
+    figure with its matching mark. Verify the whole plan on a clone.
+    """
+    from heapq import heappush, heappop
+
+    frame = env.frame()
+    blobs = connected_components(frame)
+    figures = sorted((b for b in blobs if b.size == (1, 3)),
+                     key=lambda b: b.color)
+    marks = [next(b for b in blobs if b.color == f.color
+                  and b.size == (1, 2)) for f in figures]
+    if not figures:
+        return
+    colors = {0, 3, 9} | {f.color for f in figures}
+    mask = [[0 if int(v) in colors else 5 for v in row] for row in frame]
+    for mark in marks:
+        r0, c0, r1, c1 = mark.bbox
+        for y in range(r0, r1 + 1):
+            for x in range(c0, c1 + 1):
+                mask[y][x] = 5
+    regions = [b.bbox for b in connected_components(mask, colors=[0])
+               if b.area > 20]
+
+    def region(y, x):
+        return next(i for i, (r0, c0, r1, c1) in enumerate(regions)
+                    if r0 <= y <= r1 and c0 <= x <= c1)
+
+    gates = []
+    for b in blobs:
+        if b.color == 1 and b.size[1] == 2:
+            y, x = b.centroid
+            gates.append((region(y, b.bbox[1] - 1),
+                          region(y, b.bbox[3] + 1), b.bbox[0],
+                          (6, int(x), int(y))))
+    buttons = sorted((b for b in blobs if b.color == 9),
+                     key=lambda b: b.centroid)
+    transfers = []
+    for left, right in zip(buttons[::2], buttons[1::2]):
+        a, b = region(*left.centroid), region(*right.centroid)
+        for button, source, dest in [(left, a, b), (right, b, a)]:
+            y, x = button.centroid
+            transfers.append((source, dest, (6, int(x), int(y))))
+    stock = tuple(next((y for y in range(r0, r1 + 1)
+                        if int(frame[y][c0 + 2]) == 3), r1 + 1)
+                  for r0, c0, r1, c1 in regions)
+    positions = tuple(region(*f.centroid) for f in figures)
+    targets = [(set(region(m.bbox[0], x)
+                    for x in (m.bbox[1] - 1, m.bbox[3] + 1)), m.bbox[0])
+               for m in marks]
+
+    def final_heights(occupants):
+        result = {}
+        for p, (allowed, height) in zip(occupants, targets):
+            if p not in allowed or (p in result and result[p] != height):
+                return None
+            result[p] = height
+        return result
+
+    queue = deque([positions])
+    parents = {positions: None}
+    finish = None
+    while queue and len(parents) <= max_states:
+        occupants = queue.popleft()
+        if final_heights(occupants) is not None:
+            finish = occupants
+            break
+        for gate in gates:
+            a, b = gate[:2]
+            moved = tuple(b if p == a else a if p == b else p
+                          for p in occupants)
+            if moved not in parents:
+                parents[moved] = (occupants, gate)
+                queue.append(moved)
+    if finish is None:
+        return
+    desired = final_heights(finish)
+    exchanges = []
+    while parents[finish] is not None:
+        finish, gate = parents[finish]
+        exchanges.append(gate)
+    exchanges.reverse()
+
+    def stage(start, desired):
+        def estimate(heights):
+            return (sum(abs(heights[i] - h) for i, h in desired.items()) + 3) // 4
+        queue = [(estimate(start), 0, start)]
+        costs = {start: 0}
+        parents = {start: None}
+        while queue and len(parents) <= max_states:
+            _, cost, heights = heappop(queue)
+            if costs[heights] != cost:
+                continue
+            if all(heights[i] == h for i, h in desired.items()):
+                path = []
+                end = heights
+                while parents[heights] is not None:
+                    heights, action = parents[heights]
+                    path.append(action)
+                return end, path[::-1]
+            for source, dest, action in transfers:
+                changed = list(heights)
+                changed[source] += 2
+                changed[dest] -= 2
+                changed = tuple(changed)
+                if any(v < r0 or v > r1 - 1
+                       for v, (r0, c0, r1, c1) in zip(changed, regions)):
+                    continue
+                if cost + 1 < costs.get(changed, float('inf')):
+                    costs[changed] = cost + 1
+                    parents[changed] = (heights, action)
+                    heappush(queue, (cost + 1 + estimate(changed), cost + 1, changed))
+        return None
+
+    path = []
+    for a, b, height, action in exchanges:
+        result = stage(stock, {a: height, b: height})
+        if result is None:
+            return
+        stock, actions = result
+        path.extend(actions)
+        path.append(action)
+    result = stage(stock, desired)
+    if result is None:
+        return
+    path.extend(result[1])
+    initial_level = env.levels_completed
+    clone = env.clone()
+    for action in path:
+        if clone.terminal() or clone.levels_completed > initial_level:
+            break
+        safe_step(clone, action)
+    if clone.levels_completed <= initial_level:
+        return
+    for action in path:
+        if env.terminal() or env.levels_completed > initial_level:
+            break
+        safe_step(env, action)
