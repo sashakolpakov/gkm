@@ -1,0 +1,265 @@
+{
+  "aggregate": null,
+  "arc_agi_toolkit_version": "0.9.9",
+  "artifact_root": "arc/crack_lab/releases/arc_agi3_gkm_v3_182/artifacts",
+  "authoritative_levels": 183,
+  "checkpoint_sha256": {
+    "ar25": "99fcf194c9bee6cb85c7859982af5f0fd58c8b1f04cee98c744f7f01db7a76d4",
+    "bp35": "d4ec1e0593658c21eec50771a9b2d1ee4799c322d996535637b592f367830b39",
+    "cd82": "3babb8b5fdf99de64980fdf700497afd0082cb6a7ac193057d0e0076feff4483",
+    "cn04": "4c1ae1f87f62b16f16260ee3478c41866607c18ec3b135908b70df71155393ae",
+    "dc22": "4bbebb35989d7629fe8bd5c75f04d43ca5bc9164fa319040f24226fbbff01cad",
+    "ft09": "a92970d1dbcc85402507d114c81752572d47543e4ca369917fc9ffd35ca1cb14",
+    "g50t": "9bd1cdb203405ac76431471efa17ad546a2e4d12364a762b2f9cbcf450b37dd9",
+    "ka59": "770e4c3e2c14dc96f84c29fe3fe9fef8a348f8c4b1f9ae9336515cf18d111d11",
+    "lf52": "4d5f591f1a32bf584380b4fc66163c6a32e91ed49317491c6d94a9e9f16beefe",
+    "lp85": "77aa98751a3eb9059cb10a8f90a14fafc0f51cb3799e78e21f32a2b6494f25cc",
+    "ls20": "e83bd76a3a5370c314c3314ac87cee056ff415c06f8f621d3d95512fa3792d07",
+    "m0r0": "240c83d37ae1c9f846afd8aea013392567de4b7ae98b65f22409c16d9750a17d",
+    "r11l": "220b57644853995de131a0cda56d21e2dd96da666563b27959abad6fc3812b5e",
+    "re86": "04e2852fab10162192cffa823a439287a3ac71d4accfe8437c08b0395977dc44",
+    "s5i5": "feef948a079394a5dbffd614c78941d40cff22b83006db17dc4a2092bcdff7e9",
+    "sb26": "f4285a2bd2a0491c63751921cc7f2ad018e481b51a1f4a4971c13f6be41b95e7",
+    "sc25": "bc275a21b616eadff5809e800b921f90f986edaa96acfbb9a46e9ef89209e5ec",
+    "sk48": "709a2095a706437e90f824c6c1367334eb44c14053745d435cc317cca4510b8e",
+    "sp80": "ecb6be0d72fcb2f6edd7ba93ef3553f12fb10120d7f43841b797062b1fbcbdd0",
+    "su15": "2cec1754d0b1e7915c288b6b461ff14335527442002273ec7638b8eb90b176ca",
+    "tn36": "6aa60f99743d74214489b7771e442171a2f8a227d416851b54d2156b7e6e4102",
+    "tr87": "00529d15adaa7766484d9a39f676f3e8a30e1e1c0f9058c096a4bda1f4dc2bac",
+    "tu93": "1d82c322bac71751042d030c2179bd6358d58a8a2b98bbfca98a3d7027603b3d",
+    "vc33": "f0baa9a2e636ec730354a729b7734963d897b753261047e8df0e7067dfdfadc5",
+    "wa30": "6b484c5c8cbe0e2a8497cd5e494d6d70848f369dfc35957140b851c7d9bed55d"
+  },
+  "claimed_levels": 182,
+  "closed_at_utc": "2026-11-25T19:51:45.397219Z",
+  "command": {
+    "artifact_root": "arc/crack_lab/releases/arc_agi3_gkm_v3_182/artifacts",
+    "entrypoint": "arc/crack_lab/replay_scorecard.py",
+    "expected_claimed_levels": 182,
+    "games": [
+      "ar25",
+      "bp35",
+      "cd82",
+      "cn04",
+      "dc22",
+      "ft09",
+      "g50t",
+      "ka59",
+      "lf52",
+      "lp85",
+      "ls20",
+      "m0r0",
+      "r11l",
+      "re86",
+      "s5i5",
+      "sb26",
+      "sc25",
+      "sk48",
+      "sp80",
+      "su15",
+      "tn36",
+      "tr87",
+      "tu93",
+      "vc33",
+      "wa30"
+    ],
+    "mode": "online",
+    "preflight_only": false,
+    "release_receipt": "arc/crack_lab/releases/arc_agi3_gkm_v3_182/receipts/a6530210eb8e7b98a41c907551bbd2b8aba1374cbc52323c839a2435568022b0.json",
+    "source_revision": "5061a897520f0e6adf88a71bae8e98cf88e51dd0",
+    "source_url": "https://github.com/sashakolpakov/gkm/tree/5061a897520f0e6adf88a71bae8e98cf88e51dd0",
+    "tags": [
+      "gkm",
+      "gpt61",
+      "zero-seed",
+      "v3-182",
+      "cutoff-n125"
+    ]
+  },
+  "mode": "online",
+  "release_binding": {
+    "authoritative_level_count": 183,
+    "binding_scope": "endpoint_checkpoint_bytes_only_after_full_gate",
+    "canonical_tree_sha256": "5f29eb6a580651f80c55af3f9b1aabc677f878b3b983725ce4ca5769c76b6e2b",
+    "claimed_inventory": {
+      "ar25": 8,
+      "bp35": 9,
+      "cd82": 6,
+      "cn04": 6,
+      "dc22": 6,
+      "ft09": 6,
+      "g50t": 7,
+      "ka59": 7,
+      "lf52": 9,
+      "lp85": 8,
+      "ls20": 7,
+      "m0r0": 6,
+      "r11l": 6,
+      "re86": 8,
+      "s5i5": 8,
+      "sb26": 8,
+      "sc25": 6,
+      "sk48": 8,
+      "sp80": 6,
+      "su15": 9,
+      "tn36": 7,
+      "tr87": 6,
+      "tu93": 9,
+      "vc33": 7,
+      "wa30": 9
+    },
+    "claimed_level_count": 182,
+    "receipt_sha256": "a6530210eb8e7b98a41c907551bbd2b8aba1374cbc52323c839a2435568022b0",
+    "release_identity_source_revision": "194b3a16af6ac0e1dcbd436aace15dc4783d99ea"
+  },
+  "release_receipt": "arc/crack_lab/releases/arc_agi3_gkm_v3_182/receipts/a6530210eb8e7b98a41c907551bbd2b8aba1374cbc52323c839a2435568022b0.json",
+  "release_verification": {
+    "authoritative_levels": 183,
+    "canonical_tree_sha256": "5f29eb6a580651f80c55af3f9b1aabc677f878b3b983725ce4ca5769c76b6e2b",
+    "claimed_inventory_sha256": "71491f4ab29ca204ef95342842f1a0b872146733d0143906af8fb14eae37b525",
+    "claimed_levels": 182,
+    "control_contract_sha256": "71d121f65d0fe50352a0c651f2f40b53f6464e2af640953497ec2c95b8be05ea",
+    "evidence_sha256": "be007967bd31951ef2e99a5d5df0c4b79439536dbf1542a3926978360daa1f21",
+    "games": 25,
+    "inventory_sha256": "31144058543d7d30fa695cb0a9df410c3711d25c21264dc8c41a86efeeece5ab",
+    "kind": "partial_campaign_freeze",
+    "receipt_sha256": "a6530210eb8e7b98a41c907551bbd2b8aba1374cbc52323c839a2435568022b0",
+    "status": "PASS",
+    "unclaimed_boundaries": [
+      {
+        "game": "lf52",
+        "level": 10
+      }
+    ],
+    "verification_context_source_revision": "194b3a16af6ac0e1dcbd436aace15dc4783d99ea",
+    "verifier_sha256": "070610f9c0b8063ed241fc0aae03bbda1ff2573ad2621f73c1f73fa1b2da3bd5"
+  },
+  "results": {
+    "ar25": {
+      "claimed": 8,
+      "remote": 8
+    },
+    "bp35": {
+      "claimed": 9,
+      "remote": 9
+    },
+    "cd82": {
+      "claimed": 6,
+      "remote": 6
+    },
+    "cn04": {
+      "claimed": 6,
+      "remote": 6
+    },
+    "dc22": {
+      "claimed": 6,
+      "remote": 6
+    },
+    "ft09": {
+      "claimed": 6,
+      "remote": 6
+    },
+    "g50t": {
+      "claimed": 7,
+      "remote": 7
+    },
+    "ka59": {
+      "claimed": 7,
+      "remote": 7
+    },
+    "lf52": {
+      "claimed": 9,
+      "remote": 9
+    },
+    "lp85": {
+      "claimed": 8,
+      "remote": 8
+    },
+    "ls20": {
+      "claimed": 7,
+      "remote": 7
+    },
+    "m0r0": {
+      "claimed": 6,
+      "remote": 6
+    },
+    "r11l": {
+      "claimed": 6,
+      "remote": 6
+    },
+    "re86": {
+      "claimed": 8,
+      "remote": 8
+    },
+    "s5i5": {
+      "claimed": 8,
+      "remote": 8
+    },
+    "sb26": {
+      "claimed": 8,
+      "remote": 8
+    },
+    "sc25": {
+      "claimed": 6,
+      "remote": 6
+    },
+    "sk48": {
+      "claimed": 8,
+      "remote": 8
+    },
+    "sp80": {
+      "claimed": 6,
+      "remote": 6
+    },
+    "su15": {
+      "claimed": 9,
+      "remote": 9
+    },
+    "tn36": {
+      "claimed": 7,
+      "remote": 7
+    },
+    "tr87": {
+      "claimed": 6,
+      "remote": 6
+    },
+    "tu93": {
+      "claimed": 9,
+      "remote": 9
+    },
+    "vc33": {
+      "claimed": 7,
+      "remote": 7
+    },
+    "wa30": {
+      "claimed": 9,
+      "remote": 9
+    }
+  },
+  "schema": 2,
+  "scorecard_close": {
+    "error_type": null,
+    "status": "confirmed"
+  },
+  "scorecard_close_finished_at_utc": "2026-11-25T19:51:45.387042Z",
+  "scorecard_close_started_at_utc": "2026-11-25T19:51:45.050666Z",
+  "scorecard_id": "67eba075-9415-421b-83e4-f881cebf399c",
+  "scorecard_opaque": null,
+  "scorecard_open": {
+    "error_type": null,
+    "status": "confirmed"
+  },
+  "scorecard_tags": [
+    "gkm",
+    "gpt61",
+    "zero-seed",
+    "v3-182",
+    "cutoff-n125"
+  ],
+  "scorecard_url": "https://arcprize.org/scorecards/67eba075-9415-421b-83e4-f881cebf399c",
+  "source_revision": "5061a897520f0e6adf88a71bae8e98cf88e51dd0",
+  "source_url": "https://github.com/sashakolpakov/gkm/tree/5061a897520f0e6adf88a71bae8e98cf88e51dd0",
+  "started_at_utc": "2026-11-25T19:33:02.342212Z",
+  "status": "FAIL",
+  "stored_actions": 6685
+}

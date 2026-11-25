@@ -966,5 +966,5 @@
     "long_context": "For requests over 272K input tokens, input/cache rates double and output is 1.5 times the standard rate.",
     "scope": "API-equivalent valuation of reported tokens, not an invoice. Per-request context sizes are not in the CLI capture; both standard and all-long-context scenarios are shown. Cache writes use the reported counter. Unknown usage is not valued at zero."
   },
-  "accounting": "One charge per codex_exec identity, including failed, discarded and infrastructure work. Corrections/outcomes are not extra calls. Cached input is a subset of input and reasoning is a subset of output; neither is added twice. Host orchestration, manuscript editing, local compute and later API action replay are outside proposer-token accounting."
+  "accounting": "Each codex_exec records cumulative usage for one proposer turn, potentially spanning many API requests. Count that execution once, including failed, discarded and infrastructure work; corrections/outcomes are not extra executions. Cached input is a subset of input and reasoning is a subset of output; neither is added twice. Host orchestration, manuscript editing, local compute and later API action replay are outside proposer-token accounting."
 }

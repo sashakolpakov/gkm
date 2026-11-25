@@ -46,6 +46,12 @@ python arc/crack_lab/replay_scorecard.py --mode online --games all \
 
 An external replay is distinct from rediscovery: it consumes the admitted paths
 and performs no inference or clone lookahead. Rerunning discovery requires the
-original producer snapshot, an authenticated Codex installation, the documented
+`producer_source/` snapshot (including its `PROTOCOL.md`), an authenticated
+Codex installation, the documented
 blank-start isolation and retry ladder. Model generation is stochastic; replaying
 its frozen output is the deterministic reproduction target.
+
+The source closure is a separate acquisition-time tree. Run discovery from a
+blank checkout of that tree with the external game bundle and declared packages;
+do not seed it with `acquisition_source/` or `artifacts/`. Its runner and policy
+provide `--help`. `source_manifest.json` records every included file hash.

@@ -1,0 +1,20 @@
+{
+  "game_id": "sk48-d8078629",
+  "title": "SK48",
+  "default_fps": 30,
+  "tags": [
+    "keyboard_click"
+  ],
+  "baseline_actions": [
+    61,
+    177,
+    101,
+    103,
+    230,
+    181,
+    125,
+    92
+  ],
+  "local_dir": "/Users/sasha/gkm/environment_files/sk48/d8078629",
+  "date_downloaded": "2026-07-14T15:07:26.165620+00:00"
+}

@@ -7,12 +7,16 @@ on:
       - arc/crack_lab/releases/arc_agi3_gkm_v3_182/**
       - arc/campaign_costs.py
       - arc/test_campaign_costs.py
+      - arc/crack_lab/replay_scorecard.py
+      - arc/crack_lab/test_partial_scorecard.py
       - .github/workflows/gpt61-release.yml
   pull_request:
     paths:
       - arc/crack_lab/releases/arc_agi3_gkm_v3_182/**
       - arc/campaign_costs.py
       - arc/test_campaign_costs.py
+      - arc/crack_lab/replay_scorecard.py
+      - arc/crack_lab/test_partial_scorecard.py
       - .github/workflows/gpt61-release.yml
 
 permissions:
@@ -32,7 +36,7 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install pytest
       - name: Test token accounting
-        run: PYTHONPATH=arc python -m pytest -q arc/test_campaign_costs.py
+        run: PYTHONPATH=arc:arc/crack_lab python -m pytest -q arc/test_campaign_costs.py arc/crack_lab/test_partial_scorecard.py
       - name: Verify the frozen 182-level receipt
         run: >-
           python arc/crack_lab/verify_frozen_release.py

@@ -8,7 +8,7 @@ The reporting cutoff is execution 454 (`gkm_legs_ws_lf52_arc_agi3_n125_long_cohe
 | after_cutoff | 48 | 298,214,453 | 293,016,448 | 3,739,957 | 2,662,526 | 77.10 | 135.49 | 0 |
 | all_recorded | 502 | 2,095,785,274 | 2,051,884,032 | 26,626,398 | 18,711,963 | 559.25 | 985.38 | 3 |
 
-One charge per codex_exec identity, including failed, discarded and infrastructure work. Corrections/outcomes are not extra calls. Cached input is a subset of input and reasoning is a subset of output; neither is added twice. Host orchestration, manuscript editing, local compute and later API action replay are outside proposer-token accounting.
+Each codex_exec records cumulative usage for one proposer turn, potentially spanning many API requests. Count that execution once, including failed, discarded and infrastructure work; corrections/outcomes are not extra executions. Cached input is a subset of input and reasoning is a subset of output; neither is added twice. Host orchestration, manuscript editing, local compute and later API action replay are outside proposer-token accounting.
 
 API-equivalent valuation of reported tokens, not an invoice. Per-request context sizes are not in the CLI capture; both standard and all-long-context scenarios are shown. Cache writes use the reported counter. Unknown usage is not valued at zero.
 

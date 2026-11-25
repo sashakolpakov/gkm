@@ -1,0 +1,22 @@
+{
+  "game_id": "lf52-271a04aa",
+  "title": "LF52",
+  "default_fps": 30,
+  "tags": [
+    "click"
+  ],
+  "baseline_actions": [
+    32,
+    81,
+    60,
+    71,
+    205,
+    148,
+    244,
+    109,
+    164,
+    225
+  ],
+  "local_dir": "/Users/sasha/gkm/environment_files/lf52/271a04aa",
+  "date_downloaded": "2026-07-14T15:07:38.921762+00:00"
+}

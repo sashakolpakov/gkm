@@ -1727,7 +1727,10 @@ def _validate_complete_environment_score(
     *,
     game: str,
     target: int,
+    claimed_target: int | None = None,
 ) -> None:
+    if claimed_target is not None and not 0 < claimed_target <= target:
+        raise ValueError("invalid partial environment target")
     if set(environment) != ENVIRONMENT_SCORE_LIST_FIELDS:
         raise ValueError(f"closed scorecard environment schema mismatch: {game}")
     environment_id = environment.get("id")
@@ -1803,7 +1806,14 @@ def _validate_complete_environment_score(
             raise ValueError(
                 f"closed scorecard terminal state is inconsistent: {game}"
             )
-    if winners != [len(runs) - 1]:
+    if claimed_target is not None and claimed_target < target:
+        last = runs[-1]
+        if (winners or last["levels_completed"] != claimed_target
+                or last["state"] != "NOT_FINISHED" or last["completed"] is not False
+                or any(last["level_actions"][claimed_target:])
+                or any(last["level_scores"][claimed_target:])):
+            raise ValueError(f"closed partial scorecard frontier mismatch: {game}")
+    elif winners != [len(runs) - 1]:
         raise ValueError(
             f"closed scorecard must have one terminal target WIN run: {game}"
         )
@@ -1927,6 +1937,93 @@ def validate_closed_scorecard(
     score = aggregate.get("score")
     if not _number(score) or not 0 <= float(score) <= 100:
         raise ValueError("closed scorecard has no valid aggregate score")
+    return aggregate
+
+
+def normalize_partial_public_scorecard(card: object) -> dict:
+    """Normalize the public API's omitted nulls; require a published agent card."""
+    extra = {"published_at", "ai_agent", "open_at", "last_update"}
+    if (not isinstance(card, dict) or card.get("ai_agent") is not True
+            or not isinstance(card.get("published_at"), str)
+            or not card["published_at"]
+            or set(card) - CLOSED_AGGREGATE_FIELDS - extra):
+        raise ValueError("invalid published partial scorecard")
+    required = CLOSED_AGGREGATE_FIELDS - {"source_url", "opaque", "competition_mode"}
+    if not required <= set(card):
+        raise ValueError("public partial scorecard lacks accounting")
+    out = {key: card.get(key) for key in CLOSED_AGGREGATE_FIELDS}
+    out["competition_mode"] = card.get("competition_mode", False)
+    out["environments"] = [dict(row) for row in card["environments"]]
+    optional = {"message", "level_scores", "level_actions", "level_baseline_actions"}
+    def run(value):
+        if not isinstance(value, dict) or set(value) - ENVIRONMENT_SCORE_FIELDS:
+            raise ValueError("public scorecard run schema mismatch")
+        if not ENVIRONMENT_SCORE_FIELDS - optional <= set(value):
+            raise ValueError("public scorecard run lacks accounting")
+        return {key: value.get(key) for key in ENVIRONMENT_SCORE_FIELDS}
+    for row in out["environments"]:
+        row["runs"] = [run(value) for value in row["runs"]]
+    out["tags_scores"] = [run(value) for value in card["tags_scores"]]
+    return out
+
+
+def validate_partial_closed_scorecard(
+    aggregate: object, *, mode: str, card_id: str, source_url: str,
+    games: list[str], plan: dict[str, dict], scorecard_tags: list[str],
+    scorecard_opaque: Mapping[str, Any] | None, inventory: Mapping[str, int],
+) -> dict:
+    """Check a receipt-bound partial result against the full game inventory.
+
+    The service may append its `agent` tag and omit source/opaque echoes. Missing
+    echoes remain None; client source binding is recorded in the run receipt,
+    without claiming that the public service attests it. Unexpected echoes fail.
+    Complete 183-level releases continue through validate_closed_scorecard.
+    """
+    if not isinstance(aggregate, dict) or set(aggregate) != CLOSED_AGGREGATE_FIELDS:
+        raise ValueError("partial closed scorecard schema mismatch")
+    if set(games) != set(plan) or set(games) != set(inventory):
+        raise ValueError("partial scorecard inventory mismatch")
+    targets = {game: plan[game]["reached"] for game in games}
+    if any(not _is_int(inventory[g]) or not _is_int(targets[g])
+           or not 0 < targets[g] <= inventory[g] for g in games):
+        raise ValueError("invalid partial claimed inventory")
+    claimed, authoritative = sum(targets.values()), sum(inventory.values())
+    if claimed >= authoritative:
+        raise ValueError("partial validator requires an incomplete release")
+    tags = aggregate.get("tags")
+    allowed_tags = [scorecard_tags]
+    if "agent" not in scorecard_tags:
+        allowed_tags.append(scorecard_tags + ["agent"])
+    if (aggregate.get("card_id") != card_id
+            or aggregate.get("source_url") not in (None, source_url)
+            or aggregate.get("opaque") not in (None, scorecard_opaque)
+            or tags not in allowed_tags
+            or aggregate.get("competition_mode") is not (mode == "competition")):
+        raise ValueError("partial scorecard provenance or operation mode differs")
+    environments = aggregate.get("environments")
+    if not isinstance(environments, list) or len(environments) != len(games):
+        raise ValueError("partial scorecard environment count mismatch")
+    matched = set()
+    for row in environments:
+        if not isinstance(row, dict):
+            raise ValueError("malformed partial environment")
+        names = [g for g in games if re.fullmatch(rf"{re.escape(g)}-[0-9a-f]{{8}}", str(row.get("id")))]
+        if len(names) != 1 or names[0] in matched:
+            raise ValueError("partial scorecard game identity mismatch")
+        game = names[0]; matched.add(game)
+        _validate_complete_environment_score(row, game=game, target=inventory[game], claimed_target=targets[game])
+        if (row["levels_completed"] != targets[game]
+                or row["actions"] != len(plan[game]["final_path"]) + row["resets"]):
+            raise ValueError("partial scorecard endpoint/action mismatch")
+    if (aggregate.get("total_environments") != len(games)
+            or aggregate.get("total_environments_completed") != sum(targets[g] == inventory[g] for g in games)
+            or aggregate.get("total_levels_completed") != claimed
+            or aggregate.get("total_levels") != authoritative
+            or aggregate.get("total_actions") != sum(row["actions"] for row in environments)):
+        raise ValueError("partial scorecard aggregate accounting mismatch")
+    _validate_closed_tag_scores(aggregate.get("tags_scores"))
+    if not _number(aggregate.get("score")) or not 0 <= aggregate["score"] <= 100:
+        raise ValueError("invalid partial scorecard score")
     return aggregate
 
 
@@ -2429,7 +2526,13 @@ def execute_remote_run(
                             },
                         )
             try:
-                aggregate = validate_closed_scorecard(
+                validator = validate_closed_scorecard
+                partial_arguments = {}
+                if (binding is not None and args.release_receipt is not None
+                        and binding["claimed_level_count"] < binding["authoritative_level_count"]):
+                    validator = validate_partial_closed_scorecard
+                    partial_arguments["inventory"] = load_receipt(args.release_receipt)[0]["inventory"]
+                aggregate = validator(
                     aggregate,
                     mode=args.mode,
                     card_id=card_id,
@@ -2438,6 +2541,7 @@ def execute_remote_run(
                     plan=plan,
                     scorecard_tags=run_tags,
                     scorecard_opaque=scorecard_opaque,
+                    **partial_arguments,
                 )
             except ValueError as exc:
                 print(f"closed scorecard rejected: {exc}")

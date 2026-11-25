@@ -1,0 +1,101 @@
+# Isolated Codex app-server controller for the ARC-AGI-3 contiguous campaign.
+#
+# This image contains no repository, game, engine, solver, Arena, bridge,
+# Docker socket, or credential material.  The trusted host gives it only one
+# private state mount, empty tmpfs-backed cwd/tmp directories, stdio, and the
+# network namespace of the independently pinned enforcing egress sidecar.
+FROM docker.io/library/python:3.12.11-slim-bookworm@sha256:519591d6871b7bc437060736b9f7456b8731f1499a57e22e6c285135ae657bf7
+
+ARG TARGETARCH
+ARG CODEX_CLI_VERSION=0.145.0
+ARG CODEX_GENERAL_SHA512=fcf48f485ba38e39a2c9516f1b6caefe0ace161b167689131fcb762865a15d2a3f3399ff7480ec9dbb273bcdbfedb2ed2280eecd07fb013054316a8f59020d95
+ARG CODEX_LINUX_ARM64_SHA512=f0e2dc3d7680a25fc53ab4680f15a12221c815aef7291b0ce3510aa1c8d164ec224f84dc7a5cc95a7ddd1f28ae49beed796176e6baec96f48fcaf8542d845109
+ARG CODEX_LINUX_AMD64_SHA512=bbcc3c2cbbf70efb1fac30a8b302c87a66744a83445f28b9d755ac7c5b1289851ace4f6a32c07f36d53c37dbe101f37b9990312c5a0c7b1e2feba2631ee656c0
+ARG ARC_AGI3_CONTROLLER_GUARDIAN_SHA256
+ARG ARC_AGI3_CONTROLLER_SUPPLY_CHAIN_SHA256=f8526fb4c167ebc02e106c46e42df5413f14f355571f89ca6662d79889e9619a
+
+ADD https://registry.npmjs.org/@openai/codex/-/codex-0.145.0.tgz /tmp/codex-general.tgz
+ADD https://registry.npmjs.org/@openai/codex/-/codex-0.145.0-linux-arm64.tgz /tmp/codex-linux-arm64.tgz
+ADD https://registry.npmjs.org/@openai/codex/-/codex-0.145.0-linux-x64.tgz /tmp/codex-linux-amd64.tgz
+
+COPY arc/crack_lab/arc_agi3_controller_guardian.py \
+    /usr/local/bin/arc-agi3-contiguous-controller-guardian
+COPY arc/crack_lab/arc_agi3_controller_supply_chain.py \
+    /tmp/arc-agi3-controller-supply-chain
+
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN set -eu; \
+    test "${CODEX_CLI_VERSION}" = "0.145.0"; \
+    test "${#ARC_AGI3_CONTROLLER_GUARDIAN_SHA256}" -eq 64; \
+    echo "${CODEX_GENERAL_SHA512}  /tmp/codex-general.tgz" \
+        | sha512sum --check --strict -; \
+    echo "${CODEX_LINUX_ARM64_SHA512}  /tmp/codex-linux-arm64.tgz" \
+        | sha512sum --check --strict -; \
+    echo "${CODEX_LINUX_AMD64_SHA512}  /tmp/codex-linux-amd64.tgz" \
+        | sha512sum --check --strict -; \
+    echo "${ARC_AGI3_CONTROLLER_GUARDIAN_SHA256}  /usr/local/bin/arc-agi3-contiguous-controller-guardian" \
+        | sha256sum --check --strict -; \
+    echo "${ARC_AGI3_CONTROLLER_SUPPLY_CHAIN_SHA256}  /tmp/arc-agi3-controller-supply-chain" \
+        | sha256sum --check --strict -; \
+    mkdir -p /tmp/codex-general /tmp/codex-native \
+        /usr/local/lib/codex/bin \
+        /usr/local/share/arc-agi3 \
+        /controller-state /controller-neutral; \
+    tar -xzf /tmp/codex-general.tgz -C /tmp/codex-general; \
+    case "${TARGETARCH}" in \
+      arm64) \
+        tar -xzf /tmp/codex-linux-arm64.tgz -C /tmp/codex-native; \
+        native_triple=aarch64-unknown-linux-musl ;; \
+      amd64) \
+        tar -xzf /tmp/codex-linux-amd64.tgz -C /tmp/codex-native; \
+        native_triple=x86_64-unknown-linux-musl ;; \
+      *) echo "unsupported controller architecture: ${TARGETARCH}" >&2; exit 64 ;; \
+    esac; \
+    install -m 0555 \
+        "/tmp/codex-native/package/vendor/${native_triple}/bin/codex" \
+        /usr/local/bin/codex; \
+    install -m 0555 /tmp/codex-general/package/bin/codex.js \
+        /usr/local/lib/codex/bin/codex.js; \
+    install -m 0444 /tmp/codex-general/package/package.json \
+        /usr/local/share/arc-agi3/codex-package.json; \
+    chmod 0555 /usr/local/bin/arc-agi3-contiguous-controller-guardian; \
+    /usr/local/bin/codex app-server generate-json-schema \
+        --experimental --out /tmp/codex-schema; \
+    install -m 0444 \
+        /tmp/codex-schema/codex_app_server_protocol.schemas.json \
+        /usr/local/share/arc-agi3/app-server-protocol.schemas.json; \
+    install -m 0444 \
+        /tmp/codex-schema/codex_app_server_protocol.v2.schemas.json \
+        /usr/local/share/arc-agi3/app-server-protocol.v2.schemas.json; \
+    python3 /tmp/arc-agi3-controller-supply-chain \
+        --codex-cli-version "codex-cli ${CODEX_CLI_VERSION}" \
+        --output /usr/local/share/arc-agi3/controller-supply-chain.json; \
+    rm -f /tmp/arc-agi3-controller-supply-chain
+
+RUN set -eu; \
+    rm -rf /tmp/codex-general /tmp/codex-native /tmp/codex-schema \
+        /tmp/codex-general.tgz /tmp/codex-linux-arm64.tgz \
+        /tmp/codex-linux-amd64.tgz; \
+    chown -R 65532:65532 /controller-state /controller-neutral; \
+    chmod 0700 /controller-state /controller-neutral; \
+    find /usr/local/share/arc-agi3 -type f -exec chmod 0444 '{}' ';'
+
+LABEL org.gkm.arc-agi3.role="model-controller" \
+      org.gkm.arc-agi3.controller-guardian-sha256="${ARC_AGI3_CONTROLLER_GUARDIAN_SHA256}" \
+      org.gkm.arc-agi3.controller-supply-chain-generator-sha256="${ARC_AGI3_CONTROLLER_SUPPLY_CHAIN_SHA256}" \
+      org.gkm.arc-agi3.codex-cli-version="codex-cli ${CODEX_CLI_VERSION}" \
+      org.gkm.arc-agi3.codex-general-sha512="${CODEX_GENERAL_SHA512}" \
+      org.gkm.arc-agi3.codex-linux-arm64-sha512="${CODEX_LINUX_ARM64_SHA512}" \
+      org.gkm.arc-agi3.codex-linux-amd64-sha512="${CODEX_LINUX_AMD64_SHA512}" \
+      org.gkm.arc-agi3.supply-chain-manifest="/usr/local/share/arc-agi3/controller-supply-chain.json" \
+      org.gkm.arc-agi3.credential-ingress="stdio-login-rpc-only" \
+      org.gkm.arc-agi3.egress-enforcement="external-content-pinned-sidecar"
+
+USER 65532:65532
+WORKDIR /controller-neutral
+ENTRYPOINT ["/usr/local/bin/arc-agi3-contiguous-controller-guardian"]
+CMD ["/usr/local/bin/codex", "app-server", "--strict-config", "--listen", "stdio://"]

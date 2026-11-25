@@ -21,6 +21,9 @@ architecture draws on Jürgen Schmidhuber's Gödel-machine and PowerPlay program
 
 ## Reproducible source and evidence
 
+- `producer_source/` contains the actual acquisition-time runner, policy, prompt,
+  harness, taint scanner and their code dependencies, with per-file hashes.
+  It contains no game implementations or previous solver library.
 - `acquisition_source/` preserves the exact winning files and all 182 original
   promotion boundaries, with their original transcripts and hashes. It contains
   no failed WIP or later search directories.
@@ -37,11 +40,12 @@ architecture draws on Jürgen Schmidhuber's Gödel-machine and PowerPlay program
 - `accounting/` includes the original token ledger snapshot, capture hashes and
   terminal counters, a deterministic cost report, and per-game totals.
 
-The separate producer snapshot is [1492eeb7](https://github.com/sashakolpakov/gkm/tree/1492eeb7817950e2e943b05880907f5edcc6f445).
+The core campaign-control snapshot is [1492eeb7](https://github.com/sashakolpakov/gkm/tree/1492eeb7817950e2e943b05880907f5edcc6f445).
 The release-verification context is [194b3a16](https://github.com/sashakolpakov/gkm/tree/194b3a16af6ac0e1dcbd436aace15dc4783d99ea).
 
-The producer snapshot preserves the actual campaign controls separately from the repository's later
-framework development. The API replay uses the frozen admitted action paths with
+The core snapshot preserves campaign controls separately from later framework
+development; `producer_source/` additionally freezes the actual imported audit
+helpers and subprocess entrypoints used by the acquisition runner. The API replay uses the frozen admitted action paths with
 no model inference or clone calls.
 
 Fresh source execution and independent path replay passed at all 182 boundaries.
@@ -53,7 +57,7 @@ preserves its 150 historical-source and 32 retrospective-certification labels.
 The reported acquisition window ends retrospectively at the current-frontier
 retry n125: 2026-11-24 09:56:21 UTC, thread
 `01a20cc3-31b4-76d3-88d4-389b77a8bef5`. This is execution 454 of the campaign,
-not the 125th model call. Retry labels on earlier discarded frontiers are distinct.
+not the 125th proposer turn or API request. Retry labels on earlier discarded frontiers are distinct.
 All retained promotions predate this cutoff; the latest was on November 21.
 
 The 641-action diagnostic completion was already available before that cutoff.

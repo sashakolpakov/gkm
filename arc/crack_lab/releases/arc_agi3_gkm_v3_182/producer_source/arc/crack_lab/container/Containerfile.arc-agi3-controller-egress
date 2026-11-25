@@ -1,0 +1,40 @@
+# Enforcing network namespace for the ARC-AGI-3 model controller.
+FROM docker.io/library/python:3.12.11-slim-bookworm@sha256:519591d6871b7bc437060736b9f7456b8731f1499a57e22e6c285135ae657bf7
+
+ARG ARC_AGI3_EGRESS_GUARDIAN_SHA256=b7ba84f95cd521b776c83bcab1f802e79125b12bd552d5c63c01b4decc7a93b9
+ARG ARC_AGI3_EGRESS_POLICY_SHA256=cd780f26799f55b2d3cfdf386a3e30c7a731b39ab74a42d7b89b92beaee5147a
+
+COPY arc/crack_lab/arc_agi3_controller_egress_guardian.py \
+    /usr/local/bin/arc-agi3-controller-egress-guardian
+
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN set -eu; \
+    echo "${ARC_AGI3_EGRESS_GUARDIAN_SHA256}  /usr/local/bin/arc-agi3-controller-egress-guardian" \
+        | sha256sum --check --strict -; \
+    test "$(/usr/local/bin/python3 /usr/local/bin/arc-agi3-controller-egress-guardian --print-policy-sha256)" \
+        = "${ARC_AGI3_EGRESS_POLICY_SHA256}"; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        ca-certificates iptables; \
+    rm -rf /var/lib/apt/lists/*; \
+    chmod 0555 /usr/local/bin/arc-agi3-controller-egress-guardian; \
+    test -x /usr/sbin/iptables; \
+    test -x /usr/sbin/ip6tables; \
+    test -x /usr/sbin/iptables-restore; \
+    test -x /usr/sbin/ip6tables-restore; \
+    test -x /usr/sbin/iptables-save; \
+    test -x /usr/sbin/ip6tables-save
+
+LABEL org.gkm.arc-agi3.role="controller-egress-proxy" \
+      org.gkm.arc-agi3.egress-policy="openai_https_only" \
+      org.gkm.arc-agi3.egress-policy-sha256="${ARC_AGI3_EGRESS_POLICY_SHA256}" \
+      org.gkm.arc-agi3.egress-guardian-sha256="${ARC_AGI3_EGRESS_GUARDIAN_SHA256}" \
+      org.gkm.arc-agi3.egress-enforcement="netfilter-owner-transparent-sni-v1"
+
+USER 0:0
+WORKDIR /
+ENTRYPOINT ["/usr/local/bin/arc-agi3-controller-egress-guardian"]
