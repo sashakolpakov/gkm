@@ -22,5 +22,17 @@
     "failed": 9,
     "scope": "Retired status-policy/synthetic frontier fixtures, changed prompt wording, and absent historical artifact directories in the sparse toolchain tree; production bytes remain unchanged."
   },
-  "scorecard_scope": "Official remote scorecards are added after immutable source publication; local certification is not an official score."
+  "scorecard_scope": "Closed official ONLINE and Competition records; source execution, deterministic replay and stochastic discovery are separate measurements.",
+  "scorecard_and_accounting_regression_tests_passed": 84,
+  "acquisition_source_closure_files": 120,
+  "online_scorecard": "https://arcprize.org/scorecards/67eba075-9415-421b-83e4-f881cebf399c",
+  "online_public_reconciliation": "PASS; all 25 endpoints matched, 182/183 levels, 24 complete games, 6685 actions; original collector FAIL preserved separately.",
+  "competition_scorecard": "https://arcprize.org/scorecards/fb027490-5351-4a77-85f2-41959e3e6b64",
+  "competition_mode": true,
+  "competition_score": 99.27272727272728,
+  "competition_completed_levels": 182,
+  "competition_completed_games": 24,
+  "competition_actions": 6685,
+  "competition_receipt_status": "FAIL (SDK close payload rejected; original receipt preserved)",
+  "competition_public_record_status": "PASS; unchanged partial validator, 182/183, 24 completed games, 6685 actions"
 }

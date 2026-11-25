@@ -14,4 +14,4 @@ API-equivalent valuation of reported tokens, not an invoice. Per-request context
 
 3 historical captures have no terminal usage report. Their counters are unknown, not zero-cost executions. The scenarios price only reported usage; they are not bounds on the missing tokens.
 
-[Official GPT-6.1 Sol prices](https://developers.openai.com/api/docs/models/gpt-6.1-sol) were checked on 2026-11-25. Rates per million tokens: input $2, cached input $0.10, 30-minute cache writes $2.50, output $10. Reasoning is already included in output. No Batch/Flex/Fast discount or premium is assumed.
+[Official GPT-6.1 Sol prices](https://developers.openai.com/api/docs/models/gpt-6.1-sol) were checked on 2026-11-25. Rates per million tokens: input $2, cached input $0.10, cache writes $2.50, output $10. Reasoning is already included in output. No Batch/Flex/Fast discount or premium is assumed.

@@ -1,7 +1,8 @@
 # Reproduce the frozen release
 
 Use the public repository commit linked by the version-3 Community Leaderboard
-entry. Install the repository requirements and ARC toolkit 0.9.9 / arcengine 0.9.3.
+entry. Install the repository requirements, ARC toolkit 0.9.9, arcengine 0.9.3 and
+NumPy 2.4.4 (the versions used by the official replayer).
 The game bundle must match the hash-bound versions used by the scorecard replayer.
 No model calls are needed to check the release or replay its paths.
 
@@ -55,3 +56,14 @@ The source closure is a separate acquisition-time tree. Run discovery from a
 blank checkout of that tree with the external game bundle and declared packages;
 do not seed it with `acquisition_source/` or `artifacts/`. Its runner and policy
 provide `--help`. `source_manifest.json` records every included file hash.
+
+## Validate the published closed scorecards offline
+
+The public records are checked separately from the original SDK close-response
+receipts, which are preserved without rewriting their FAIL statuses. The closed
+Competition record is authoritative for the official score and operation mode.
+Run the actual-record and rejection tests without opening a scorecard:
+
+```sh
+PYTHONPATH=arc:arc/crack_lab python -m pytest -q arc/crack_lab/test_partial_scorecard.py
+```

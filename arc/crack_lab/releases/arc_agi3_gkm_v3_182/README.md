@@ -6,6 +6,10 @@ games, and leaves only lf52 level 10 unclaimed. The retained paths contain 6,685
 actions. Raw coverage and stored action counts are distinct from the official
 Competition-Mode score and API action accounting.
 
+The closed [Competition scorecard](https://arcprize.org/scorecards/fb027490-5351-4a77-85f2-41959e3e6b64) reports **99.27272727%**,
+182 completed levels and 6,685 actions. [Scorecard receipts and validation](scorecards/README.md)
+include the prior ONLINE shakedown and distinguish source binding from server fields.
+
 The campaign began without the previous release's solvers, solutions, action paths
 or working notes. Discovery used the same raw frame/action/reward interface and
 clone scaffold for every game. All game-specific solver code was model-proposed.

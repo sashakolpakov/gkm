@@ -43,3 +43,14 @@ def test_complete_contract_still_requires_terminal_win(case):
     card, args = case
     row = next(r for r in card["environments"] if r["id"].startswith("lf52"))
     with pytest.raises(ValueError): R._validate_complete_environment_score(row, game="lf52", target=10)
+
+
+def test_real_competition_public_card(case):
+    _, args = case
+    raw = json.loads((Path(__file__).parent / "releases/arc_agi3_gkm_v3_182/scorecards/competition-public.json").read_text())
+    args.update(mode="competition", card_id=raw["card_id"], scorecard_tags=raw["tags"],
+                source_url="https://github.com/sashakolpakov/gkm/tree/a5b301d328d04d4b771bd36dd299b79939a93c36")
+    card = R.normalize_partial_public_scorecard(raw)
+    assert R.validate_partial_closed_scorecard(card, **args) is card
+    assert card["competition_mode"] is True
+    assert card["total_levels_completed"] == 182 and card["total_actions"] == 6685

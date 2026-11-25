@@ -135,7 +135,7 @@ def build_report(raw, cutoff_thread, captures):
         "by_game": grouped,
         "pricing": {"checked_on": "2026-11-25", "url": PRICING_URL,
                     "currency": "USD", "rates_per_million": {"input": "2.00", "cached_input": "0.10",
-                    "cache_write_30m": "2.50", "output_including_reasoning": "10.00"},
+                    "cache_write": "2.50", "output_including_reasoning": "10.00"},
                     "long_context": "For requests over 272K input tokens, input/cache rates double and output is 1.5 times the standard rate.",
                     "scope": "API-equivalent valuation of reported tokens, not an invoice. Per-request context sizes are not in the CLI capture; both standard and all-long-context scenarios are shown. Cache writes use the reported counter. Unknown usage is not valued at zero."},
         "accounting": "Each codex_exec records cumulative usage for one proposer turn, potentially spanning many API requests. Count that execution once, including failed, discarded and infrastructure work; corrections/outcomes are not extra executions. Cached input is a subset of input and reasoning is a subset of output; neither is added twice. Host orchestration, manuscript editing, local compute and later API action replay are outside proposer-token accounting.",
@@ -167,7 +167,7 @@ def main():
                      str(values['turns_without_reported_usage'])]) + " |")
     lines += ["", report["accounting"], "", report["pricing"]["scope"], "",
               str(report['summary']['all_recorded']['turns_without_reported_usage']) + " historical captures have no terminal usage report. Their counters are unknown, not zero-cost executions. The scenarios price only reported usage; they are not bounds on the missing tokens.", "",
-              "[Official GPT-6.1 Sol prices](" + PRICING_URL + ") were checked on 2026-11-25. Rates per million tokens: input $2, cached input $0.10, 30-minute cache writes $2.50, output $10. Reasoning is already included in output. No Batch/Flex/Fast discount or premium is assumed.", ""]
+              "[Official GPT-6.1 Sol prices](" + PRICING_URL + ") were checked on 2026-11-25. Rates per million tokens: input $2, cached input $0.10, cache writes $2.50, output $10. Reasoning is already included in output. No Batch/Flex/Fast discount or premium is assumed.", ""]
     (args.output_dir / "README.md").write_text("\n".join(lines))
     with (args.output_dir / "per_game.csv").open("w", newline="") as handle:
         writer = csv.DictWriter(handle, lineterminator="\n", fieldnames=["scope", "game", "turns", *TOKEN_FIELDS,
