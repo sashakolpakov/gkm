@@ -25,9 +25,8 @@ The primary objective is:
 > Solve and replay-promote all **183/183** levels in the authoritative ARC API
 > inventory, with a clean and auditable acquisition lineage, then publish the
 > result through a full online shakedown, one definitive Competition-Mode
-> scorecard and the ARC-AGI Community Leaderboard submission, with the
-> manuscript and downstream documentation maintained as a separately verified
-> empirical/reproduction surface.
+> scorecard and the ARC-AGI Community Leaderboard submission, followed—only
+> after the author's explicit release—by the manuscript reproduction work.
 
 The previously paused goal—continue in bounded waves and report near 90%—is now
 a milestone inside this larger objective, not a stopping condition.
@@ -46,43 +45,38 @@ PR edit is one coherent release: title, persistent body, YAML, README,
 percentages, links, and scorecard change together. Do not post piecemeal
 explanatory comments or publish the obsolete July score while this update is
 being assembled. A later 183/183 completion triggers a separately audited
-refresh. Preparatory contiguous-runner hardening may proceed in parallel;
-production pilots and full launch remain last.
+refresh. Contiguous-runner implementation, pilots, and launch remain last.
 
-**Reordered execution directive, 2026-07-31:** the author explicitly released
-and moved the conservative manuscript/downstream-documentation phase ahead of
-the final 183/183 remainder. That phase is complete: the 25-game marginal table,
-empirical figures, three Socratic passes, Sphinx documentation, PDFs, tests, and
-integrity manifest were regenerated and verified without changing the
-theoretical core. The separately frozen v2.0 181/183 benchmark payload was also
-published and remotely reopened. Its exact remote branch passes the leaderboard
-repository's validator locally, including live URL checks. The corresponding
-fork workflow is still maintainer-gated as `action_required` with no executed
-jobs, so a remote green check is not yet proven. Neither checkpoint substitutes
-for the final 183/183 release.
+**Post-submission human gate, 2026-07-30:** after the complete benchmark payload
+has been submitted under the exact `gkm-submission` branch rules and its remote
+title, body, YAML, README, links, version entry, checks, and scorecard have been
+reopened and verified, stop and report. Do not begin any manuscript script,
+figure, table, prose, or PDF update until the human author explicitly releases
+this gate.
 
-The frozen v2.0 evidence remains byte-exact at commit `9235ed26` and under
-`arc/crack_lab/releases/arc_agi3_gkm_v2_181/`. On 2026-07-31 its release branch
-was merged into `master` at `e8927fc6`, so the two origin histories are now
-reconciled while the receipt-bound release tip remains immutable. Its partial
-receipt verifies 181 claimed boundaries and names only `lf52` L9--L10 as
-unclaimed.
+The required order is:
 
-The remaining required order is:
-
-1. Preserve the verified manuscript/downstream bundle and frozen v2.0 181/183
-   release as immutable checkpoints.
-2. Continue the exact `lf52` remainder to 183/183 under the retry-complexity
-   policy.
-3. Freeze the complete canonical set, make every winning boundary and promotion
-   artifact uniform, and pass the full release audit.
-4. Run the complete 25-game ONLINE shakedown and one definitive Competition-Mode
-   scorecard for the 183/183 frozen set.
-5. Append the complete release as a new leaderboard version, update PR #37's
-   title/body/README/YAML/links atomically, and reopen every remote surface.
-6. Launch the fully automated supervisor for a separate clean contiguous
-   campaign using the final successful policy. This contiguous lineage never
-   weakens or silently replaces the canonical result.
+1. Freeze the strongest current canonical set and make every winning boundary
+   and promotion artifact uniform or explicitly
+   account for any irrecoverable historical exception; freeze and audit the
+   release set.
+2. Run the complete 25-game ONLINE shakedown and one definitive Competition-Mode
+   scorecard for that frozen set.
+3. Update PR #37 once, with a self-contained `GKM submission summary` and the
+   complete solver-production account: fixed infrastructure, model-authored
+   solver code, session-level supervision, auxiliary analysis, verification,
+   promotion, final percentages, and definitive scorecard. Do not organize the
+   submission around one solver routine.
+4. Reopen and verify every remote benchmark surface, report the completed
+   payload, and enter the post-submission human gate. Manuscript work is
+   forbidden while this gate is closed.
+5. After explicit human release, extend the manuscript reproduction suite and
+   make only the conservative local empirical updates defined in section 8.2.
+6. Continue the separate `lf52` remainder to 183/183 and repeat the freeze,
+   online, Competition, and PR delta gates for the final complete set.
+7. Launch the fully automated supervisor for a separate clean contiguous
+    campaign using the final successful policy. This contiguous lineage
+    never weakens or silently replaces the canonical result.
 
 **Goal-level scheduler invariant:** one journal-derived quantity—the number
 `n` of settled clean no-progress retries at the unchanged exact frontier—must
@@ -297,20 +291,10 @@ The scheduler applies these rules:
   continuation. This preserves both stochastic diversity and live
   reasoning-state continuity without multiplying short restarts.
 - A tainted attempt is discarded and can never make WIP restore eligible.
-- A clean provider, containment, or other infrastructure interruption is not a
-  solver retry. The scheduler keeps the same `n`, effort, and soft allocation,
-  pins the host-sealed exact-frontier WIP attempt by ID, and mechanically
-  restores that capsule even when the ordinary row at `n` calls for `exclude`.
-  The status reducer must reopen the pointer, metadata, complete file inventory,
-  and exact-parent binding; the proposer runner must apply the current taint
-  policy again immediately before restore. If the pointer changed, the capsule
-  is stale, or any current check fails, dispatch stops rather than falling back
-  to a different attempt or silently converting the event into no-progress.
 - WIP eligibility is re-evaluated with the current taint policy on every
   restore; a snapshot accepted by an older scanner is never grandfathered, and
-  ordinary unpinned recovery falls back only to the newest currently clean
-  exact-frontier snapshot. A scheduler-pinned infrastructure recovery never
-  substitutes a different capsule.
+  the scheduler falls back only to the newest currently clean exact-frontier
+  snapshot.
 - A deliberate independent reacquisition uses `exclude` explicitly and a new
   candidate root; it never silently ignores a newer verified artifact.
 
@@ -577,23 +561,27 @@ replayed from that chain is rejected.
 
 | `n` | State at the current level | Model/effort | Soft allocation | WIP mode |
 |---:|---|---|---:|---|
-| 0 | Fresh or newly promoted frontier | `gpt-5.6-sol` medium | 15 min | exclude |
-| 1 | Clean medium failure | `gpt-5.6-sol` high | 20 min | restore |
-| 2 | Clean high failure | `gpt-5.6-sol` xhigh | 25 min | restore |
-| 3 | Warm hard frontier after the ordinary ladder | xhigh | 40 min | restore |
-| 4 | Persistent hard frontier with useful clean WIP | max | 60 min | restore |
-| 5 | First max coherence-reset attempt | max | 90 min | exclude |
-| 6 | First cumulative max attempt | max | 120 min | restore |
-| 7 | First repeated hard-frontier reset | max | 180 min | exclude |
-| 8 | First repeated hard-frontier continuation | max | 180 min | restore |
-| `>=9`, odd `n` | `LONG_COHERENCE` reset lane | max | 300 min | exclude |
-| `>=10`, even `n` | `LONG_COHERENCE` cumulative lane | max | 300 min | restore |
+| 0 | Fresh or newly promoted frontier | `gpt-6.1-sol` medium | 15 min | exclude |
+| 1 | Clean medium failure | `gpt-6.1-sol` high | 20 min | restore |
+| 2 | Clean high failure | `gpt-6.1-sol` xhigh | 25 min | restore |
+| 3 | Warm hard frontier after the ordinary ladder | `gpt-6.1-sol` xhigh | 40 min | restore |
+| 4 | Persistent hard frontier with useful clean WIP | `gpt-6.1-sol` max | 60 min | restore |
+| 5 | First max coherence-reset attempt | `gpt-6.1-sol` max | 90 min | exclude |
+| 6 | First cumulative max attempt | `gpt-6.1-sol` max | 120 min | restore |
+| 7 | First repeated hard-frontier reset | `gpt-6.1-sol` max | 180 min | exclude |
+| 8 | First repeated hard-frontier continuation | `gpt-6.1-sol` max | 180 min | restore |
+| `>=9`, odd `n` | `LONG_COHERENCE` reset lane | `gpt-6.1-sol` max | 300 min | exclude |
+| `>=10`, even `n` | `LONG_COHERENCE` cumulative lane | `gpt-6.1-sol` max | 300 min | restore |
 
 Effort is monotone within a frontier: medium → high → xhigh → max, with no
 de-escalation until an exact promotion resets the frontier to medium. An
 infrastructure failure
 does not count as solver no-progress. A clean failure keeps WIP. A taint failure
 discards that attempt’s WIP.
+
+The proposer model is `gpt-6.1-sol` at every coordinate. There is no late model
+transition or final-level override; only the existing retry coordinate changes
+effort, allocation, WIP mode, and auxiliary eligibility.
 
 The primary-lane table remains unchanged; its purpose is coherent solver
 accumulation. The orthogonal role escalation begins after every ordinary
@@ -1065,13 +1053,13 @@ During the long campaign, report only:
 - a material taint, replay, integrity, or infrastructure failure;
 - a blocker requiring user authority.
 
-Under the superseding 2026-07-31 reorder, the conservative manuscript and
-downstream-documentation phase is complete and its verified bundle is
-preserved. The foreground task is now the exact `lf52` remainder, followed by
-the complete release freeze, full 25-game ONLINE shakedown, one definitive
-Competition-Mode scorecard, and PR #37 update as one verified transaction. No
-public score, reviewer response, or PR surface is updated again before the
-183/183 frozen set passes those gates.
+Under the 2026-07-30 major-release directive, the foreground task is to freeze
+the strongest current canonical set, close every release audit, run the full
+25-game ONLINE shakedown, produce one definitive Competition-Mode scorecard,
+and update PR #37 as one verified transaction. The already-launched `lf52`
+exact-remainder searches continue separately. No public score, reviewer
+response, or PR surface is updated again before the frozen set passes those
+gates. Conservative local manuscript work follows the benchmark update.
 
 ### 4.7 Implementation and evidence map
 
@@ -1220,12 +1208,6 @@ receipt outside the frozen canonical tree, verify it against the unchanged
 tree, and bind that receipt into ONLINE scoring, Competition scoring,
 manuscript reproduction, and contiguous-run launch preflight.
 
-The final release must also ship (or bind by immutable source revision) the
-receipt-aware replay entry point and record exact all-game preflight, ONLINE,
-and Competition commands. A clean-extraction regression must execute the
-preflight command successfully and confirm that every README claim about
-release contents names a file or immutable link that actually exists.
-
 The mutable acquisition tree is not a publication archive. After the
 schema-v2 release tree has passed fresh replay, taint, hash, boundary, and
 manifest gates—and every scorecard/manuscript consumer has been switched to
@@ -1246,16 +1228,6 @@ reconstruction can certify replay and release reproducibility but cannot be
 relabeled as a historical acquisition marginal. The certifier and its tests
 are part of the contiguous conformance/control-contract digest.
 
-The certifier applies the clean-room filesystem/import policy to the exact
-winning-source bytes at selection, again immediately before any host replay,
-and again before release staging. Certified `solve(env)` source receives its
-Arena object from the host and therefore has no raw-Arena import exception:
-an absolute or parent path, private/sibling harness import, dynamic loader, or
-other host-filesystem capability fails before execution. The compatibility
-runner's separately hash-pinned `gkm_arena.run_program` capability remains
-limited to acquisition probes and does not transfer into certified solver
-source.
-
 Source selection is phase-first, not merely replay-first. For a given boundary,
 an exact retained `reached_before_debrief` snapshot outranks every
 post-debrief/promoted or schema-1 source. A schema-1 promoted source is labeled
@@ -1269,23 +1241,6 @@ authority. A malformed transcript, post-debrief source, or deterministic
 reconstruction may still prove release replay when its applicable gates pass,
 but it must set both `historical_source_boundary=false` and
 `posthoc_acquisition_marginal_admissible=false`.
-
-The native Codex launcher closes proposer stdin with `DEVNULL`; the complete
-task is already bound in argv. Inheriting the supervisor PTY is forbidden
-because it admits an unintended operator-input channel. Codex identifies the
-closed descriptor as a piped stream and can still emit the deterministic
-`Reading additional input from stdin...` diagnostic. The corrected launcher
-therefore seals stdout as the strict JSONL acquisition transcript and seals
-stderr as a separate immutable diagnostic sideband. Both files are scanned for
-taint and action-protocol markers, reopened after complete process-group
-quiescence, hashed into the turn ledger, and copied into promotion evidence;
-failure to reopen either half invalidates the complete generation. Focused
-regressions assert the closed descriptor, strict JSON stdout, sealed sideband,
-and fail-closed sideband taint handling. A winning turn produced by an older
-launcher that merged this diagnostic into JSONL may retain release-replay
-evidence, but it cannot supply historical marginal authority and must be
-reacquired from its exact parent under the corrected launcher before the final
-uniform lineage is frozen.
 
 The `bp35` L7 exploratory promotion illustrates this distinction. Its exact
 196-action L6 parent and 256-action L7 boundary replay cleanly, and both the
@@ -1324,41 +1279,8 @@ same gate rejects a terminal Codex leader when any spawned process remains in
 its process group: the complete group is terminated before transcript sealing,
 and that generation is non-authoritative. The focused evidence/process-tree
 regressions and the complete `test_gkm_legs.py` suite pass (109 tests). The
-quarantined 528-action exact-L8 `lf52` compression lane retained its own intact
-protected transcript but never acquired canonical promotion authority.
-Subsequent L9 turns bind the authoritative 544-action L8 parent and must earn
-any shorter prefix through the ordinary fresh-replay promotion gate.
-
-On 2026-08-03, one observation-only auxiliary analysis was run at that exact
-unchanged frontier without exposing it to the live native proposer. A
-quarantined supervisory handoff (`dd692811...`) requested the bounded
-state-representation obligation `OBL-L9-STATE-01`; its outer 119-file input
-bundle is exact-manifested as `d5197bd6...`. The sidecar stopped within its
-fixed caps at 27/32 clean replays, 75/75 prefix snapshots, and 0/128 successor
-branches. Its complete 13-case terminal factorial associated reward only with
-the five-shift far-endpoint capture, but generic one-peg completion is perfectly
-confounded with that endpoint in the matrix. The prefix audit failed safely on
-an incorrect instrumentation boundary after exhausting its snapshot cap and
-was not rerun. The resulting JSON (`a14944e5...`) independently passed frontier,
-content-addressed sequence, replay-count, taint, action-protocol, and authority
-checks and is sealed by output manifest `8bbf7903...`; its verdict remains
-`narrowed_not_discharged`. It is not a candidate, promotion, retry, WIP update,
-or publication artifact and cannot enter a native lineage without a later
-authenticated handoff plus native public-observation reproduction.
-A second quarantine-only supervisory synthesis over exact input manifest
-`30e3f124...` produced handoff `e4086b30...`, sealed by manifest `0536d4a7...`.
-It contains three bounded, unexecuted native-reproduction tests and remains
-forbidden from the currently live native turn.
-
-A transient ultra-effort follow-up then attempted only the handoff's T2
-obligation. It repaired the earlier prefix-67 bookkeeping failure and completed
-the bounded enumeration, but its sealed input did not retain the comparison
-table for prefixes 0--66 or predicted successor deltas; an earlier interface-
-discovery invocation also lacked a cumulative action ledger. T2 therefore
-remains undischarged. The follow-up had no authority, was not exposed to the
-live proposer, and is not retained as release evidence. Another auxiliary retry
-is inadmissible unless a fresh authenticated native request supplies the
-missing public-observation comparison evidence.
+replacement 528-action exact-L8 `lf52` lane has its own intact protected
+transcript and remains replay-gated.
 
 If every retained source for an otherwise exact replay-valid boundary fails
 fresh source execution, the certifier may use a minimal deterministic source
@@ -1519,9 +1441,9 @@ The release must regenerate:
 
 ### 8.2 Conservative empirical manuscript update
 
-The author explicitly advanced this phase on 2026-07-31. The conservative
-update and downstream-documentation pass are complete and verified; later
-changes remain subject to the same evidence and parsimony rules below.
+This section is queued behind the post-submission human gate in section 1.
+None of its scripts, figures, tables, prose, or PDF outputs may be changed
+before the author explicitly releases that gate.
 
 The theoretical development is frozen for this release. Do not rewrite the
 definitions, structure-function/free-energy derivations, inverse-colimit and
@@ -1698,13 +1620,10 @@ The final manuscript acknowledgments must include this one-line credit:
 GitHub CLI authentication is already configured.  Do not reauthenticate or
 replace credentials because a sandboxed `gh auth status` probe is misleading;
 use the existing authenticated mutation path and verify every remote change.
-The leaderboard branch's update contract must be followed exactly. The verified
-v2.0 payload already preserves v1.0 and records the 181/183 release; the final
-183/183 payload must preserve both and append a new version rather than rewrite
-their historical scorecards:
+The leaderboard branch's update contract must be followed exactly:
 
-- preserve the historical v1.0 and v2.0 entries and append one new complete
-  release entry under `versions`;
+- preserve the historical v1.0 entry and append one new v2.0 entry under
+  `versions`;
 - for ARC-AGI-3, provide `scorecard_url` and `set: public`; do not add a
   forbidden numeric `score`;
 - omit optional public `cost` unless the schema later makes it mandatory;
@@ -1717,24 +1636,11 @@ their historical scorecards:
 Then:
 
 1. update `submissions/gkm/README.md` and `submission.yaml`;
-2. run the offline v3 release gate and the exact current upstream
-   `.github/scripts/validate_submission.py` in a clean leaderboard checkout,
-   recording the upstream validator SHA-256 and its successful result;
+2. validate the leaderboard schema;
 3. commit and push the `gkm-submission` branch;
-4. change PR #37 to the gate-rendered title and set its body byte-for-byte to
-   the validated `submissions/gkm/README.md`;
-5. run `arc_agi3_leaderboard_v3_gate.py --verify-post-push` against the clean
-   exact pushed head, passing the leaderboard checkout, full head SHA, and
-   recorded upstream-validator SHA-256.  This read-only mode must reopen PR
-   #37, bind its base/head repositories and branches, compare the remote YAML
-   and README bytes, require exactly those two changed files, resolve every
-   public URL, rerun the pinned upstream validator, and recheck the PR after
-   the network reads;
-6. require the exact-head `Validate Submission` workflow and `validate` check
-   to pass.  `MAINTAINER_ACTION_REQUIRED` or `WORKFLOW_NOT_COMPLETE` is an
-   explicit nonzero, not-complete result, never a release PASS;
-7. inspect rendered links and reviewer comments, then report only confirmed
-   remote changes.
+4. change PR #37 title and body;
+5. inspect rendered links, checks, and reviewer comments;
+6. report only confirmed remote changes.
 
 ## 10. Automated contiguous-campaign orchestrator
 
@@ -1790,11 +1696,13 @@ maintain a separately ordered copy of the file list or reimplement its hash.
 
 The current `arc_agi3_contiguous_supervisor.py` is deliberately an admission,
 promotion, recovery, and launch-preflight library; its CLI performs preflight
-only and is not itself the campaign scheduler. The separately tested
-`arc/crack_lab/arc_agi3_contiguous_runner.py` and formal orchestrator now supply
-the state-machine and execution layers described below. Their existence and
-focused tests are preparatory evidence only: they do not create production
-launch authority.
+only and is not itself the campaign scheduler. The contiguous campaign is not
+launch-ready until a separately tested
+`arc/crack_lab/arc_agi3_contiguous_runner.py` implements the complete state
+machine, container lifecycle, six-lane capacity controller, durable restart
+logic, and post-turn/promotion audits described below. A passing primitives
+suite must never be reported as evidence that this missing execution layer
+exists.
 The formal operator entry point is
 `arc/crack_lab/arc_agi3_contiguous_orchestrator.py`; the runner remains its
 state-machine library. The orchestrator requires every campaign root,
@@ -1807,13 +1715,10 @@ condition. It never finds `python3`, Codex, Docker, configuration, credentials,
 or plugins through ambient `PATH`, `PYTHONPATH`, login-shell state, pytest
 environment, or user project discovery.
 The executable preflight is explicitly fail-closed today, even for
-schema-valid attestation JSON. Full production launch remains blocked until
-genuine S01--S12 production observers and receipts, a receipt-bound minimal
-role-image build with an immutable repository digest, the exact runtime and
-production-stack evidence, the real ordered-pilot executor and authenticated
-pilot gate, and the canonical frozen 183/183 release receipt are all produced,
-reopened, and bound into one receipt-derived launch authority. Unit or mocked
-passes cannot substitute for any of those objects.
+schema-valid attestation JSON. It may be enabled only when the real scheduler,
+machine-observed container attestation producer, Arena RPC boundary, and
+canonical frozen 183/183 release receipt are implemented and bound into the
+control-contract hash.
 
 The 2026-07-29 blocker-authority, candidate-ingress, policy-steering, and
 auxiliary-dispatch passes were development checkpoints only. Their test counts
@@ -1979,10 +1884,8 @@ items an operator may resolve interactively after launch:
 - One generated launch-authority receipt, not separately flippable booleans,
   binds every role image, exact runtime/interpreter and loaded-module origins,
   operator/service configuration, full-suite receipt, genuine S01--S12
-  receipts, and the frozen release. No component-local readiness boolean
-  confers authority; full launch authority is derived only by reopening those
-  receipts. The auxiliary adapter remains separately disabled until a real
-  production implementation and its admission evidence exist.
+  receipts, and the frozen release. Any component-local readiness flag remains
+  false until that receipt verifies.
 
 The canonical conformance entry must run both the exact one-owner invariant
 registry and the complete explicit allowlist of contiguous component test
@@ -2308,7 +2211,7 @@ The straight-line contiguous scheduler applies these exact principles:
   infrastructure, capacity/rate-limit, taint, and blocker outcomes do not.
   Treat this exact-frontier retry count as the single operational complexity
   coordinate for both primary effort and independent-sidecar eligibility;
-- at `no_progress >= 9`, enter `LONG_COHERENCE`: use `gpt-5.6-sol/max` with a
+- at `no_progress >= 9`, enter `LONG_COHERENCE`: use `gpt-6.1-sol/max` with a
   300-minute soft allocation and alternate coherence-reset versus eligible
   clean same-frontier WIP continuation across attempts. Do not create short
   duplicate work merely to fill capacity;
@@ -2397,89 +2300,6 @@ multi-process journal races, but only the genuine S06/S07 scenarios and the
 immutable audit receipt can admit launch.
 
 ### 10.3 Container and information-flow boundary
-
-The compatibility campaign and the unattended contiguous campaign have two
-different, explicitly named guarantees. The compatibility runner applies a
-prospective behavioural proposer-boundary policy: it permits only the exact
-documented raw-`gkm_arena` capability, scans every executable workspace source
-and immutable command record, polls the live turn, and repeats the gate before
-WIP retention, recovery, source execution, and promotion. Evidence records the
-policy schema and source digest. A policy mismatch makes WIP forensic-only and
-forces a clean reset. This is a fail-closed audit gate, not a proof of host
-filesystem confinement; a turn that began before the policy was loaded can be
-audited retrospectively but cannot be represented as prospectively confined.
-No new compatibility turn may receive raw-Arena authority until its import
-closure is purified and receipt-bound: offline import must not read the
-repository `.env`, proposer/LLM modules must be lazy or absent, workspace module
-shadows must be rejected, and the physical Arena module plus local runtime
-closure must match the JIT evidence receipt. The already-live pre-policy LF52
-child is allowed to drain under its unchanged runtime, but that host runtime is
-not modified mid-turn and its parent remains unable to promote directly.
-
-Historical-runner admission is append-only and exact in the runner source
-SHA-256, Git HEAD, evidence schema, lock schema, and sandbox-contract digest.
-The `c1f8168f` / `bb347429` tuple remains the byte-exact submitted protocol for
-its existing evidence.  The prospective `246405c1` / `7455d304` tuple is a
-submitted-protocol-derived boundary-remediation v2 whose only source change is
-a fixed generic warning that the trusted `gkm_try.py` bootstrap does not grant
-dynamic-import or private-runner authority to proposer-authored files.  It does
-not cleanse or reinterpret prior rejected generations, and it neither aliases
-nor supersedes the submitted tuple.  Every admitted tuple must appear in the
-sandbox-contract, historical-runner, and recovery registries; no current-source
-or branch wildcard is admissible.
-
-As of 2026-08-04, the preparatory half of that obligation is implemented by
-`arc_agi3_arena_rpc_client.py` and
-`arc_agi3_compatibility_arena_closure.py`. The extracted client preserves the
-NumPy `uint8` frame surface, while descriptor-confined closure validation binds
-both a deterministic content manifest and per-instance custody. The container
-recipe installs the same client and a hash-pinned NumPy requirements lock; host
-attestation binds the client, both workers, source schema, requirements lock,
-and reviewed recipe. This remains deliberately non-authoritative. The ordinary
-contiguous backend now consumes the closure and binds it to the exact
-scheduler-selected host session, socket, token digest, relay, unstarted
-container, image digest, and reviewed build controls. Both backend and runner
-reopen that receipt before launch. The
-closure records `launch_authorized=false`; the per-turn receipt records
-`authority.launch_authority=false` and has no scheduling, mutation, WIP,
-candidate, or promotion authority. The production
-scenario-observer, global-release, and ordered-pilot gates remain separate and
-fail closed, so this integration alone does not make the unattended campaign
-launch-ready.
-Any pinned worker image must be rebuilt from a host-created, receipt-bound
-minimal context after hashing the complete contiguous Containerfile and
-passing that digest through the no-default
-`ARC_AGI3_CONTAINER_RECIPE_SHA256` build argument. The recipe installs it as
-the `org.gkm.arc-agi3.container-recipe-sha256` image label; runtime image
-inspection and the per-turn compatibility receipt independently require
-equality with the current host recipe. Existing or newly built images without
-the exact label are release-blocked before container creation. This
-preparatory tranche has not built or pushed the production role image and has
-not emitted the context-manifest, build-metadata, repository-digest provenance
-receipt required for launch.
-
-If a host process dies during closure publication and leaves the typed staging
-path, that attempt root is never retried or reused. The backend preserves a
-bounded descriptor-safe staging observation, the runner closes the old
-PREPARED identity with zero solver/WIP/cost/promotion authority, and a fresh
-attempt/generation becomes eligible only through the ordinary failure-circuit
-deadline. Repeated quarantines trip the same bounded operator-incident gate;
-ordinary closure errors with no retained staging remain normal retry/circuit
-failures and cannot churn fresh identities.
-The proposed bespoke legacy host-admission layer was rejected and removed;
-the pre-policy LF52 output remains quarantine-only and any promoted result must
-be reproduced through the ordinary fresh contiguous path.
-
-The contiguous runner supplies the hard unattended boundary: a fresh
-unprivileged, network-disabled container receives no repository, home, game
-source, Docker socket, or sibling-lane mount and reaches the public Arena only
-through the host RPC capability. The behavioural source/transcript gate stays
-inside that design as defense in depth. Any boundary finding deterministically
-returns a candidate-free and WIP-free `tainted` result, leaves the retry
-coordinate unchanged, and revokes same-thread frontier context. Neither a
-model report nor a scheduler heuristic may override this transition. Launch
-authority remains closed until the production adapter-to-runner-to-scheduler
-test, the easier-game pilots, and the complete conformance receipt all pass.
 
 Use the strong part of baseline1's current operational design—a separate Docker
 boundary—as defense in depth. Container isolation does not replace transcript
@@ -3049,8 +2869,8 @@ contiguous evidence lineage:
    transactional WIP, exact admission and atomic-promotion fault matrix,
    mutation inverses, and independently reopened 25-game/183-level release;
 8. perform a fresh immutable `run`, a separate reopening `verify`, and bind the
-   verified scenario receipts, frozen release, and exact image before
-   receipt-derived launch authority may be issued.
+   verified scenario receipts, frozen release, and exact image before either
+   launch-ready flag may become true.
 
 Every test, scenario, build, and runtime staging directory must be created
 under its receipt-bound private temporary or campaign root, never under the
@@ -3212,12 +3032,6 @@ suite is not launch authority.
 The winning source named by a promotion receipt must be byte-identical to a
 declared candidate export, and both that source and the candidate's exact path
 must have independent host replay-from-zero PASS results in the receipt.
-Before WIP retention, candidate replay, or promotion, the shared source schema
-also parses the complete flat source set and closes every import over declared
-local `.py` stems, the standard library, or pinned NumPy 2.4.4. Relative,
-dotted-local, `arc.crack_lab`, `environment_files`, and other undeclared
-ambient imports fail closed; the backend, orchestrator, and publisher all
-reapply the same validator.
 Every host checkpoint must pass `load_trusted_checkpoint()` before scheduling.
 The pinned-image conformance run and adversarial isolation probes must produce
 one result artifact accepted by `validate_launch_attestation()` and
@@ -3247,16 +3061,16 @@ The overall program is complete when:
 - [ ] the complete sawtooth/reuse table is regenerated without inferred gaps;
 - [ ] the 25-game ONLINE shakedown passes;
 - [ ] the definitive Competition card is closed and verified;
-- [x] the manuscript, figures, tables, checksums, and PDF reproduce;
-- [x] the manuscript retains Alexander Kolpakov as sole author, while the
+- [ ] the manuscript, figures, tables, checksums, and PDF reproduce;
+- [ ] the manuscript retains Alexander Kolpakov as sole author, while the
       Community Leaderboard metadata lists OpenAI GPT-5.6 (the model, not
       OpenAI as a company) as a submission author;
-- [x] GKM/OPINE/Retrodict/baseline1 statistics use one documented schema;
+- [ ] GKM/OPINE/Retrodict/baseline1 statistics use one documented schema;
 - [ ] PR #37 title, body, YAML, README, links, and scorecard are updated;
-- [ ] the final v3 PR head passes both the pinned local upstream validator and
-      the remotely reopened exact-head `Validate Submission` workflow/check;
-- [x] the author explicitly reordered and released the conservative
-      manuscript/downstream phase before the final 183/183 remainder;
+- [ ] every submitted benchmark surface is reopened remotely, the completed
+      payload is reported, and the post-submission human gate is entered;
+- [ ] no manuscript artifact is changed before the author explicitly releases
+      that gate;
 - [ ] the production contiguous scheduler, deterministic journal replay
       auditor, immutable audit receipt, and genuine S06/S07 adversary paths
       pass through the unified reproduction/conformance suite;

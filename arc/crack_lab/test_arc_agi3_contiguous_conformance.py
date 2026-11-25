@@ -125,17 +125,17 @@ def test_registry_represents_every_required_invariant_exactly_once():
         "conformance",
         "supervisor",
         "runner",
-        "scheduler",
-        "orchestrator",
-        "watchdog",
-        "pilot",
-        "container_backend",
+            "scheduler",
+            "orchestrator",
+            "watchdog",
+            "pilot",
+            "container_backend",
         "app_server_transport",
         "taint",
         "source_schema",
-        "proposer_worker",
-        "boundary_certifier",
-        "arena_rpc",
+            "proposer_worker",
+            "boundary_certifier",
+            "arena_rpc",
         "container_worker",
         "release_gate",
     }
@@ -146,51 +146,6 @@ def test_registry_represents_every_required_invariant_exactly_once():
     missing = values[1:]
     with pytest.raises(C.ConformanceError, match="registry"):
         C.validate_registry(missing)
-
-
-def test_runner_hardening_guarantees_have_exact_launch_owners():
-    expected = {
-        "runner_exact_authority_failure_stops_later_effects": (
-            "test_exact_authority_failure_stops_all_later_lanes_and_effects",
-            "S11",
-        ),
-        "runner_campaign_lock_serializes_threads_and_processes": (
-            "test_foreign_thread_and_process_block_then_serialize_campaign_lock",
-            "S05",
-        ),
-        "runner_bound_receipt_read_is_descriptor_stable": (
-            "test_bound_receipt_hash_and_parse_share_one_stable_descriptor",
-            "S11",
-        ),
-        "runner_auxiliary_effects_reopen_full_journal_prefix": (
-            "test_auxiliary_prepare_launch_poll_admit_and_abort_use_full_prefix_gate",
-            "S06",
-        ),
-        "runner_promotion_effect_reauthenticates_full_journal_prefix": (
-            "test_promotion_effect_gate_reauthenticates_complete_journal_prefix",
-            "S10",
-        ),
-    }
-    invariants = {
-        item.invariant_id: item for item in C.validate_registry()
-    }
-    requirements = {
-        item["invariant_id"]: item
-        for item in C.launch_requirements_snapshot()["body"][
-            "requirements"
-        ]
-    }
-    for invariant_id, (test_name, scenario_id) in expected.items():
-        invariant = invariants[invariant_id]
-        requirement = requirements[invariant_id]
-        assert invariant.component == "runner"
-        assert invariant.nodeid.endswith(f"::{test_name}")
-        assert requirement == {
-            "invariant_id": invariant_id,
-            "component": "runner",
-            "owner_nodeid": invariant.nodeid,
-            "scenario_id": scenario_id,
-        }
 
 
 def test_loaded_control_modules_classify_pseudo_origins_by_control_name(
@@ -228,7 +183,6 @@ def test_loaded_control_modules_classify_pseudo_origins_by_control_name(
 def test_loaded_control_module_origins_have_no_ambient_conflict():
     observed = C.loaded_control_modules_snapshot()
     repository = Path(__file__).resolve().parents[2]
-    runtime_root = Path(sys.prefix).resolve()
     local_unsealed = sorted({
         path.relative_to(repository).as_posix()
         for module in sys.modules.values()
@@ -240,16 +194,9 @@ def test_loaded_control_module_origins_have_no_ambient_conflict():
         not in C.CONTROL_CONTRACT_FILES
     })
     assert observed["summary"]["conflicting_origins"] == 0, observed
-    # An ordinary focused pytest run may use a venv nested in the repository
-    # and imports its root conftest.  The production suite binds that Python
-    # environment separately in the runtime manifest and executes from the
-    # immutable control root, where neither origin is local.
-    assert [
-        relative
-        for relative in local_unsealed
-        if relative != "conftest.py"
-        and not (repository / relative).is_relative_to(runtime_root)
-    ] == []
+    # Ordinary repository pytest imports its root conftest before this
+    # component suite.  The hermetic immutable runner has no such file.
+    assert local_unsealed in ([], ["conftest.py"])
     assert observed["summary"]["unsealed_local_modules"] == len(
         local_unsealed
     )
@@ -359,7 +306,7 @@ def test_full_component_allowlist_is_exact_control_bound_inventory():
     assert tuple(
         record["path"] for record in snapshot["files"]
     ) == C.COMPONENT_TEST_FILES
-    assert len(C.COMPONENT_TEST_FILES) == 27
+    assert len(C.COMPONENT_TEST_FILES) == 25
     assert set(C.COMPONENT_TEST_FILES) <= set(C.CONTROL_CONTRACT_FILES)
 
 
@@ -878,42 +825,6 @@ def test_terminal_launch_authority_binds_release_and_image(
         output_root=tmp_path / "scenario",
     )
     assert scenario["status"] == "BLOCKED"
-
-    def verify_blocked_receipt(
-        argv,
-        *,
-        cwd,
-        environment,
-        timeout_seconds,
-        scratch_root,
-    ):
-        # This unit case exercises the semantic launch-authority rejection.
-        # Process-table containment is covered by the supervisor suite and is
-        # deliberately not required by this focused conformance test.
-        assert tuple(argv[-5:]) == (
-            "verify",
-            "--repository",
-            str(snapshot),
-            "--receipt",
-            scenario["receipt_path"],
-        )
-        assert cwd == snapshot / ".neutral"
-        assert environment["TMPDIR"] == str(scratch_root)
-        assert timeout_seconds == 120
-        verified = D.verify(
-            Path(scenario["receipt_path"]), repository=snapshot
-        )
-        return SimpleNamespace(
-            returncode=3,
-            stdout=D.canonical_json(verified).decode("ascii"),
-            stderr="",
-            timed_out=False,
-            captured_descendants_absent=True,
-        )
-
-    monkeypatch.setattr(
-        S, "_run_bounded_process_group", verify_blocked_receipt
-    )
     with pytest.raises(
         C.ConformanceError,
         match="production S01--S12 observations are not exact PASS",

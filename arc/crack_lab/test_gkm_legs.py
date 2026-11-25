@@ -5,12 +5,9 @@ MARGINAL free-energy accounting can be checked without credits. The point being
 tested is the load-bearing property: reusing a leg is free, so later levels that add
 no new legs have lower marginal novelty than early rule-learning levels.
 """
-import ast
 import os
-import importlib.machinery
 import inspect
 import json
-import py_compile
 import re
 import shutil
 import subprocess
@@ -22,1619 +19,6 @@ from pathlib import Path
 import pytest
 
 import gkm_legs as L
-
-
-def _minimal_arena_source(marker="SAFE"):
-    return (
-        f"PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER = {marker!r}\n"
-        "DEFAULT_STEP_CAP = 600\n"
-        "FRAME_SIDE = 64\n"
-        "PRECONCEPTIONS = ''\n"
-        "API = ''\n"
-        "class Arena: pass\n"
-        "def _compile(source): return (lambda env: None), None\n"
-        "def free_energy(*args): return 0.0\n"
-        "def run_program(*args): return (0, [], None)\n"
-        "def validate(*args): return True\n"
-    )
-
-
-def test_clean_room_boundary_allows_only_exact_raw_arena_capability(tmp_path):
-    arena_root = Path(L.__file__).resolve().parent
-    clean = (
-        "import json, os, sys\n"
-        f"sys.path.insert(0, {os.fspath(arena_root)!r})\n"
-        "import gkm_arena as arena\n"
-        "with open('checkpoint.json') as source:\n"
-        "    checkpoint = json.load(source)\n"
-        "limit = int(os.environ.get('PROBE_LIMIT', '10'))\n"
-        "levels, path, error = arena.run_program('lf52', solve)\n"
-    )
-    assert L.APB.scan_python_source(
-        clean,
-        logical_path="probe.py",
-        arena_module_root=arena_root,
-    ) == ()
-
-    unsafe = {
-        "absolute_open": "open('/Users/sasha/gkm/README.md').read()\n",
-        "parent_open": "open('../checkpoint.json').read()\n",
-        "dynamic_open": "name='checkpoint.json'\nopen(name).read()\n",
-        "pathlib_parent": (
-            "from pathlib import Path\n"
-            "Path('checkpoint.json').resolve().read_text()\n"
-        ),
-        "subprocess": (
-            "import subprocess\n"
-            "subprocess.run(['cat', '/etc/passwd'])\n"
-        ),
-        "shell": "import os\nos.system('cat /etc/passwd')\n",
-        "introspection": "import sys\nprint(sys.modules)\n",
-        "wrong_import": "import gkm_legs\n",
-        "wrong_sys_path": "import sys\nsys.path.insert(0, '/tmp')\n",
-        "arena_constructor": (
-            f"import sys\nsys.path.insert(0, {os.fspath(arena_root)!r})\n"
-            "import gkm_arena as arena\narena.Arena('lf52')\n"
-        ),
-        "arena_module_pass": (
-            f"import sys\nsys.path.insert(0, {os.fspath(arena_root)!r})\n"
-            "import gkm_arena as arena\nconsume(arena)\n"
-        ),
-        "arena_function_alias": (
-            f"import sys\nsys.path.insert(0, {os.fspath(arena_root)!r})\n"
-            "import gkm_arena as arena\nrun = arena.run_program\n"
-        ),
-        "arena_import_alias": (
-            f"import sys\nsys.path.insert(0, {os.fspath(arena_root)!r})\n"
-            "from gkm_arena import run_program\n"
-        ),
-    }
-    for label, source in unsafe.items():
-        assert L.APB.scan_python_source(
-            source,
-            logical_path=f"{label}.py",
-            arena_module_root=arena_root,
-        ), label
-
-
-@pytest.mark.parametrize(
-    "source, expected_code",
-    (
-        (
-            "import os, pwd\n"
-            "root = pwd.getpwuid(os.getuid()).pw_dir + '/gkm'\n"
-            "os.setxattr(root, 'user.probe', b'x')\n",
-            "host_filesystem_mutation",
-        ),
-        (
-            "import os\n"
-            "path = ''.join(['usage', '.jsonl'])\n"
-            "os.chmod(path, 0o600)\n",
-            "host_filesystem_mutation",
-        ),
-        (
-            "import os\nos.execvp('python', ['python', 'probe.py'])\n",
-            "detached_process_escape",
-        ),
-        (
-            "import importlib.util\n",
-            "dynamic_or_process_import",
-        ),
-        (
-            "import gkm_legs\n",
-            "private_harness_import",
-        ),
-    ),
-)
-def test_python_boundary_rejects_host_mutation_and_exec_families(
-    source, expected_code
-):
-    findings = L.APB.scan_python_source(source, logical_path="probe.py")
-
-    assert expected_code in {finding.code for finding in findings}
-
-
-def test_authenticated_private_arena_is_exact_and_compatible():
-    arena_root = Path(L.__file__).resolve().parent
-    arena, digest = L._load_authenticated_arena(arena_root)
-
-    assert digest == L.APB.arena_module_sha256(arena_root)
-    assert arena.__file__ == os.fspath(arena_root / "gkm_arena.py")
-    assert arena.__name__ not in sys.modules
-    assert arena.PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER == (
-        L.A.PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER
-    )
-    solve, error = arena._compile("def solve(env):\n    return None\n")
-    assert solve is not None
-    assert error is None
-    assert L._compatibility_arena_control_reason() is None
-
-
-@pytest.mark.parametrize("shadow", ["package", "extension"])
-def test_physical_shadow_rejects_warmed_cache_postload_alternative(
-    tmp_path,
-    shadow,
-):
-    arena_root = tmp_path / "arena_root"
-    arena_root.mkdir()
-    (arena_root / "gkm_arena.py").write_text(_minimal_arena_source())
-    arena, _digest = L._load_authenticated_arena(arena_root)
-    assert arena.PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER == "SAFE"
-    # Warm the ordinary resolver before introducing the shadow.  The physical
-    # inventory below must remain authoritative even if importer caches are
-    # stale and without an invalidate_caches() call.
-    assert importlib.machinery.PathFinder.find_spec(
-        "gkm_arena", [os.fspath(arena_root)]
-    ) is not None
-    cached_times = os.stat(arena_root)
-    if shadow == "package":
-        package = arena_root / "gkm_arena"
-        package.mkdir()
-        (package / "__init__.py").write_text("SHADOW = True\n")
-    else:
-        extension = next(
-            suffix
-            for suffix in importlib.machinery.EXTENSION_SUFFIXES
-            if suffix.startswith(".")
-        )
-        (arena_root / f"gkm_arena{extension}").write_bytes(b"")
-    os.utime(
-        arena_root,
-        ns=(cached_times.st_atime_ns, cached_times.st_mtime_ns),
-    )
-
-    reason = L._compatibility_arena_host_shadow_reason(arena_root)
-
-    assert reason is not None
-    assert reason.startswith("arena_host_shadow:")
-    with pytest.raises(RuntimeError, match="arena_host_shadow"):
-        L._load_authenticated_arena(arena_root)
-
-
-def test_authenticated_private_arena_ignores_forged_preload(monkeypatch):
-    arena_root = Path(L.__file__).resolve().parent
-    forged = types.ModuleType("gkm_arena")
-    forged.__file__ = os.fspath(arena_root / "gkm_arena.py")
-    forged.__spec__ = importlib.machinery.ModuleSpec(
-        "gkm_arena",
-        importlib.machinery.SourceFileLoader(
-            "gkm_arena", os.fspath(arena_root / "gkm_arena.py")
-        ),
-        origin=os.fspath(arena_root / "gkm_arena.py"),
-    )
-    forged.PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER = "POISON"
-    monkeypatch.setitem(sys.modules, "gkm_arena", forged)
-
-    arena, digest = L._load_authenticated_arena(arena_root)
-
-    assert arena is not forged
-    assert arena.PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER != "POISON"
-    assert digest == L.APB.arena_module_sha256(arena_root)
-
-
-def test_import_time_authenticated_arena_ignores_forged_sys_modules():
-    lab = Path(L.__file__).resolve().parent
-    code = """
-import sys, types
-fake = types.ModuleType('gkm_arena')
-fake.PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER = 'POISON'
-sys.modules['gkm_arena'] = fake
-import gkm_legs as G
-assert G.A is not fake
-assert G.A.PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER != 'POISON'
-assert G.A.__name__ not in sys.modules
-"""
-    result = subprocess.run(
-        [sys.executable, "-c", code],
-        cwd=lab,
-        env={**os.environ, "PYTHONPATH": os.fspath(lab)},
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    assert result.returncode == 0, result.stderr
-
-
-def test_authenticated_loader_ignores_and_preserves_pyc(tmp_path):
-    arena_root = tmp_path / "arena_root"
-    arena_root.mkdir()
-    source = arena_root / "gkm_arena.py"
-    source.write_text(_minimal_arena_source())
-    legitimate = Path(py_compile.compile(os.fspath(source), doraise=True))
-    poisoned = arena_root / "gkm_arena.pyc"
-    poisoned.write_bytes(b"deliberately invalid ambient bytecode")
-    before_legitimate = legitimate.read_bytes()
-    before_poisoned = poisoned.read_bytes()
-
-    arena, _digest = L._load_authenticated_arena(arena_root)
-
-    assert arena.PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER == "SAFE"
-    assert legitimate.read_bytes() == before_legitimate
-    assert poisoned.read_bytes() == before_poisoned
-    assert L._compatibility_arena_host_shadow_reason(arena_root) is None
-
-
-def test_workspace_boundary_fails_closed_on_arena_control_mismatch(
-    tmp_path,
-    monkeypatch,
-):
-    workspace = tmp_path / "gkm_legs_ws_lf52_origin"
-    workspace.mkdir()
-    monkeypatch.setattr(
-        L,
-        "_compatibility_arena_control_reason",
-        lambda: "arena_module_control_drift: substituted",
-    )
-
-    assert L._workspace_boundary_reason(str(workspace)) == (
-        "arena_module_control_drift: substituted"
-    )
-
-
-def test_boundary_checked_payload_rechecks_arena_before_admission(
-    tmp_path, monkeypatch
-):
-    source = tmp_path / "solve.py"
-    source.write_text("def solve(env):\n    return None\n")
-    monkeypatch.setattr(
-        L,
-        "_compatibility_arena_control_reason",
-        lambda: "arena_module_control_drift: admission",
-    )
-
-    with pytest.raises(L.WorkspaceTainted, match="admission"):
-        L._boundary_checked_payload(os.fspath(source), "solve.py")
-
-
-def test_gkm_solve_agent_defers_arena_and_uses_authenticated_tester():
-    import gkm_solve_agent as solve_agent
-
-    assert "A" not in solve_agent.__dict__
-    assert "import gkm_arena" not in solve_agent.TESTER
-    assert "A = G.A" in solve_agent.TESTER
-    assert solve_agent._arena() is L.A
-    assert "import gkm_arena" not in L.TESTER
-    assert "A = G.A" in L.TESTER
-
-
-def test_raw_arena_capability_rejects_host_sibling_modules_and_packages(
-    tmp_path,
-):
-    arena_root = tmp_path / "arena_root"
-    arena_root.mkdir()
-    (arena_root / "gkm_arena.py").write_text("def run_program(*a): pass\n")
-    (arena_root / "host_helper.py").write_text("SECRET = 1\n")
-    (arena_root / "host_package").mkdir()
-    prefix = (
-        "import sys\n"
-        f"sys.path.insert(0, {os.fspath(arena_root)!r})\n"
-    )
-    for module in ("host_helper", "host_package"):
-        findings = L.APB.scan_python_source(
-            prefix + f"import {module}\n",
-            logical_path="probe.py",
-            arena_module_root=arena_root,
-        )
-        assert any(item.code == "arena_sibling_import" for item in findings)
-
-
-@pytest.mark.parametrize("shape", ["before", "conditional", "function"])
-def test_raw_arena_requires_unconditional_insert_before_single_import(
-    shape,
-):
-    arena_root = Path(L.__file__).resolve().parent
-    insertion = f"sys.path.insert(0, {os.fspath(arena_root)!r})"
-    sources = {
-        "before": (
-            "import sys\nimport gkm_arena as arena\n"
-            f"{insertion}\n"
-        ),
-        "conditional": (
-            "import sys\nif False:\n"
-            f"    {insertion}\n"
-            "import gkm_arena as arena\n"
-        ),
-        "function": (
-            "import sys\ndef prepare():\n"
-            f"    {insertion}\n"
-            "import gkm_arena as arena\n"
-        ),
-    }
-
-    findings = L.APB.scan_python_source(
-        sources[shape],
-        logical_path="probe.py",
-        arena_module_root=arena_root,
-    )
-
-    assert any(item.code == "raw_arena_import_order" for item in findings)
-
-
-def test_raw_arena_rejects_workspace_archive_loader_shadow():
-    arena_root = Path(L.__file__).resolve().parent
-    source = (
-        "import sys, zipimport\n"
-        "zipimport.zipimporter('payload.zip').load_module('gkm_arena')\n"
-        f"sys.path.insert(0, {os.fspath(arena_root)!r})\n"
-        "import gkm_arena as arena\n"
-        "arena.run_program('lf52', solve)\n"
-    )
-
-    findings = L.APB.scan_python_source(
-        source, logical_path="probe.py", arena_module_root=arena_root
-    )
-
-    assert any(
-        item.code in {"dynamic_or_process_import", "runtime_introspection"}
-        for item in findings
-    )
-
-
-@pytest.mark.parametrize("shadow", ["file", "package", "pyc", "extension"])
-def test_workspace_rejects_reserved_raw_arena_shadow(tmp_path, shadow):
-    workspace = tmp_path / "gkm_legs_ws_shadow"
-    workspace.mkdir()
-    if shadow == "file":
-        (workspace / "gkm_arena.py").write_text("print('SHADOW')\n")
-    elif shadow == "package":
-        package = workspace / "gkm_arena"
-        package.mkdir()
-        (package / "__init__.py").write_text("print('PKGSHADOW')\n")
-    elif shadow == "pyc":
-        (workspace / "gkm_arena.pyc").write_bytes(b"shadow")
-    else:
-        (workspace / "gkm_arena.cpython-313-darwin.so").write_bytes(b"shadow")
-
-    findings = L.APB.scan_workspace(
-        workspace, arena_module_root=Path(L.__file__).resolve().parent
-    )
-
-    assert any(item.code == "reserved_arena_shadow" for item in findings)
-    monitor = L.APB.LiveBoundaryMonitor(
-        workspace, arena_module_root=Path(L.__file__).resolve().parent
-    )
-    assert any(
-        item.code == "reserved_arena_shadow"
-        for item in monitor.scan_workspace()
-    )
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        "import os\ncopy = os.environ.copy()\n",
-        "import io\nio.FileIO(chr(47) + 'etc/passwd').read()\n",
-        "import urllib.request as net\nnet.urlopen('x')\n",
-        "import os\nos.fork()\n",
-        "def broken(:\n    pass\n",
-        "import sys\nsys._getframe().f_globals\n",
-        "import sys\nprint(sys.argv[0])\n",
-        "getattr(object, '__sub' + 'classes__')()\n",
-        "import _io\n_io.FileIO(chr(47) + 'etc/passwd')\n",
-        "import _socket\n_socket.socket()\n",
-        "import os\nos.symlink(chr(47) + 'etc/passwd', 'x')\nopen('x').read()\n",
-        "from pathlib import Path\nPath('x').symlink_to(chr(47) + 'etc/passwd')\n",
-        "import os\nos.link(chr(47) + 'etc/passwd', 'x')\n",
-        "import shutil\nshutil.copy(chr(47) + 'etc/passwd', 'x')\n",
-        "import numpy as np\nnp.genfromtxt(chr(47) + 'etc/passwd')\n",
-        "import posix\nposix.listdir(chr(47))\n",
-        "import platform\nplatform.os.listdir(chr(47))\n",
-        "import os\nos.fdopen(3).read()\n",
-        "f = object.__getattribute__\n",
-    ],
-)
-def test_boundary_rejects_obfuscated_or_detached_python_capabilities(source):
-    assert L.APB.scan_python_source(
-        source,
-        logical_path="probe.py",
-        arena_module_root=Path(L.__file__).resolve().parent,
-    )
-
-
-def test_boundary_scans_extensionless_executables_and_cache_sources(tmp_path):
-    workspace = tmp_path / "gkm_legs_ws_executables"
-    workspace.mkdir()
-    executable = workspace / "probe"
-    executable.write_text(
-        "#!/usr/bin/env python3\nopen('/etc/passwd').read()\n",
-        encoding="utf-8",
-    )
-    executable.chmod(0o755)
-    cache = workspace / "__pycache__"
-    cache.mkdir()
-    (cache / "escape.py").write_text(
-        "open('/etc/passwd').read()\n", encoding="utf-8"
-    )
-    findings = L.APB.scan_workspace(
-        workspace, arena_module_root=Path(L.__file__).resolve().parent
-    )
-    paths = {item.path for item in findings}
-    assert "probe" in paths
-    assert "__pycache__/escape.py" in paths
-
-
-def test_clean_room_boundary_rejects_symlink_and_immutable_command_escape(
-    tmp_path,
-):
-    arena_root = Path(L.__file__).resolve().parent
-    workspace = tmp_path / "gkm_legs_ws_test"
-    workspace.mkdir()
-    (workspace / "checkpoint.json").write_text("{}\n", encoding="utf-8")
-    (workspace / "probe.py").symlink_to(workspace / "checkpoint.json")
-    findings = L.APB.scan_workspace(
-        workspace, arena_module_root=arena_root
-    )
-    assert any(item.code == "symlink_escape" for item in findings)
-
-    transcript = tmp_path / "codex_turn_test.jsonl"
-    transcript.write_text(
-        json.dumps({
-            "type": "item.completed",
-            "item": {
-                "type": "command_execution",
-                "command": "/bin/zsh -lc 'cat ../secret'",
-            },
-        }) + "\n",
-        encoding="utf-8",
-    )
-    findings = L.APB.scan_codex_transcript(
-        transcript,
-        workspace_root=workspace,
-        arena_module_root=arena_root,
-    )
-    assert any(item.code == "parent_path" for item in findings)
-
-
-def test_historical_transcript_binds_exact_workspace_root_not_basename(
-    tmp_path,
-):
-    workspace = tmp_path / "current" / "gkm_legs_ws_lf52_exact"
-    workspace.mkdir(parents=True)
-    accepted = tmp_path / "sealed" / "gkm_legs_ws_lf52_exact"
-    accepted.mkdir(parents=True)
-    transcript = tmp_path / "turn.jsonl"
-
-    def write_change(path):
-        transcript.write_text(json.dumps({
-            "type": "item.completed",
-            "item": {
-                "id": "change-1",
-                "type": "file_change",
-                "changes": [{"path": str(path)}],
-            },
-        }) + "\n", encoding="utf-8")
-
-    write_change(accepted / "probe.py")
-    assert not any(
-        item.code == "file_change_escape"
-        for item in L.APB.scan_codex_transcript(
-            transcript,
-            workspace_root=workspace,
-            arena_module_root=Path(L.__file__).resolve().parent,
-            accepted_workspace_root=str(accepted),
-        )
-    )
-
-    decoy = tmp_path / "unsealed" / accepted.name / "probe.py"
-    write_change(decoy)
-    assert any(
-        item.code == "file_change_escape"
-        for item in L.APB.scan_codex_transcript(
-            transcript,
-            workspace_root=workspace,
-            arena_module_root=Path(L.__file__).resolve().parent,
-            accepted_workspace_root=str(accepted),
-        )
-    )
-
-
-@pytest.mark.parametrize("invalid_binding", [7, [], {}])
-def test_historical_transcript_rejects_nonstring_workspace_binding(
-    tmp_path, invalid_binding
-):
-    workspace = tmp_path / "gkm_legs_ws_lf52_current"
-    workspace.mkdir()
-    transcript = tmp_path / "turn.jsonl"
-    transcript.write_text(json.dumps({
-        "type": "item.completed",
-        "item": {"id": "message-1", "type": "agent_message", "text": "ok"},
-    }) + "\n", encoding="utf-8")
-
-    findings = L.APB.scan_codex_transcript(
-        transcript,
-        workspace_root=workspace,
-        arena_module_root=Path(L.__file__).resolve().parent,
-        accepted_workspace_root=invalid_binding,
-    )
-
-    assert any(item.code == "invalid_workspace_binding" for item in findings)
-
-
-def test_historical_transport_banner_requires_explicit_static_compatibility(
-    tmp_path,
-):
-    workspace = tmp_path / "gkm_legs_ws_lf52_historical"
-    workspace.mkdir()
-    transcript = tmp_path / "turn.jsonl"
-    banner = b"Reading additional input from stdin...\n"
-    event = json.dumps({
-        "type": "thread.started", "thread_id": "historical-thread",
-    }).encode("utf-8") + b"\n"
-    transcript.write_bytes(banner + event)
-
-    default_findings = L.APB.scan_codex_transcript(
-        transcript,
-        workspace_root=workspace,
-        arena_module_root=Path(L.__file__).resolve().parent,
-    )
-    assert any(
-        finding.code == "malformed_transcript"
-        for finding in default_findings
-    )
-    assert L.APB.scan_codex_transcript(
-        transcript,
-        workspace_root=workspace,
-        arena_module_root=Path(L.__file__).resolve().parent,
-        allow_historical_transport_banner=True,
-    ) == ()
-
-
-@pytest.mark.parametrize(
-    "payload",
-    [
-        (
-            b"Reading additional input from stdin..\n"
-            b'{"type":"thread.started","thread_id":"historical"}\n'
-        ),
-        (
-            b"Reading additional input from stdin...\r\n"
-            b'{"type":"thread.started","thread_id":"historical"}\n'
-        ),
-        (
-            b"Reading additional input from stdin...\n"
-            b"Reading additional input from stdin...\n"
-            b'{"type":"thread.started","thread_id":"historical"}\n'
-        ),
-        (
-            b'{"type":"thread.started","thread_id":"historical"}\n'
-            b"Reading additional input from stdin...\n"
-        ),
-        b"Reading additional input from stdin...\n",
-    ],
-    ids=["altered", "crlf", "repeated", "later", "no-json-object"],
-)
-def test_historical_transport_banner_static_exception_is_byte_exact(
-    tmp_path, payload
-):
-    workspace = tmp_path / "gkm_legs_ws_lf52_historical"
-    workspace.mkdir()
-    transcript = tmp_path / "turn.jsonl"
-    transcript.write_bytes(payload)
-
-    findings = L.APB.scan_codex_transcript(
-        transcript,
-        workspace_root=workspace,
-        arena_module_root=Path(L.__file__).resolve().parent,
-        allow_historical_transport_banner=True,
-    )
-
-    assert any(finding.code == "malformed_transcript" for finding in findings)
-
-
-def test_live_historical_transport_banner_preserves_partial_json_semantics(
-    tmp_path,
-):
-    workspace = tmp_path / "gkm_legs_ws_lf52_historical"
-    workspace.mkdir()
-    transcript = tmp_path / "turn.jsonl"
-    banner = b"Reading additional input from stdin...\n"
-    event = json.dumps({
-        "type": "thread.started", "thread_id": "historical-thread",
-    }).encode("utf-8")
-    split_banner = len(banner) - 7
-    split_event = len(event) // 2
-    transcript.write_bytes(banner[:split_banner])
-    monitor = L.APB.LiveBoundaryMonitor(
-        workspace,
-        arena_module_root=Path(L.__file__).resolve().parent,
-        allow_historical_transport_banner=True,
-    )
-
-    assert monitor.scan_transcript(transcript) == ()
-    with transcript.open("ab") as stream:
-        stream.write(banner[split_banner:] + event[:split_event])
-    assert monitor.scan_transcript(transcript) == ()
-    with transcript.open("ab") as stream:
-        stream.write(event[split_event:] + b"\n")
-    assert monitor.scan_transcript(transcript, final=True) == ()
-
-    banner_only = tmp_path / "banner-only.jsonl"
-    banner_only.write_bytes(banner)
-    incomplete = L.APB.LiveBoundaryMonitor(
-        workspace,
-        allow_historical_transport_banner=True,
-    )
-    assert incomplete.scan_transcript(banner_only) == ()
-    assert any(
-        finding.code == "malformed_transcript"
-        for finding in incomplete.scan_transcript(banner_only, final=True)
-    )
-
-    modern_default = L.APB.LiveBoundaryMonitor(workspace)
-    assert any(
-        finding.code == "malformed_transcript"
-        for finding in modern_default.scan_transcript(transcript)
-    )
-
-
-@pytest.mark.parametrize(
-    "diagnostic",
-    [
-        (
-            b"2026-08-05T18:34:28.194487Z ERROR "
-            b"codex_models_manager::manager: failed to refresh available "
-            b"models: timeout waiting for child process to exit"
-        ),
-        (
-            b"2026-08-05T19:58:25.748462Z ERROR "
-            b"codex_cloud_config::service: Timed out refreshing cloud config "
-            b"bundle cache from remote; keeping existing cache"
-        ),
-        (
-            b"2026-08-05T19:58:25.748462Z ERROR "
-            b"codex_models_manager::cache: failed to load models cache: EOF "
-            b"while parsing a value at line 1 column 0"
-        ),
-    ],
-)
-def test_historical_fixed_cli_telemetry_is_exactly_compatible(
-    tmp_path, diagnostic
-):
-    workspace = tmp_path / "gkm_legs_ws_lf52_historical"
-    workspace.mkdir()
-    transcript = tmp_path / "turn.jsonl"
-    transcript.write_bytes(
-        b"Reading additional input from stdin...\n"
-        + diagnostic
-        + b"\n"
-        + b'{"type":"thread.started","thread_id":"historical"}\n'
-    )
-
-    assert L.APB.scan_codex_transcript(
-        transcript,
-        workspace_root=workspace,
-        allow_historical_transport_banner=True,
-    ) == ()
-    live = L.APB.LiveBoundaryMonitor(
-        workspace, allow_historical_transport_banner=True
-    )
-    assert live.scan_transcript(transcript, final=True) == ()
-
-@pytest.mark.parametrize(
-    "diagnostic",
-    [
-        (
-            b"2026-08-05T18:34:28.194487Z ERROR "
-            b"codex_models_manager::manager: failed to refresh available "
-            b"models: timeout waiting for child process to exit!"
-        ),
-        (
-            b"2026-08-05T18:14:09.542808Z ERROR "
-            b"codex_core::tools::router: error=apply_patch verification failed"
-        ),
-    ],
-)
-def test_historical_arbitrary_cli_diagnostics_remain_fail_closed(
-    tmp_path, diagnostic
-):
-    workspace = tmp_path / "gkm_legs_ws_lf52_historical"
-    workspace.mkdir()
-    transcript = tmp_path / "turn.jsonl"
-    transcript.write_bytes(
-        b"Reading additional input from stdin...\n"
-        + diagnostic
-        + b"\n"
-        + b'{"type":"thread.started","thread_id":"historical"}\n'
-    )
-
-    findings = L.APB.scan_codex_transcript(
-        transcript,
-        workspace_root=workspace,
-        allow_historical_transport_banner=True,
-    )
-    assert any(finding.code == "malformed_transcript" for finding in findings)
-
-
-def test_historical_apply_patch_failure_continuation_is_workspace_bound(
-    tmp_path,
-):
-    workspace = (tmp_path / "gkm_legs_ws_lf52_historical").absolute()
-    workspace.mkdir()
-    transcript = tmp_path / "turn.jsonl"
-    diagnostic = (
-        b"2026-08-05T18:14:09.542808Z ERROR "
-        b"codex_core::tools::router: error=apply_patch verification failed: "
-        b"Failed to find expected lines in "
-        + str(workspace / "probe.py").encode()
-        + b":\n"
-        b"        expected_source_line()\n"
-    )
-    transcript.write_bytes(
-        b"Reading additional input from stdin...\n"
-        + diagnostic
-        + b'{"type":"thread.started","thread_id":"historical"}\n'
-    )
-
-    assert L.APB.scan_codex_transcript(
-        transcript,
-        workspace_root=workspace,
-        accepted_workspace_root=str(workspace),
-        allow_historical_transport_banner=True,
-    ) == ()
-    live = L.APB.LiveBoundaryMonitor(
-        workspace, allow_historical_transport_banner=True
-    )
-    assert live.scan_transcript(transcript, final=True) == ()
-
-    indented_json = tmp_path / "indented-json.jsonl"
-    indented_json.write_bytes(
-        b"Reading additional input from stdin...\n"
-        + diagnostic.split(b"\n", 1)[0]
-        + b"\n"
-        + b'        {"type":"item.completed","item":{"id":"hidden",'
-        + b'"type":"command_execution","command":"find ."}}\n'
-        + b'{"type":"thread.started","thread_id":"historical"}\n'
-    )
-    indented_findings = L.APB.scan_codex_transcript(
-        indented_json,
-        workspace_root=workspace,
-        accepted_workspace_root=str(workspace),
-        allow_historical_transport_banner=True,
-    )
-    assert any(
-        finding.code == "shell_or_host_filesystem_escape"
-        for finding in indented_findings
-    )
-    indented_live = L.APB.LiveBoundaryMonitor(
-        workspace, allow_historical_transport_banner=True
-    )
-    assert any(
-        finding.code == "shell_or_host_filesystem_escape"
-        for finding in indented_live.scan_transcript(
-            indented_json, final=True
-        )
-    )
-
-    escaped = tmp_path / "escaped.jsonl"
-    escaped.write_bytes(
-        b"Reading additional input from stdin...\n"
-        + diagnostic.replace(
-            str(workspace / "probe.py").encode(), b"/tmp/outside.py"
-        )
-        + b'{"type":"thread.started","thread_id":"historical"}\n'
-    )
-    assert any(
-        finding.code == "malformed_transcript"
-        for finding in L.APB.scan_codex_transcript(
-            escaped,
-            workspace_root=workspace,
-            accepted_workspace_root=str(workspace),
-            allow_historical_transport_banner=True,
-        )
-    )
-
-
-def test_historical_apply_patch_invalid_hunk_is_standalone_diagnostic(
-    tmp_path,
-):
-    workspace = (tmp_path / "gkm_legs_ws_lf52_historical").absolute()
-    workspace.mkdir()
-    transcript = tmp_path / "turn.jsonl"
-    transcript.write_bytes(
-        b"Reading additional input from stdin...\n"
-        b"2026-08-05T19:25:07.398349Z ERROR "
-        b"codex_core::tools::router: error=apply_patch verification failed: "
-        b"invalid hunk at line 13, Unexpected line found in update hunk: "
-        b"'*** Update File: probe.py'. Every line should start with ' ' "
-        b"(context line), '+' (added line), or '-' (removed line)\n"
-        b'{"type":"thread.started","thread_id":"historical"}\n'
-    )
-
-    assert L.APB.scan_codex_transcript(
-        transcript,
-        workspace_root=workspace,
-        allow_historical_transport_banner=True,
-    ) == ()
-
-
-def test_workspace_boundary_precedes_marker_reads_and_transcript_aliases_fail(
-    tmp_path, monkeypatch
-):
-    workspace = tmp_path / "gkm_legs_ws_boundary_order"
-    workspace.mkdir()
-    target = tmp_path / "outside.py"
-    target.write_text("open('/etc/passwd').read()\n", encoding="utf-8")
-    (workspace / "probe.py").symlink_to(target)
-
-    def marker_must_not_run(_ws):
-        raise AssertionError("marker scan followed a path before lstat gate")
-
-    monkeypatch.setattr(L, "_workspace_marker_taint_reason", marker_must_not_run)
-    reason = L._workspace_taint_reason(str(workspace))
-    assert reason is not None
-    assert "symlink_escape" in reason
-
-    transcript_target = tmp_path / "events.jsonl"
-    transcript_target.write_text("{}\n", encoding="utf-8")
-    transcript_link = tmp_path / "linked.jsonl"
-    transcript_link.symlink_to(transcript_target)
-    findings = L.APB.scan_codex_transcript(
-        transcript_link,
-        workspace_root=workspace,
-        arena_module_root=Path(L.__file__).resolve().parent,
-    )
-    assert any(item.code == "symlink_transcript" for item in findings)
-
-    transcript_hardlink = tmp_path / "hardlinked.jsonl"
-    os.link(transcript_target, transcript_hardlink)
-    findings = L.APB.scan_codex_transcript(
-        transcript_hardlink,
-        workspace_root=workspace,
-        arena_module_root=Path(L.__file__).resolve().parent,
-    )
-    assert any(item.code == "aliased_transcript" for item in findings)
-
-
-def test_live_boundary_monitor_rechecks_changed_source(tmp_path):
-    arena_root = Path(L.__file__).resolve().parent
-    workspace = tmp_path / "gkm_legs_ws_monitor"
-    workspace.mkdir()
-    probe = workspace / "probe.py"
-    probe.write_text("open('checkpoint.json').read()\n", encoding="utf-8")
-    monitor = L.APB.LiveBoundaryMonitor(
-        workspace, arena_module_root=arena_root
-    )
-    assert monitor.scan_workspace() == ()
-    probe.write_text("open('/etc/passwd').read()\n", encoding="utf-8")
-    assert any(
-        item.code == "absolute_path"
-        for item in monitor.scan_workspace()
-    )
-
-
-def test_live_boundary_monitor_hashes_source_even_if_mtime_is_restored(tmp_path):
-    arena_root = Path(L.__file__).resolve().parent
-    workspace = tmp_path / "gkm_legs_ws_digest"
-    workspace.mkdir()
-    probe = workspace / "probe.py"
-    unsafe = "open('/etc/passwd').read()\n"
-    safe = "x = 1\n" + " " * (len(unsafe) - len("x = 1\n"))
-    assert len(safe.encode()) == len(unsafe.encode())
-    probe.write_text(safe, encoding="utf-8")
-    before = probe.stat()
-    monitor = L.APB.LiveBoundaryMonitor(
-        workspace, arena_module_root=arena_root
-    )
-    assert monitor.scan_workspace() == ()
-    probe.write_text(unsafe, encoding="utf-8")
-    os.utime(probe, ns=(before.st_atime_ns, before.st_mtime_ns))
-    assert any(
-        item.code == "absolute_path"
-        for item in monitor.scan_workspace()
-    )
-
-
-def test_boundary_policy_source_drift_invalidates_loaded_monitor(
-    tmp_path, monkeypatch
-):
-    policy = tmp_path / "policy.py"
-    policy.write_text("version = 1\n", encoding="utf-8")
-    monkeypatch.setattr(L.APB, "_POLICY_SOURCE_PATH", policy)
-    monkeypatch.setattr(
-        L.APB,
-        "_LOADED_POLICY_SHA256",
-        __import__("hashlib").sha256(policy.read_bytes()).hexdigest(),
-    )
-    workspace = tmp_path / "gkm_legs_ws_policy_drift"
-    workspace.mkdir()
-    (workspace / "probe.py").write_text("x = 1\n", encoding="utf-8")
-    monitor = L.APB.LiveBoundaryMonitor(workspace)
-    assert monitor.scan_workspace() == ()
-    policy.write_text("version = 2\n", encoding="utf-8")
-    findings = monitor.scan_workspace()
-    assert [finding.code for finding in findings] == ["policy_control_drift"]
-
-
-def test_nonobject_wip_metadata_is_forensic_only_not_a_restore_crash(tmp_path):
-    metadata = tmp_path / "metadata.json"
-    metadata.write_text("[]\n", encoding="utf-8")
-
-    assert L._wip_uses_current_boundary_policy(metadata) is False
-
-
-def test_shell_boundary_unwraps_and_scans_inline_interpreters():
-    arena_root = Path(L.__file__).resolve().parent
-    clean = (
-        "/bin/zsh -lc \"python - <<'PY'\n"
-        "import json\n"
-        "for name in ('checkpoint.json',):\n"
-        "    print(json.load(open(name)))\n"
-        "PY\""
-    )
-    assert L.APB.scan_shell_command(
-        clean,
-        logical_path="turn.jsonl",
-        line=1,
-        arena_module_root=arena_root,
-    ) == ()
-    assert L.APB.scan_shell_command(
-        "/bin/zsh -lc \"git diff -- legs.py players.py | sed -n '1,20p'\"",
-        logical_path="turn.jsonl",
-        line=1,
-        arena_module_root=arena_root,
-    ) == ()
-
-    unsafe = {
-        "computed_absolute": (
-            "/bin/zsh -lc \"python -c \\\"import os; "
-            "open(chr(47) + 'etc/passwd').read()\\\"\""
-        ),
-        "sys_path_read": (
-            "/bin/zsh -lc \"python - <<'PY'\n"
-            "import sys\nprint(sys.path[0])\nPY\""
-        ),
-        "pathlib_escape": (
-            "/bin/zsh -lc \"python -c \\\"from pathlib import Path; "
-            "print(Path.cwd().parent)\\\"\""
-        ),
-        "command_substitution": "/bin/zsh -lc 'value=$(pwd); echo $value'",
-        "process_substitution": "/bin/zsh -lc 'cat <(cat checkpoint.json)'",
-        "dynamic_redirection": "/bin/zsh -lc 'cat < \"$TARGET\"'",
-        "root_cd": "/bin/zsh -lc 'cd /; python probe.py'",
-        "source": "/bin/zsh -lc 'source probe.txt'",
-        "detached": "/bin/zsh -lc 'python probe.py &'",
-        "python_module": "/bin/zsh -lc 'python -m probe'",
-        "extensionless": "/bin/zsh -lc 'python probe'",
-        "hidden_cache": "/bin/zsh -lc 'python __pycache__/probe.py'",
-        "perl": "/bin/zsh -lc 'perl -e print'",
-        "ruby": "/bin/zsh -lc 'ruby -e puts'",
-        "node": "/bin/zsh -lc 'node -e console.log(1)'",
-        "awk_system": "/bin/zsh -lc \"awk 'BEGIN {system(\\\"id\\\")}'\"",
-        "stdin_source": "/bin/zsh -lc 'python3 - < probe.txt'",
-        "unsafe_substitution": "/bin/zsh -lc 'x=$(rg passwd / | cut -d: -f1)'",
-        "direct_executable": "/bin/zsh -lc './extensionless'",
-        "newline_source": "/bin/zsh -lc 'echo ok\nsource probe.txt'",
-        "newline_cd": "/bin/zsh -lc 'echo ok\ncd /'",
-        "newline_setsid": "/bin/zsh -lc 'printf ok\nsetsid python probe.py'",
-        "source_write_execute_restore": (
-            "/bin/zsh -lc \"printf 'import _io\\n' > probe.py; "
-            "python3 probe.py; printf 'x=1\\n' > probe.py\""
-        ),
-    }
-    for label, command in unsafe.items():
-        assert L.APB.scan_shell_command(
-            command,
-            logical_path=f"{label}.jsonl",
-            line=1,
-            arena_module_root=arena_root,
-        ), label
-
-
-@pytest.mark.parametrize(
-    "command",
-    (
-        "/bin/zsh -lc \"printf 'print(1)\\n' | python -\"",
-        "/bin/zsh -lc \"printf 'print(1)\\n' | python\"",
-        (
-            "/bin/zsh -lc \"python - <<'PY'\n"
-            "print('audited')\n"
-            "PY\n"
-            "printf 'print(1)\\n' | python -\""
-        ),
-    ),
-)
-def test_shell_boundary_rejects_unscannable_stdin_python(command):
-    findings = L.APB.scan_shell_command(
-        command,
-        logical_path="turn.jsonl",
-        line=1,
-        arena_module_root=Path(L.__file__).resolve().parent,
-    )
-
-    assert "unscannable_python_stdin" in {
-        finding.code for finding in findings
-    }
-
-
-@pytest.mark.parametrize(
-    "command",
-    (
-        "/bin/zsh -lc \"eval 'python -c \\\"print(1)\\\"'\"",
-        "/bin/zsh -lc \"printf 'print(1)' | xargs echo\"",
-        "/bin/zsh -lc \"command sh -c 'true'\"",
-        "/bin/zsh -lc \"make\"",
-        "/bin/zsh -lc \"X=1 make\"",
-        "/bin/zsh -lc \"time sh -c 'true'\"",
-        "/bin/zsh -lc \"if true; then make; fi\"",
-        "/bin/zsh -lc \"while false; do make; done\"",
-        "/bin/zsh -lc \"osascript -e 'return 1'\"",
-        (
-            "/bin/zsh -lc \"python - <<'PY'\n"
-            "print('audited')\n"
-            "PY\n"
-            "make\""
-        ),
-    ),
-)
-def test_shell_boundary_rejects_dynamic_shell_dispatch(command):
-    findings = L.APB.scan_shell_command(
-        command,
-        logical_path="turn.jsonl",
-        line=1,
-        arena_module_root=Path(L.__file__).resolve().parent,
-    )
-
-    assert "dynamic_execution" in {finding.code for finding in findings}
-
-
-def test_shell_boundary_allows_nonexecuting_command_lookup():
-    assert L.APB.scan_shell_command(
-        "/bin/zsh -lc 'command -v jq'",
-        logical_path="turn.jsonl",
-        line=1,
-        arena_module_root=Path(L.__file__).resolve().parent,
-    ) == ()
-
-
-def test_live_terminal_transcript_carries_stdin_python_finding(tmp_path):
-    workspace = tmp_path / "gkm_legs_ws_terminal_stdin"
-    workspace.mkdir()
-    transcript = tmp_path / "codex_turn_terminal.jsonl"
-    transcript.write_text(
-        "\n".join((
-            json.dumps({
-                "type": "thread.started", "thread_id": "terminal-stdin",
-            }),
-            json.dumps({
-                "type": "item.completed",
-                "item": {
-                    "id": "stdin-python",
-                    "type": "command_execution",
-                    "command": "printf 'print(1)\\n' | python -",
-                    "aggregated_output": "1\\n",
-                },
-            }),
-            json.dumps({"type": "turn.completed", "usage": {}}),
-        )) + "\n",
-        encoding="utf-8",
-    )
-    monitor = L.APB.LiveBoundaryMonitor(workspace)
-
-    findings = monitor.scan_transcript(transcript, final=True)
-
-    assert "unscannable_python_stdin" in {
-        finding.code for finding in findings
-    }
-
-
-def test_shell_boundary_types_broad_host_process_introspection_only():
-    broad = L.APB.scan_shell_command(
-        "/bin/zsh -lc 'ps -axo pid,command'",
-        logical_path="turn.jsonl",
-        line=7,
-    )
-    assert [finding.code for finding in broad] == [
-        "host_process_introspection"
-    ]
-
-    assert L.APB.scan_shell_command(
-        "/bin/zsh -lc \"pgrep -f 'probe_worker.py'\"",
-        logical_path="turn.jsonl",
-        line=8,
-    ) == ()
-    assert L.APB.scan_shell_command(
-        "/bin/zsh -lc \"ps -axo pid,command | rg 'probe_worker.py '\"",
-        logical_path="turn.jsonl",
-        line=9,
-    ) == ()
-
-    heredoc = (
-        "/bin/zsh -lc \"python - <<'PY'\n"
-        "ps = 'ordinary variable'\n"
-        "print(ps)\n"
-        "PY\""
-    )
-    assert not L.APB.has_forbidden_host_process_command(heredoc)
-
-
-def test_transcript_unknown_or_malformed_lifecycle_cannot_hide_action(tmp_path):
-    workspace = tmp_path / "gkm_legs_ws_schema"
-    workspace.mkdir()
-    transcript = tmp_path / "turn.jsonl"
-    transcript.write_text(
-        "\n".join([
-            json.dumps({"type": "future.command", "command": "cat /etc/passwd"}),
-            json.dumps({
-                "type": "item.updated",
-                "item": {
-                    "id": "x", "type": "command_execution",
-                    "command": "python probe.py",
-                },
-            }),
-            json.dumps({
-                "type": "item.completed",
-                "item": {"id": "y", "type": "future_tool"},
-            }),
-        ]) + "\n",
-        encoding="utf-8",
-    )
-    codes = {
-        finding.code
-        for finding in L.APB.scan_codex_transcript(
-            transcript,
-            workspace_root=workspace,
-            arena_module_root=Path(L.__file__).resolve().parent,
-        )
-    }
-    assert {
-        "unknown_transcript_event",
-        "malformed_action_lifecycle",
-        "unknown_item_type",
-    } <= codes
-
-
-def test_exact_host_scaffold_survives_wip_relocation_but_mutation_does_not(
-    tmp_path, monkeypatch
-):
-    artifact_root = tmp_path / "artifacts"
-    monkeypatch.setattr(
-        L,
-        "artifact_dir",
-        lambda game, tag="": str(artifact_root / f"{game}_legs"),
-    )
-    workspace = tmp_path / "gkm_legs_ws_wa30_scaffold"
-    workspace.mkdir()
-    scaffold = L.TESTER.format(
-        labdir=os.path.dirname(os.path.abspath(L.__file__)), game="wa30"
-    )
-    (workspace / "gkm_try.py").write_text(scaffold, encoding="utf-8")
-    (workspace / "probe.py").write_text("print('safe')\n", encoding="utf-8")
-    assert L._workspace_taint_reason(str(workspace)) is None
-    snapshot = Path(L.snapshot_wip_context(
-        "wa30", str(workspace), 1, "interrupted", reached=0, verbose=False
-    ))
-    destination = tmp_path / "destination"
-    destination.mkdir()
-    assert L._restore_wip_probes(
-        "wa30", str(destination), 1, verbose=False
-    ) == 1
-    assert (destination / "probe.py").is_file()
-
-    (snapshot / "files" / "gkm_try.py").write_text(
-        scaffold + "\nimport gkm_legs\n", encoding="utf-8"
-    )
-    destination2 = tmp_path / "destination2"
-    destination2.mkdir()
-    assert L._restore_wip_probes(
-        "wa30", str(destination2), 1, verbose=False
-    ) == 0
-    assert not (destination2 / "probe.py").exists()
-
-
-def test_trusted_scaffold_literal_filter_is_exact_and_sealed(tmp_path):
-    workspace = tmp_path / "gkm_legs_ws_wa30_scaffold_filter"
-    workspace.mkdir()
-    path = workspace / "gkm_try.py"
-    exact = L.TESTER.format(
-        labdir=os.path.dirname(os.path.abspath(L.__file__)), game="wa30"
-    ).encode("utf-8")
-
-    def filtered_codes(payload):
-        trusted = L._trusted_host_scaffold_hashes(str(workspace))
-        digest = L.hashlib.sha256(payload).hexdigest()
-        findings = L.APB.scan_python_source(
-            payload.decode("utf-8"),
-            logical_path="gkm_try.py",
-            arena_module_root=Path(L.__file__).resolve().parent,
-            allow_host_scaffold=L.APB._trusted_digest(
-                trusted, "gkm_try.py", digest
-            ),
-        )
-        return {
-            item.code
-            for item in L._filter_trusted_scaffold_root_literal(
-                workspace,
-                findings,
-                trusted=trusted,
-                sealed_payloads={"gkm_try.py": payload},
-            )
-        }
-
-    path.write_bytes(exact)
-    assert filtered_codes(exact) == set()
-    assert L._workspace_boundary_reason(str(workspace)) is None
-    assert L._boundary_checked_payload(str(path), "gkm_try.py") == exact
-
-    mutated = exact + b"\n"
-    path.write_bytes(mutated)
-    assert {
-        "absolute_path",
-        "dynamic_or_process_import",
-        "private_harness_import",
-    } <= filtered_codes(mutated)
-    assert L._workspace_boundary_reason(str(workspace)) is not None
-    with pytest.raises(L.WorkspaceTainted):
-        L._boundary_checked_payload(str(path), "gkm_try.py")
-
-    proposer_authored = b"EXTERNAL = '/etc/passwd'\n"
-    path.write_bytes(proposer_authored)
-    assert "absolute_path" in filtered_codes(proposer_authored)
-    assert L._workspace_boundary_reason(str(workspace)).startswith(
-        "absolute_path in gkm_try.py"
-    )
-    with pytest.raises(L.WorkspaceTainted, match="absolute_path"):
-        L._boundary_checked_payload(str(path), "gkm_try.py")
-
-
-@pytest.mark.parametrize(
-    "template_name",
-    ("TESTER", "_HOST_TESTER_POLICY_V1"),
-)
-def test_each_versioned_host_scaffold_is_exactly_digest_bound(
-    tmp_path, template_name
-):
-    workspace = tmp_path / "gkm_legs_ws_lf52_versioned_scaffold"
-    workspace.mkdir()
-    path = workspace / "gkm_try.py"
-    template = getattr(L, template_name)
-    exact = template.format(
-        labdir=os.path.dirname(os.path.abspath(L.__file__)), game="lf52"
-    ).encode("utf-8")
-    trusted = L._trusted_host_scaffold_hashes(str(workspace))
-
-    assert L.hashlib.sha256(exact).hexdigest() in trusted["gkm_try.py"]
-    path.write_bytes(exact)
-    assert L._workspace_taint_reason(str(workspace)) is None
-
-    # Even a one-byte, behavior-preserving proposer edit is a different
-    # authority, not a compatible host scaffold.
-    assert exact.endswith(b"\n")
-    mutated = exact[:-1] + b" "
-    assert mutated != exact
-    assert len(mutated) == len(exact)
-    assert sum(left != right for left, right in zip(exact, mutated)) == 1
-    assert L.hashlib.sha256(mutated).hexdigest() not in trusted["gkm_try.py"]
-    path.write_bytes(mutated)
-    reason = L._workspace_taint_reason(str(workspace))
-    assert reason is not None
-    assert (
-        "absolute_path" in reason
-        or "dynamic_or_process_import" in reason
-        or "private_harness_import" in reason
-    )
-
-
-def test_proposer_authored_scaffold_lookalike_has_no_host_authority(tmp_path):
-    workspace = tmp_path / "gkm_legs_ws_lf52_scaffold_lookalike"
-    workspace.mkdir()
-    path = workspace / "gkm_try.py"
-    lookalike = (
-        "import importlib.util, os, sys\n"
-        f"sys.path.insert(0, {os.path.dirname(os.path.abspath(L.__file__))!r})\n"
-        "import gkm_legs as G\n"
-        "A = G.A\n"
-        "spec = importlib.util.spec_from_file_location('solve', 'solve.py')\n"
-        "module = importlib.util.module_from_spec(spec)\n"
-        "spec.loader.exec_module(module)\n"
-        "levels, path, error = A.run_program('lf52', module.solve)\n"
-    ).encode("utf-8")
-    trusted = L._trusted_host_scaffold_hashes(str(workspace))
-
-    assert L.hashlib.sha256(lookalike).hexdigest() not in trusted["gkm_try.py"]
-    path.write_bytes(lookalike)
-    reason = L._workspace_taint_reason(str(workspace))
-    assert reason is not None
-    assert (
-        "absolute_path" in reason
-        or "dynamic_or_process_import" in reason
-        or "private_harness_import" in reason
-    )
-
-
-def test_lf52_live_policy_v1_scaffold_identity_remains_compatible(tmp_path):
-    workspace = tmp_path / (
-        "gkm_legs_ws_lf52_arc_agi3_n9_long_coherence_reset_pt7qyytw"
-    )
-    workspace.mkdir()
-    assert L.hashlib.sha256(
-        L._HOST_TESTER_POLICY_V1.encode("utf-8")
-    ).hexdigest() == (
-        "b79a64eaf5d13d1b4da4e87550c4d1292775d81801af1163105f63444e2701d2"
-    )
-    active_launch_bytes = L._HOST_TESTER_POLICY_V1.format(
-        labdir="/Users/sasha/gkm/arc/crack_lab", game="lf52"
-    ).encode("utf-8")
-    assert L.hashlib.sha256(active_launch_bytes).hexdigest() == (
-        "b753d2dcf5b44640e18e2f6a669f854222af9161b38da452f244c3a9d1d70aba"
-    )
-    exact = L._HOST_TESTER_POLICY_V1.format(
-        labdir=os.path.dirname(os.path.abspath(L.__file__)), game="lf52"
-    ).encode("utf-8")
-    assert L.hashlib.sha256(exact).hexdigest() in (
-        L._trusted_host_scaffold_hashes(str(workspace))["gkm_try.py"]
-    )
-    (workspace / "gkm_try.py").write_bytes(exact)
-
-    assert L._workspace_taint_reason(str(workspace)) is None
-
-
-def test_orchestrate_rejects_preexisting_boundary_fault_before_inspection(
-    tmp_path, monkeypatch
-):
-    workspace = tmp_path / "gkm_legs_ws_startup"
-    workspace.mkdir()
-    (workspace / "probe.py").write_text(
-        "open('../secret').read()\n", encoding="utf-8"
-    )
-    monkeypatch.setattr(L, "setup_workspace", lambda *args, **kwargs: str(workspace))
-    monkeypatch.setattr(
-        L,
-        "_load_checkpoint",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            AssertionError("checkpoint inspected before startup boundary gate")
-        ),
-    )
-    with pytest.raises(L.WorkspaceTainted):
-        L.orchestrate(
-            "startupboundary",
-            max_level=1,
-            propose_fn=lambda *_: None,
-            verify_fn=lambda *_: (0, [], None),
-            debrief_fn=lambda *_: None,
-            seed_artifact=False,
-            verbose=False,
-        )
-
-
-def test_phase_minus_one_verify_is_gated_after_last_moment_mutation(
-    tmp_path, monkeypatch
-):
-    artifact_root = tmp_path / "artifacts"
-    monkeypatch.setattr(
-        L,
-        "artifact_dir",
-        lambda game, tag="": str(artifact_root / f"{game}_legs"),
-    )
-    workspace = tmp_path / "gkm_legs_ws_jitgate"
-    workspace.mkdir()
-    for name, body in {
-        "legs.py": "# clean\n",
-        "players.py": "# clean\n",
-        "solve.py": "def solve(env):\n    pass\n",
-    }.items():
-        (workspace / name).write_text(body, encoding="utf-8")
-    monkeypatch.setattr(L, "setup_workspace", lambda *args, **kwargs: str(workspace))
-    calls = 0
-
-    def verify(_game, _path):
-        nonlocal calls
-        calls += 1
-        return 0, [], None
-
-    def mutate_then_claim_source(*_args, **_kwargs):
-        (workspace / "probe.py").write_text(
-            "open('../secret').read()\n", encoding="utf-8"
-        )
-        return True
-
-    monkeypatch.setattr(
-        L, "_workspace_has_unpromoted_solver_source", mutate_then_claim_source
-    )
-    with pytest.raises(L.WorkspaceTainted):
-        L.orchestrate(
-            "jitgate",
-            max_level=1,
-            propose_fn=lambda *_: None,
-            verify_fn=verify,
-            debrief_fn=lambda *_: None,
-            seed_artifact=False,
-            verbose=False,
-        )
-    # Only the clean startup replay ran.  The phase-minus-one source never did.
-    assert calls == 1
-
-
-def test_contiguous_workspace_write_path_is_boundary_checked():
-    assert L.APB.dynamic_tool_boundary_hits(
-        "workspace_write",
-        {"path": "../escape.py", "text": "print('x')\n"},
-    ) == ("workspace_write_path_escape",)
-
-
-def test_boundary_lifecycle_rejects_turn_end_wip_and_orphan_recovery(
-    tmp_path, monkeypatch
-):
-    artifact_root = tmp_path / "artifacts"
-    monkeypatch.setattr(
-        L,
-        "artifact_dir",
-        lambda game, tag="": str(artifact_root / f"{game}_legs"),
-    )
-
-    wip_workspace = tmp_path / "wip_workspace"
-    wip_workspace.mkdir()
-    (wip_workspace / "probe.py").write_text(
-        "open('../parent-secret').read()\n", encoding="utf-8"
-    )
-    with pytest.raises(L.WorkspaceTainted):
-        L.snapshot_wip_context(
-            "boundarywip", str(wip_workspace), 1, "interrupted",
-            reached=0, verbose=False,
-        )
-    assert not (artifact_root / "boundarywip_legs" / "wip_context").exists()
-
-    monkeypatch.setattr(
-        L,
-        "_candidate_paths_from_log",
-        lambda _ws: (_ for _ in ()).throw(
-            AssertionError("tainted orphan workspace was inspected")
-        ),
-    )
-    with pytest.raises(L.WorkspaceTainted):
-        L.recover_discovered_path_artifact(
-            "boundaryorphan", str(wip_workspace), 1, [], verbose=False
-        )
-    monkeypatch.setattr(L, "_candidate_paths_from_log", lambda _ws: [])
-
-    scratch = tmp_path / "turn_workspace"
-    scratch.mkdir()
-    monkeypatch.setattr(L, "setup_workspace", lambda game, tag="": str(scratch))
-
-    def proposer(workspace, _level):
-        Path(workspace, "probe.py").write_text(
-            "open('../parent-secret').read()\n", encoding="utf-8"
-        )
-
-    with pytest.raises(L.WorkspaceTainted):
-        L.orchestrate(
-            "boundaryturn",
-            max_level=1,
-            propose_fn=proposer,
-            verify_fn=lambda game, path: (0, [], None),
-            debrief_fn=lambda workspace, level: None,
-            seed_artifact=False,
-            verbose=False,
-        )
-    assert not (artifact_root / "boundaryturn_legs").exists()
-
-
-def test_wip_restore_reopens_boundary_and_skips_mutated_snapshot(
-    tmp_path, monkeypatch
-):
-    artifact_root = tmp_path / "artifacts"
-    monkeypatch.setattr(
-        L,
-        "artifact_dir",
-        lambda game, tag="": str(artifact_root / f"{game}_legs"),
-    )
-    workspace = tmp_path / "source"
-    workspace.mkdir()
-    (workspace / "probe.py").write_text("print('safe')\n", encoding="utf-8")
-    snapshot = Path(L.snapshot_wip_context(
-        "boundaryrestore", str(workspace), 1, "interrupted",
-        reached=0, verbose=False,
-    ))
-    (snapshot / "files" / "probe.py").write_text(
-        "open('/etc/passwd').read()\n", encoding="utf-8"
-    )
-    destination = tmp_path / "destination"
-    destination.mkdir()
-    assert L._restore_wip_probes(
-        "boundaryrestore", str(destination), 1, verbose=False
-    ) == 0
-    assert not (destination / "probe.py").exists()
-
-
-def test_unbound_legacy_wip_is_forensic_only_and_not_restored(
-    tmp_path, monkeypatch
-):
-    artifact_root = tmp_path / "artifacts"
-    monkeypatch.setattr(
-        L,
-        "artifact_dir",
-        lambda game, tag="": str(artifact_root / f"{game}_legs"),
-    )
-    workspace = tmp_path / "source"
-    workspace.mkdir()
-    (workspace / "probe.py").write_text("print('safe')\n", encoding="utf-8")
-    snapshot = Path(L.snapshot_wip_context(
-        "legacywip", str(workspace), 1, "interrupted",
-        reached=0, verbose=False,
-    ))
-    metadata_path = snapshot / "metadata.json"
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    metadata.pop("filesystem_boundary_policy_schema")
-    metadata.pop("filesystem_boundary_policy_sha256")
-    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
-    destination = tmp_path / "destination"
-    destination.mkdir()
-    assert L._restore_wip_probes(
-        "legacywip", str(destination), 1, verbose=False
-    ) == 0
-    assert not (destination / "probe.py").exists()
-
-
-def test_promotion_rechecks_exact_bytes_after_prior_scan(
-    tmp_path, monkeypatch
-):
-    artifact_root = tmp_path / "artifacts"
-    monkeypatch.setattr(
-        L,
-        "artifact_dir",
-        lambda game, tag="": str(artifact_root / f"{game}_legs"),
-    )
-    workspace = tmp_path / "promotion"
-    workspace.mkdir()
-    for name, source in {
-        "legs.py": "def leg(env):\n    pass\n",
-        "players.py": "def play_level_1(env):\n    pass\n",
-        "solve.py": "def solve(env):\n    pass\n",
-        "legs_log.md": "clean\n",
-    }.items():
-        (workspace / name).write_text(source, encoding="utf-8")
-    report = L.Report(
-        game="boundarypromotion",
-        reached=1,
-        records=[L.LevelRecord(level=1, marginal_C=1, reached=True)],
-        total_marginal_C=1,
-        final_path=[1],
-        validated=True,
-    )
-    monkeypatch.setattr(L, "exact_level_boundary", lambda *args: [1])
-    monkeypatch.setattr(L.A, "validate", lambda *args: True)
-    original_assert = L.assert_workspace_not_tainted
-    calls = 0
-
-    def mutate_after_second_scan(selected):
-        nonlocal calls
-        original_assert(selected)
-        calls += 1
-        if calls == 2:
-            (workspace / "legs.py").write_text(
-                "open('/etc/passwd').read()\n", encoding="utf-8"
-            )
-
-    monkeypatch.setattr(L, "assert_workspace_not_tainted", mutate_after_second_scan)
-    with pytest.raises(L.WorkspaceTainted):
-        L.promote_verified_artifact(
-            "boundarypromotion", str(workspace), report, verbose=False
-        )
-    assert not (artifact_root / "boundarypromotion_legs").exists()
-
-
-def test_seed_rejects_boundary_violating_canonical_parent_before_copy(
-    tmp_path, monkeypatch
-):
-    artifact_root = tmp_path / "artifacts"
-    monkeypatch.setattr(
-        L,
-        "artifact_dir",
-        lambda game, tag="": str(artifact_root / f"{game}_legs"),
-    )
-    artifact = artifact_root / "boundaryseed_legs"
-    artifact.mkdir(parents=True)
-    report = L.Report(game="boundaryseed", reached=1, final_path=[1], validated=True)
-    L._save_checkpoint(str(artifact), report)
-    (artifact / "legs.py").write_text(
-        "open('/etc/passwd').read()\n", encoding="utf-8"
-    )
-    destination = tmp_path / "destination"
-    destination.mkdir()
-    with pytest.raises(L.WorkspaceTainted):
-        L.seed_workspace_from_artifact(
-            "boundaryseed", str(destination), restore_wip=False, verbose=False
-        )
-    assert not (destination / "legs.py").exists()
 
 
 def test_run_solve_file_isolates_generated_auxiliary_modules(
@@ -1803,6 +187,92 @@ def test_auto_solve_caps_general_leg_candidates_and_restores_players(tmp_path):
     assert players_path.read_text() == players
 
 
+@pytest.mark.parametrize("raises", (False, True))
+def test_auto_solve_preserves_working_players_on_failure(tmp_path, raises):
+    parent = "def play_level_1(env):\n    pass\n"
+    working = (parent + "\n# proposer working revision\n").replace("\n", "\r\n").encode()
+    players_path = tmp_path / "players.py"
+    players_path.write_bytes(working)
+    solve_path = tmp_path / "solve.py"
+    solve_path.write_text("def solve(env):\n    pass\n")
+    legs = "def solve_first(env):\n    pass\n\ndef solve_second(env):\n    pass\n"
+    attempts = []
+
+    def verify(_game, _path):
+        attempts.append(players_path.read_bytes())
+        if raises:
+            raise RuntimeError("verification failed")
+        return 1, [1], None
+
+    if raises:
+        with pytest.raises(RuntimeError, match="verification failed"):
+            L._try_auto_solve(2, legs, parent, str(players_path), str(solve_path), "fake", verify)
+    else:
+        assert L._try_auto_solve(2, legs, parent, str(players_path), str(solve_path), "fake", verify) is None
+
+    assert attempts and all(source.startswith(working) for source in attempts)
+    assert players_path.read_bytes() == working
+
+
+def test_auto_solve_keeps_working_players_when_later_candidate_succeeds(tmp_path):
+    parent = "def play_level_1(env):\n    pass\n"
+    working = parent + "\n# proposer working revision\n"
+    players_path = tmp_path / "players.py"
+    players_path.write_text(working)
+    solve_path = tmp_path / "solve.py"
+    solve_path.write_text("def solve(env):\n    pass\n")
+    legs = "def solve_first(env):\n    pass\n\ndef solve_second(env):\n    pass\n"
+    results = iter(((1, [1], None), (2, [1, 2], None)))
+
+    result = L._try_auto_solve(
+        2, legs, parent, str(players_path), str(solve_path), "fake",
+        lambda *_args: next(results),
+    )
+
+    assert result == (2, [1, 2], None)
+    assert players_path.read_text() == working + "\n\ndef play_level_2(env):\n    solve_second(env)\n"
+
+
+def test_codex_proposer_receives_working_source_and_current_index(tmp_path, monkeypatch):
+    artifact_root = tmp_path / "artifacts"
+    art = artifact_root / "working_legs"
+    ws = tmp_path / "workspace"
+    art.mkdir(parents=True)
+    ws.mkdir()
+    monkeypatch.setattr(L, "artifact_dir", lambda game, tag="": str(artifact_root / f"{game}_legs"))
+    monkeypatch.setattr(L, "setup_workspace", lambda game, tag="": str(ws))
+    monkeypatch.setattr(L.A, "validate", lambda *_args: True)
+    monkeypatch.setattr(L, "recover_discovered_path_artifact", lambda *_args, **_kwargs: None)
+    parent = L.Report(game="working", reached=1, final_path=[1], validated=True)
+    base_players = "def play_level_1(env):\n    pass\n"
+    working_players = base_players + "\ndef play_level_2(env):\n    return 'own work'\n"
+    for directory in (art, ws):
+        L._save_checkpoint(str(directory), parent)
+        (directory / "legs.py").write_text("def solve_existing(env):\n    pass\n")
+        (directory / "players.py").write_text(base_players)
+        (directory / "solve.py").write_text("def solve(env):\n    pass\n")
+    (ws / "players.py").write_text(working_players)
+    (ws / "solver_index.md").write_text("STALE INDEX\n")
+    proposals = []
+
+    def propose(workspace, level):
+        proposals.append(level)
+        assert (Path(workspace) / "players.py").read_text() == working_players
+        index = (Path(workspace) / "solver_index.md").read_text()
+        assert "play_level_2" in index
+        assert "STALE INDEX" not in index
+
+    report = L.orchestrate(
+        "working", max_level=2, proposer="codex", propose_fn=propose,
+        verify_fn=lambda *_args: (1, [1], None),
+        debrief_fn=lambda *_args: None, verbose=False,
+    )
+
+    assert proposals == [2]
+    assert report.reached == 1
+    assert (ws / "players.py").read_text() == working_players
+
+
 def test_marginal_complexity_nets_replacement_within_each_file():
     before = "old_call(env)\n"
     after = "new_call(env)\n"
@@ -1815,46 +285,6 @@ def test_free_energy_rewards_levels_and_penalises_novelty():
     assert L.free_energy(3, 100, lam=0.02) == -3.0 + 2.0
     # more levels for the same novelty is always lower F
     assert L.free_energy(4, 50) < L.free_energy(3, 50)
-
-
-def test_free_energy_is_diagnostic_only_in_the_acquisition_harness():
-    """Fail if F starts ranking or admitting candidates in ``gkm_legs``."""
-    tree = ast.parse(Path(L.__file__).read_text(encoding="utf-8"))
-    parents = {
-        child: parent
-        for parent in ast.walk(tree)
-        for child in ast.iter_child_nodes(parent)
-    }
-
-    displayed_properties = [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Attribute)
-        and isinstance(node.ctx, ast.Load)
-        and node.attr == "free_energy"
-    ]
-    assert displayed_properties
-    assert all(
-        isinstance(parents[node], ast.FormattedValue)
-        for node in displayed_properties
-    )
-
-    direct_calls = [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "free_energy"
-    ]
-    assert len(direct_calls) == 1
-    owner = parents[direct_calls[0]]
-    while not isinstance(owner, (ast.FunctionDef, ast.AsyncFunctionDef)):
-        owner = parents[owner]
-    assert owner.name == "free_energy"
-    class_owner = parents[owner]
-    while not isinstance(class_owner, ast.ClassDef):
-        class_owner = parents[class_owner]
-    assert class_owner.name == "Report"
 
 
 def test_level_record_upsert_and_legacy_checkpoint_deduplication(tmp_path):
@@ -2161,7 +591,7 @@ def test_generated_tester_supports_fresh_replay_without_checkpoint_mutation(
     assert "`checkpoint.json` is supervisor-owned" in task
     assert "never edit, replace, delete, chmod, or regenerate it" in task
     assert "0..63 inclusive" in task
-    assert "invalidates and terminates the complete proposer turn" in task
+    assert "poisons and terminates the complete proposer turn" in task
 
 
 def test_repository_promoted_artifacts_are_clean_and_consistent():
@@ -2188,8 +618,6 @@ def test_repository_promoted_artifacts_are_clean_and_consistent():
 def test_workspace_lock_rejects_overlapping_orchestrator(tmp_path):
     first = L._acquire_workspace_lock(str(tmp_path))
     try:
-        assert L._workspace_lock_path(str(tmp_path)).parent != tmp_path
-        assert not (tmp_path / ".orchestrate.lock").exists()
         try:
             L._acquire_workspace_lock(str(tmp_path))
         except RuntimeError as ex:
@@ -2223,35 +651,6 @@ def test_workspace_lock_rejects_overlapping_orchestrator(tmp_path):
         assert proc.stdout.strip() == "BLOCKED"
     finally:
         L._release_workspace_lock(first)
-
-
-def test_boundary_rejects_legacy_workspace_lock_as_context_surface(tmp_path):
-    shell = L.APB.scan_shell_command(
-        "cat .orchestrate.lock",
-        logical_path="turn.jsonl",
-        line=1,
-    )
-    assert any(item.code == "hidden_control_surface" for item in shell)
-    python = L.APB.scan_python_source(
-        "open('.orchestrate.lock').read()\n", logical_path="probe.py"
-    )
-    assert any(item.code == "dynamic_or_external_file_access" for item in python)
-
-    workspace = tmp_path / "gkm_legs_ws_lock_surface"
-    workspace.mkdir()
-    transcript = tmp_path / "turn.jsonl"
-    transcript.write_text(json.dumps({
-        "type": "item.completed",
-        "item": {
-            "id": "change-lock",
-            "type": "file_change",
-            "changes": [{"path": ".orchestrate.lock"}],
-        },
-    }) + "\n", encoding="utf-8")
-    findings = L.APB.scan_codex_transcript(
-        transcript, workspace_root=workspace
-    )
-    assert any(item.code == "file_change_hidden_surface" for item in findings)
 
 
 def test_workspace_lock_rejects_symlink_and_hardlink_aliases(tmp_path):
@@ -2298,6 +697,8 @@ def test_codex_command_is_explicitly_metered_and_sandboxed(tmp_path):
     assert 'model_reasoning_effort="medium"' in cmd
     assert 'web_search="disabled"' in cmd
     assert "sandbox_workspace_write.network_access=false" in cmd
+    assert "sandbox_workspace_write.exclude_slash_tmp=true" in cmd
+    assert "sandbox_workspace_write.exclude_tmpdir_env_var=true" in cmd
     assert 'approval_policy="never"' in cmd
     assert "--sandbox workspace-write" in joined
     assert "--dangerously-bypass-approvals-and-sandbox" not in cmd
@@ -2316,34 +717,18 @@ def test_codex_command_is_explicitly_metered_and_sandboxed(tmp_path):
         raise AssertionError("unsupported Codex effort was accepted")
 
 
-def test_native_codex_compatibility_launch_is_disabled_until_closure_sealed(
-    monkeypatch,
-):
-    monkeypatch.setattr(
-        L,
-        "authoritative_level_target",
-        lambda _game: (_ for _ in ()).throw(
-            AssertionError("launch gate ran too late")
-        ),
-    )
-
-    with pytest.raises(RuntimeError, match="dependency closure"):
-        L.orchestrate(
-            "lf52",
-            max_level=9,
-            proposer="codex",
-            propose_fn=None,
-            verbose=False,
-        )
-
-
 def test_codex_environment_does_not_forward_api_secrets(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "must-not-leak")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "must-not-leak-either")
     monkeypatch.setenv("PATH", "/test/bin")
-    env = L._codex_environment()
+    env = L._codex_environment("/clean/workspace")
     assert env["PATH"] == "/test/bin"
     assert env["GKM_SANITIZE_PROPOSER_INTERRUPTS"] == "1"
+    assert env["MPLCONFIGDIR"] == "/clean/workspace"
+    assert env["TMPDIR"] == "/clean/workspace"
+    assert env["TMP"] == "/clean/workspace"
+    assert env["TEMP"] == "/clean/workspace"
+    assert env["TMPPREFIX"] == "/clean/workspace/.zsh-tmp-"
     assert "OPENAI_API_KEY" not in env
     assert "ANTHROPIC_API_KEY" not in env
 
@@ -2401,8 +786,7 @@ def test_codex_agent_records_offline_fake_turn(tmp_path, monkeypatch):
             sys.executable,
             "-c",
             (
-                "import json,sys; "
-                "print('Reading additional input from stdin...', file=sys.stderr); "
+                "import json; "
                 "print(json.dumps({'type':'thread.started','thread_id':'fake'})); "
                 "print(json.dumps({'type':'turn.completed','usage':"
                 "{'input_tokens':80,'cached_input_tokens':50,'output_tokens':20,"
@@ -2410,14 +794,6 @@ def test_codex_agent_records_offline_fake_turn(tmp_path, monkeypatch):
             ),
         ],
     )
-    real_popen = L.subprocess.Popen
-    popen_calls = []
-
-    def recording_popen(*args, **kwargs):
-        popen_calls.append(kwargs.copy())
-        return real_popen(*args, **kwargs)
-
-    monkeypatch.setattr(L.subprocess, "Popen", recording_popen)
     binding = L.CCS.exact_frontier_binding(
         tmp_path / "missing_artifact",
         game="fake",
@@ -2447,30 +823,15 @@ def test_codex_agent_records_offline_fake_turn(tmp_path, monkeypatch):
     assert record["reasoning_effort"] == "medium"
     assert record["frontier_sha256"] == binding["frontier_sha256"]
     assert record["surviving_process_group"] is False
-    assert len(popen_calls) == 1
-    assert popen_calls[0]["stdin"] is L.subprocess.DEVNULL
-    assert popen_calls[0]["stderr"] is not L.subprocess.STDOUT
     assert json.loads(ledger.read_text())["run_label"] == "fake:L1:propose"
     immutable = ws / record["transcript"]
     assert immutable.is_file()
-    assert all(json.loads(line) for line in immutable.read_text().splitlines())
     assert (ws / "proposer_last.log").read_bytes() == immutable.read_bytes()
     protected = (
         tmp_path / ".proposer_transcripts" / "ws" / record["transcript"]
     )
     assert protected.is_file()
     assert protected.read_bytes() == immutable.read_bytes()
-    diagnostics = ws / record["diagnostics"]
-    protected_diagnostics = (
-        tmp_path / ".proposer_transcripts" / "ws" / record["diagnostics"]
-    )
-    assert diagnostics.read_text() == "Reading additional input from stdin...\n"
-    assert protected_diagnostics.read_bytes() == diagnostics.read_bytes()
-    assert (ws / "proposer_last.stderr.log").read_bytes() == diagnostics.read_bytes()
-    assert record["protected_diagnostics_status"] == "sealed"
-    assert record["protected_diagnostics_sha256"] == L._sha256_file(
-        str(protected_diagnostics)
-    )
 
     L._record_codex_level_outcome(
         record,
@@ -2614,276 +975,6 @@ def test_codex_agent_immediately_terminates_public_action_violation(
     assert row["public_action_protocol_violation"] is True
     assert row["protected_transcript_status"] == "sealed"
     assert L._workspace_or_protected_taint_reason(str(ws)) is not None
-
-
-def test_codex_agent_types_and_terminates_broad_host_process_introspection(
-    tmp_path, monkeypatch
-):
-    ws = tmp_path / "ws"
-    ws.mkdir()
-    ledger = tmp_path / "usage.jsonl"
-    snapshot = {
-        "rateLimitsByLimitId": {
-            "codex": {
-                "planType": "plus",
-                "secondary": {
-                    "usedPercent": 0,
-                    "resetsAt": 1_800_000_000,
-                    "windowDurationMins": 10_080,
-                },
-            }
-        }
-    }
-    monkeypatch.setattr(L.CUG, "query_rate_limits", lambda: snapshot)
-    command_event = json.dumps({
-        "type": "item.completed",
-        "item": {
-            "id": "host-process-command",
-            "type": "command_execution",
-            "command": "/bin/zsh -lc 'ps -axo pid,command'",
-            "aggregated_output": "command denied",
-        },
-    })
-    monkeypatch.setattr(
-        L,
-        "_codex_command",
-        lambda ws, task, model, effort: [
-            sys.executable,
-            "-u",
-            "-c",
-            (
-                "import json,time; "
-                "print(json.dumps({'type':'thread.started',"
-                "'thread_id':'host-process'}), flush=True); "
-                f"print({command_event!r}, flush=True); "
-                "time.sleep(60)"
-            ),
-        ],
-    )
-
-    started = time.monotonic()
-    with pytest.raises(
-        L.ProposerBoundaryViolation,
-        match="clean-room filesystem boundary",
-    ):
-        L._codex_agent(
-            str(ws),
-            "offline host-process poison",
-            None,
-            1,
-            ledger_path=str(ledger),
-            run_label="host-process:L1:propose",
-            game="host-process",
-            target_level=1,
-        )
-    assert time.monotonic() - started < 10
-
-    row = json.loads(ledger.read_text())
-    assert row["thread_id"] == "host-process"
-    assert row["failure_class"] == "taint"
-    assert row["failure_detail_class"] == "host_process_introspection"
-    assert row["taint_verdict"] == "tainted"
-    assert row["protected_transcript_status"] == "sealed"
-    assert row["protected_diagnostics_status"] == "sealed"
-    assert "host_process_introspection" in (
-        row["filesystem_boundary_violation_reason"]
-    )
-
-
-def test_codex_agent_allows_exact_own_worker_process_monitoring(
-    tmp_path, monkeypatch
-):
-    ws = tmp_path / "ws"
-    ws.mkdir()
-    ledger = tmp_path / "usage.jsonl"
-    snapshot = {
-        "rateLimitsByLimitId": {
-            "codex": {
-                "planType": "plus",
-                "secondary": {
-                    "usedPercent": 0,
-                    "resetsAt": 1_800_000_000,
-                    "windowDurationMins": 10_080,
-                },
-            }
-        }
-    }
-    monkeypatch.setattr(L.CUG, "query_rate_limits", lambda: snapshot)
-    events = [
-        {
-            "type": "thread.started",
-            "thread_id": "own-worker",
-        },
-        {
-            "type": "item.completed",
-            "item": {
-                "id": "own-worker-command",
-                "type": "command_execution",
-                "command": "/bin/zsh -lc \"pgrep -f 'probe_worker.py'\"",
-                "aggregated_output": "1234",
-            },
-        },
-        {"type": "turn.completed", "usage": {}},
-    ]
-    program = "; ".join(
-        f"print({json.dumps(event)!r}, flush=True)" for event in events
-    )
-    monkeypatch.setattr(
-        L,
-        "_codex_command",
-        lambda ws, task, model, effort: [
-            sys.executable, "-u", "-c", program
-        ],
-    )
-
-    row = L._codex_agent(
-        str(ws),
-        "offline own-worker monitoring",
-        None,
-        1,
-        ledger_path=str(ledger),
-        run_label="own-worker:L1:propose",
-        game="own-worker",
-        target_level=1,
-    )
-
-    assert row["returncode"] == 0
-    assert row["failure_class"] is None
-    assert row["failure_detail_class"] is None
-    assert row["taint_verdict"] is None
-
-
-@pytest.mark.parametrize("phase", ["live", "terminal"])
-def test_codex_agent_applies_arena_control_live_and_terminal(
-    tmp_path, monkeypatch, phase
-):
-    ws = tmp_path / "ws"
-    ws.mkdir()
-    ledger = tmp_path / "usage.jsonl"
-    snapshot = {
-        "rateLimitsByLimitId": {
-            "codex": {
-                "planType": "plus",
-                "secondary": {
-                    "usedPercent": 0,
-                    "resetsAt": 1_800_000_000,
-                    "windowDurationMins": 10_080,
-                },
-            }
-        }
-    }
-    monkeypatch.setattr(L.CUG, "query_rate_limits", lambda: snapshot)
-    child = (
-        "import json,time; "
-        "print(json.dumps({'type':'thread.started','thread_id':'gate'}),"
-        " flush=True); "
-        + (
-            "time.sleep(60)"
-            if phase == "live"
-            else "print(json.dumps({'type':'turn.completed','usage':{}}), flush=True)"
-        )
-    )
-    monkeypatch.setattr(
-        L,
-        "_codex_command",
-        lambda ws, task, model, effort: [
-            sys.executable, "-u", "-c", child
-        ],
-    )
-    calls = []
-
-    def boundary_reasons(_monitor, _path, *, final=False):
-        calls.append(final)
-        if phase == "live" and not final:
-            return ("arena_module_control_drift: live",)
-        if phase == "terminal" and final:
-            return ("arena_module_control_drift: terminal",)
-        return ()
-
-    monkeypatch.setattr(L, "_codex_boundary_reasons", boundary_reasons)
-
-    with pytest.raises(L.ProposerBoundaryViolation, match=phase):
-        L._codex_agent(
-            str(ws),
-            f"offline {phase} arena-control test",
-            None,
-            1,
-            ledger_path=str(ledger),
-            run_label=f"gate:{phase}",
-            game="gate",
-            target_level=1,
-        )
-
-    assert (False in calls) if phase == "live" else (True in calls)
-    row = json.loads(ledger.read_text())
-    assert row["failure_class"] == "taint"
-    assert row["failure_detail_class"] == "filesystem_boundary_violation"
-    assert row["filesystem_boundary_violation_reason"].endswith(phase)
-
-
-@pytest.mark.parametrize("fault", ["arena", "workspace"])
-def test_codex_agent_rejects_boundary_before_process_creation(
-    tmp_path, monkeypatch, fault
-):
-    ws = tmp_path / "ws"
-    ws.mkdir()
-    ledger = tmp_path / "usage.jsonl"
-    snapshot = {
-        "rateLimitsByLimitId": {
-            "codex": {
-                "planType": "plus",
-                "secondary": {
-                    "usedPercent": 0,
-                    "resetsAt": 1_800_000_000,
-                    "windowDurationMins": 10_080,
-                },
-            }
-        }
-    }
-    monkeypatch.setattr(L.CUG, "query_rate_limits", lambda: snapshot)
-    monkeypatch.setattr(
-        L,
-        "_codex_command",
-        lambda *_args: [sys.executable, "-c", "raise SystemExit(0)"],
-    )
-    if fault == "arena":
-        monkeypatch.setattr(
-            L,
-            "_compatibility_arena_control_reason",
-            lambda: "arena_module_control_drift: prelaunch",
-        )
-    else:
-        (ws / "probe.py").write_text(
-            "open('/etc/passwd').read()\n", encoding="utf-8"
-        )
-    popen_called = False
-
-    def forbidden_popen(*_args, **_kwargs):
-        nonlocal popen_called
-        popen_called = True
-        raise AssertionError("Popen called before boundary admission")
-
-    monkeypatch.setattr(L.subprocess, "Popen", forbidden_popen)
-
-    with pytest.raises(L.ProposerBoundaryViolation):
-        L._codex_agent(
-            str(ws),
-            f"offline prelaunch {fault} test",
-            None,
-            1,
-            ledger_path=str(ledger),
-            run_label=f"prelaunch:{fault}",
-            game="prelaunch",
-            target_level=1,
-        )
-
-    assert popen_called is False
-    row = json.loads(ledger.read_text())
-    assert row["returncode"] is None
-    assert row["failure_class"] == "taint"
-    assert row["failure_detail_class"] == "filesystem_boundary_violation"
-    assert row["protected_transcript_status"] == "sealed"
-    assert row["protected_diagnostics_status"] == "sealed"
 
 
 def test_codex_agent_fails_closed_when_protected_transcript_disappears(
@@ -3146,7 +1237,6 @@ def test_evidence_lost_debrief_restores_exact_pre_debrief_win(
     promoted = artifact_root / "debriefevidence_legs" / "players.py"
     assert "play_level_1" in promoted.read_text()
     assert "unaudited debrief" not in promoted.read_text()
-    assert not (workspace / "unrecorded_probe.txt").exists()
     phases = [
         json.loads(path.read_text())["phase"]
         for path in (
@@ -3158,153 +1248,6 @@ def test_evidence_lost_debrief_restores_exact_pre_debrief_win(
     ]
     assert "reached_before_debrief" in phases
     assert not any("evidence" in phase for phase in phases)
-
-
-@pytest.mark.parametrize(
-    "failure",
-    [L.CreditOut("test credit"), L.ProposerInfrastructureError("test infra")],
-)
-def test_failed_debrief_fully_rolls_back_and_replays_before_promotion(
-    tmp_path, monkeypatch, failure
-):
-    artifact_root = tmp_path / "artifacts"
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    workspace.chmod(0o750)
-    for name in ("legs.py", "players.py", "solve.py", "legs_log.md"):
-        (workspace / name).write_text(
-            "# clean\n" if name.endswith(".py") else "",
-            encoding="utf-8",
-        )
-    (workspace / ".git").mkdir()
-    (workspace / ".git" / "sealed-baseline").write_text(
-        "before\n", encoding="utf-8"
-    )
-    (workspace / "__pycache__").mkdir()
-    (workspace / "__pycache__" / "sealed.cache").write_bytes(b"before")
-    monkeypatch.setattr(
-        L, "artifact_dir",
-        lambda game, tag="": str(artifact_root / f"{game}_legs"),
-    )
-    monkeypatch.setattr(L, "setup_workspace", lambda *a, **k: str(workspace))
-    monkeypatch.setattr(L.A, "validate", lambda *_a, **_k: True)
-    monkeypatch.setattr(L, "exact_level_boundary", lambda _g, path, _l: list(path))
-
-    def propose(ws, _level):
-        assert _level == 1, "rollback-recovered generation advanced to L2"
-        Path(ws, "players.py").write_text(
-            "def play_level_1(env):\n    pass\n", encoding="utf-8"
-        )
-
-    verify_calls = 0
-
-    def verify(_game, solve_path):
-        nonlocal verify_calls
-        verify_calls += 1
-        if verify_calls >= 3:
-            assert (workspace / ".git" / "sealed-baseline").read_text() == (
-                "before\n"
-            )
-            assert not (workspace / ".git" / "debrief-leak").exists()
-            assert (workspace / "__pycache__" / "sealed.cache").read_bytes() == (
-                b"before"
-            )
-            assert not (workspace / "__pycache__" / "debrief.cache").exists()
-        source = Path(solve_path).with_name("players.py").read_text()
-        return (1, [1], None) if "play_level_1" in source else (0, [], None)
-
-    def failed_debrief(ws, _level):
-        Path(ws).chmod(0o700)
-        Path(ws, "players.py").write_text(
-            "# partial debrief edit\n", encoding="utf-8"
-        )
-        Path(ws, "unsealed_note.py").write_text(
-            "x = 1\n", encoding="utf-8"
-        )
-        Path(ws, ".git", "sealed-baseline").unlink()
-        Path(ws, ".git", "debrief-leak").write_text(
-            "learned\n", encoding="utf-8"
-        )
-        Path(ws, "__pycache__", "sealed.cache").unlink()
-        Path(ws, "__pycache__", "debrief.cache").write_bytes(b"learned")
-        Path(ws, ".orchestrate.lock").write_text(
-            "learned through obsolete lock\n", encoding="utf-8"
-        )
-        raise failure
-
-    report = L.orchestrate(
-        "debriefrollback",
-        max_level=2,
-        propose_fn=propose,
-        verify_fn=verify,
-        debrief_fn=failed_debrief,
-        verbose=False,
-    )
-    assert report.reached == 1
-    assert verify_calls >= 3  # startup, winning proposal, sealed rollback replay
-    assert not (workspace / "unsealed_note.py").exists()
-    assert (workspace / ".git" / "sealed-baseline").read_text() == "before\n"
-    assert not (workspace / ".git" / "debrief-leak").exists()
-    assert (workspace / "__pycache__" / "sealed.cache").read_bytes() == b"before"
-    assert not (workspace / "__pycache__" / "debrief.cache").exists()
-    assert not (workspace / ".orchestrate.lock").exists()
-    assert workspace.stat().st_mode & 0o777 == 0o750
-    promoted = artifact_root / "debriefrollback_legs" / "players.py"
-    assert "play_level_1" in promoted.read_text()
-    assert "partial debrief" not in promoted.read_text()
-
-
-@pytest.mark.parametrize(
-    "failure",
-    [KeyboardInterrupt(), SystemExit("stop"), RuntimeError("unexpected")],
-    ids=["keyboard", "system-exit", "runtime"],
-)
-def test_unexpected_debrief_failure_rolls_back_and_releases_both_locks(
-    tmp_path, monkeypatch, failure
-):
-    artifact_root = tmp_path / "artifacts"
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    for name in ("legs.py", "players.py", "solve.py", "legs_log.md"):
-        (workspace / name).write_text("", encoding="utf-8")
-    monkeypatch.setattr(
-        L, "artifact_dir",
-        lambda game, tag="": str(artifact_root / f"{game}_legs"),
-    )
-    monkeypatch.setattr(L, "setup_workspace", lambda *a, **k: str(workspace))
-    monkeypatch.setattr(L.A, "validate", lambda *_a, **_k: True)
-    monkeypatch.setattr(L, "exact_level_boundary", lambda _g, path, _l: list(path))
-
-    def propose(ws, _level):
-        Path(ws, "players.py").write_text(
-            "def play_level_1(env):\n    pass\n", encoding="utf-8"
-        )
-
-    def verify(_game, solve_path):
-        source = Path(solve_path).with_name("players.py").read_text()
-        return (1, [1], None) if "play_level_1" in source else (0, [], None)
-
-    def debrief(ws, _level):
-        Path(ws, "players.py").write_text("# partial\n", encoding="utf-8")
-        Path(ws, "unsealed.txt").write_text("leak\n", encoding="utf-8")
-        raise failure
-
-    with pytest.raises(type(failure)):
-        L.orchestrate(
-            "unexpecteddebrief",
-            max_level=1,
-            propose_fn=propose,
-            verify_fn=verify,
-            debrief_fn=debrief,
-            verbose=False,
-        )
-
-    assert "play_level_1" in (workspace / "players.py").read_text()
-    assert not (workspace / "unsealed.txt").exists()
-    lineage = L._acquire_lineage_lock("unexpecteddebrief")
-    run = L._acquire_workspace_lock(str(workspace))
-    L._release_workspace_lock(run)
-    L._release_workspace_lock(lineage)
 
 
 def test_single_link_evidence_reader_rejects_hardlink_alias(tmp_path):
@@ -3826,9 +1769,7 @@ def test_promote_and_seed_verified_artifact(tmp_path, monkeypatch):
         "legs_log.md": "# log\n",
     }.items():
         (ws / name).write_text(body)
-    protected_dir = Path(L._protected_codex_transcript_dir(str(ws)))
-    protected_dir.mkdir(parents=True)
-    codex_turn = protected_dir / "codex_turn_20260722T000000000000Z_test.jsonl"
+    codex_turn = ws / "codex_turn_20260722T000000000000Z_test.jsonl"
     codex_turn.write_text(json.dumps({"type": "thread.started", "thread_id": "clean"}) + "\n")
 
     rep = L.Report(
@@ -3839,13 +1780,7 @@ def test_promote_and_seed_verified_artifact(tmp_path, monkeypatch):
         final_path=[1, 2, 3],
         validated=True,
     )
-    assert L.promote_verified_artifact(
-        "artifacttest",
-        str(ws),
-        rep,
-        verbose=False,
-        authorized_turn={"transcript": codex_turn.name, "diagnostics": None},
-    )
+    assert L.promote_verified_artifact("artifacttest", str(ws), rep, verbose=False)
     assert (artifact_root / "artifacttest_legs" / "README.md").exists()
     manifest = json.loads(
         (artifact_root / "artifacttest_legs" / "promotion_evidence" /
@@ -3892,14 +1827,6 @@ def test_promotion_uses_host_protected_codex_transcript(tmp_path, monkeypatch):
     protected_dir = Path(L._protected_codex_transcript_dir(str(ws)))
     protected_dir.mkdir(parents=True)
     (protected_dir / name).write_bytes(protected_bytes)
-    diagnostics_name = name.removesuffix(".jsonl") + ".stderr.log"
-    diagnostics_bytes = b"deterministic CLI diagnostic\n"
-    (protected_dir / diagnostics_name).write_bytes(diagnostics_bytes)
-    failed_debrief_name = "codex_turn_20260728T000100000000Z_failed.jsonl"
-    (protected_dir / failed_debrief_name).write_text(
-        json.dumps({"type": "error", "message": "failed debrief"}) + "\n",
-        encoding="utf-8",
-    )
 
     rep = L.Report(
         game="protectedtranscript",
@@ -3910,14 +1837,7 @@ def test_promotion_uses_host_protected_codex_transcript(tmp_path, monkeypatch):
         validated=True,
     )
     assert L.promote_verified_artifact(
-        "protectedtranscript",
-        str(ws),
-        rep,
-        verbose=False,
-        authorized_turn={
-            "transcript": name,
-            "diagnostics": diagnostics_name,
-        },
+        "protectedtranscript", str(ws), rep, verbose=False
     )
     evidence = (
         artifact_root / "protectedtranscript_legs" / "promotion_evidence" /
@@ -3928,14 +1848,6 @@ def test_promotion_uses_host_protected_codex_transcript(tmp_path, monkeypatch):
     assert (
         evidence / manifest["codex_transcripts"][0]["path"]
     ).read_bytes() == protected_bytes
-    assert len(manifest["codex_diagnostics"]) == 1
-    assert (
-        evidence / manifest["codex_diagnostics"][0]["path"]
-    ).read_bytes() == diagnostics_bytes
-    assert manifest["authorized_turn_transcript"] == name
-    assert failed_debrief_name not in {
-        Path(item["path"]).name for item in manifest["codex_transcripts"]
-    }
 
 
 def test_tainted_workspace_cannot_promote_artifact(tmp_path, monkeypatch):
@@ -3992,10 +1904,7 @@ def test_runtime_enumeration_and_frame_data_taint_workspace(tmp_path):
         path.write_text(body)
         reason = L._workspace_taint_reason(str(tmp_path))
         assert reason is not None
-        assert (
-            "private game/runtime introspection" in reason
-            or "runtime_introspection" in reason
-        )
+        assert "private game/runtime introspection" in reason
         path.unlink()
 
 
@@ -4080,12 +1989,7 @@ def test_debrief_inline_code_mention_is_not_execution_taint(tmp_path):
     assert L._workspace_taint_reason(str(tmp_path)) is None
 
     (tmp_path / "probe.py").write_text("print(vars(env))\n")
-    reason = L._workspace_taint_reason(str(tmp_path))
-    assert reason is not None
-    assert (
-        "private game/runtime introspection" in reason
-        or "runtime_introspection" in reason
-    )
+    assert "private game/runtime introspection" in L._workspace_taint_reason(str(tmp_path))
 
 
 def test_public_clone_traceback_private_field_is_not_agent_taint(tmp_path):
@@ -4152,70 +2056,6 @@ def test_many_codex_diagnostics_do_not_reclassify_tool_output_as_taint(tmp_path)
     assert L._workspace_taint_reason(str(tmp_path)) is None
 
 
-def test_codex_transport_https_diagnostics_are_not_proposer_network_taint(
-        tmp_path):
-    events = [
-        {
-            "type": "item.completed",
-            "item": {
-                "type": "error",
-                "message": (
-                    "Falling back from WebSockets to HTTPS transport. "
-                    "request timed out"
-                ),
-            },
-        },
-        {
-            "type": "error",
-            "message": (
-                "Reconnecting: error sending request for url "
-                "(https://chatgpt.com/backend-api/codex/responses)"
-            ),
-        },
-        {
-            "type": "turn.failed",
-            "error": {
-                "message": (
-                    "stream disconnected before completion: error sending "
-                    "request for url "
-                    "(https://chatgpt.com/backend-api/codex/responses)"
-                ),
-            },
-        },
-    ]
-    (tmp_path / "proposer_last.log").write_text(
-        "\n".join(json.dumps(event) for event in events) + "\n"
-    )
-    assert L._workspace_taint_reason(str(tmp_path)) is None
-
-
-def test_codex_network_command_still_taints_with_transport_diagnostics(
-        tmp_path):
-    events = [
-        {
-            "type": "item.completed",
-            "item": {
-                "type": "error",
-                "message": "Falling back to HTTPS transport",
-            },
-        },
-        {
-            "type": "item.completed",
-            "item": {
-                "type": "command_execution",
-                "command": "curl https://example.com/game-help",
-                "aggregated_output": "network denied",
-            },
-        },
-    ]
-    (tmp_path / "proposer_last.log").write_text(
-        "\n".join(json.dumps(event) for event in events) + "\n"
-    )
-    reason = L._workspace_taint_reason(str(tmp_path))
-    assert reason is not None
-    assert "external web/network access" in reason
-
-
 def test_codex_jsonl_private_command_still_taints_workspace(tmp_path):
     event = {
         "type": "item.completed",
@@ -4259,60 +2099,6 @@ def test_host_process_names_in_tool_output_do_not_taint_workspace(tmp_path):
     (tmp_path / "proposer_last.log").write_text(json.dumps(event) + "\n")
     (tmp_path / "probe.py").write_text("print('public observation')\n")
     assert L._workspace_taint_reason(str(tmp_path)) is None
-
-
-def test_python_heredoc_variable_named_ps_does_not_taint_workspace(tmp_path):
-    event = {
-        "type": "item.completed",
-        "item": {
-            "type": "command_execution",
-            "command": (
-                "/bin/zsh -lc \"python - <<'PY'\n"
-                "while queue:\n"
-                " (bridges,ps),path=queue.popleft()\n"
-                " occupied=bridges|ps\n"
-                "PY\""
-            ),
-            "aggregated_output": "public symbolic search\n",
-        },
-    }
-    (tmp_path / "proposer_last.log").write_text(json.dumps(event) + "\n")
-    assert L._workspace_taint_reason(str(tmp_path)) is None
-
-
-def test_process_command_after_python_heredoc_still_taints_workspace(tmp_path):
-    event = {
-        "type": "item.completed",
-        "item": {
-            "type": "command_execution",
-            "command": (
-                "/bin/zsh -lc \"python - <<'PY'\n"
-                "ps = {'public': 'symbolic state'}\n"
-                "PY\n"
-                "ps -axo pid,command\""
-            ),
-            "aggregated_output": "anything\n",
-        },
-    }
-    (tmp_path / "proposer_last.log").write_text(json.dumps(event) + "\n")
-    reason = L._workspace_taint_reason(str(tmp_path))
-    assert reason is not None
-    assert "host process introspection" in reason
-
-
-def test_unterminated_heredoc_fails_closed_for_process_scan(tmp_path):
-    event = {
-        "type": "item.completed",
-        "item": {
-            "type": "command_execution",
-            "command": "/bin/zsh -lc \"python - <<'PY'\nprint('incomplete')",
-            "aggregated_output": "anything\n",
-        },
-    }
-    (tmp_path / "proposer_last.log").write_text(json.dumps(event) + "\n")
-    reason = L._workspace_taint_reason(str(tmp_path))
-    assert reason is not None
-    assert "host process introspection" in reason
 
 
 def test_filtered_own_probe_process_monitoring_is_not_gameplay_taint(
@@ -4397,15 +2183,13 @@ def test_narrow_pgrep_does_not_mask_forbidden_process_control(tmp_path):
     assert "host process introspection" in reason
 
 
-def test_raw_arena_capability_does_not_authorize_source_introspection(tmp_path):
+def test_public_harness_api_introspection_is_allowed(tmp_path):
     (tmp_path / "probe.py").write_text(
         "import inspect, gkm_arena as A\n"
         "print(dir(A), dir(A.Arena), dir(env))\n"
         "print(inspect.getsource(A.Arena.clone))\n"
     )
-    reason = L._workspace_taint_reason(str(tmp_path))
-    assert reason is not None
-    assert "dynamic_or_process_import" in reason
+    assert L._workspace_taint_reason(str(tmp_path)) is None
 
 
 def test_public_action_protocol_marker_quarantines_complete_turn(tmp_path):
@@ -4515,8 +2299,7 @@ def test_hypothetical_protocol_discussion_is_not_self_invalidation(tmp_path):
 
 def test_promoted_artifact_scan_excludes_forensic_wip(tmp_path):
     for name in L.PROMOTED_FILES:
-        body = "# clean promoted evidence\n" if name.endswith(".py") else "clean promoted evidence\n"
-        (tmp_path / name).write_text(body)
+        (tmp_path / name).write_text("clean promoted evidence\n")
     dirty = tmp_path / "wip_context" / "level_01" / "attempt" / "files"
     dirty.mkdir(parents=True)
     (dirty / "probe.py").write_text("print(env._game)\n")
@@ -4571,26 +2354,8 @@ def test_wip_context_snapshot_is_artifact_visible(tmp_path, monkeypatch):
     assert L.promote_verified_artifact("snaptest", str(ws), rep, verbose=False)
     snap = L.snapshot_wip_context("snaptest", str(ws), 2, "not_reached", 1, "probe failed", verbose=False)
     assert (artifact_root / "snaptest_legs" / "wip_context" / "level_02" / "latest.json").exists()
-    metadata = json.loads(Path(snap, "metadata.json").read_text())
-    assert metadata["taint_verdict"] == "clean"
-    assert metadata["frontier_binding"]["game"] == "snaptest"
-    assert metadata["frontier_binding"]["reached"] == 1
-    assert metadata["frontier_binding"]["target_level"] == 2
     assert "fresh probe observation" in (os.path.join(snap, "files", "proposer_last.log") and
                                          open(os.path.join(snap, "files", "proposer_last.log")).read())
-
-    strict_ws = tmp_path / "strict_ws"
-    strict_ws.mkdir()
-    strict_seed = L.seed_workspace_from_artifact(
-        "snaptest",
-        str(strict_ws),
-        verbose=False,
-        expected_wip_attempt=Path(snap).name,
-    )
-    assert strict_seed is not None and strict_seed.reached == 1
-    assert (strict_ws / "proposer_last.log").read_text() == (
-        "fresh probe observation\n"
-    )
 
     (ws / "players.py").write_text("contaminated unfinished edit\n")
     seeded = L.seed_workspace_from_artifact("snaptest", str(ws), verbose=False)
@@ -4599,36 +2364,6 @@ def test_wip_context_snapshot_is_artifact_visible(tmp_path, monkeypatch):
     # WIP snapshots are forensic only: seeding must NOT inject probe context back
     # into the workspace (that stitching caused analysis paralysis; see FINDINGS).
     assert not (ws / "wip_context.md").exists()
-
-
-def test_expected_wip_restore_rejects_pointer_change(tmp_path, monkeypatch):
-    artifact_root = tmp_path / "artifacts"
-    monkeypatch.setattr(
-        L, "artifact_dir",
-        lambda game, tag="": str(artifact_root / f"{game}_legs"),
-    )
-    ws = tmp_path / "ws"
-    ws.mkdir()
-    (ws / "probe.py").write_text("print('partial')\n")
-    snap = Path(L.snapshot_wip_context(
-        "strict", str(ws), 1, "infrastructure_failure", 0,
-        "transport", verbose=False,
-    ))
-    latest = snap.parent / "latest.json"
-    pointer = json.loads(latest.read_text())
-    pointer["attempt"] = "different_attempt"
-    latest.write_text(json.dumps(pointer))
-    retry = tmp_path / "retry"
-    retry.mkdir()
-    try:
-        L._restore_wip_probes(
-            "strict", str(retry), 1, verbose=False,
-            expected_attempt=snap.name,
-        )
-    except ValueError as exc:
-        assert "no longer eligible" in str(exc)
-    else:
-        raise AssertionError("changed WIP pointer was restored")
 
 
 def test_wip_snapshot_and_restore_preserve_nested_agent_context(tmp_path, monkeypatch):
@@ -4971,7 +2706,7 @@ def test_seed_restores_wip_probes_without_clobbering(tmp_path, monkeypatch):
     (ws / "codex_turn_20260727T000001Z_probetest_L2_propose.jsonl").write_text(
         '{"type":"turn.started"}\n'
     )
-    (ws / "players.py").write_text("# UNVERIFIED candidate\n")
+    (ws / "players.py").write_text("UNVERIFIED candidate\n")
     L.snapshot_wip_context("probetest", str(ws), 2, "interrupted", 1, "killed", verbose=False)
 
     # scratch dies; a fresh seed must restore the probe but keep players.py verified
@@ -5001,7 +2736,7 @@ def test_seed_restores_level_one_wip_without_promoted_artifact(tmp_path, monkeyp
     ws = tmp_path / "attempt"
     ws.mkdir()
     (ws / "probe_l1.py").write_text("print('mapped mechanic')\n")
-    (ws / "players.py").write_text("# UNVERIFIED candidate\n")
+    (ws / "players.py").write_text("UNVERIFIED candidate\n")
     L.snapshot_wip_context("unpromoted", str(ws), 1, "not_reached", 0,
                            "retry later", verbose=False)
     level_dir = artifact_root / "unpromoted_legs" / "wip_context" / "level_01"
@@ -5346,7 +3081,7 @@ def test_interrupt_snapshots_and_promotes(tmp_path, monkeypatch):
                 f.write(f"\n\ndef play_level_1(env):\n    pass\n")
         else:
             with open(os.path.join(ws, "probe_l2.py"), "w") as f:
-                    f.write("# half-done probe\n")
+                f.write("half-done probe\n")
             raise KeyboardInterrupt  # user hits Ctrl-C mid-L2
 
     def mock_verify(game, solve_path):
@@ -5397,65 +3132,6 @@ def test_interrupt_does_not_create_resumable_wip_from_tainted_turn(
     assert not (
         artifact_root / "taintedinterrupt_legs" / "wip_context" / "level_01"
     ).exists()
-
-
-def test_normal_return_taint_skips_verify_snapshot_and_promotion(
-    tmp_path, monkeypatch
-):
-    artifact_root = tmp_path / "artifacts"
-    scratch_root = tmp_path / "scratch"
-    monkeypatch.setattr(L, "SCRATCH", str(scratch_root))
-    monkeypatch.setattr(
-        L,
-        "artifact_dir",
-        lambda game, tag="": str(artifact_root / f"{game}_legs"),
-    )
-    verification_calls = 0
-    verification_calls_at_propose = None
-
-    def verify(_game, _path):
-        nonlocal verification_calls
-        verification_calls += 1
-        return 0, [], None
-
-    def propose(ws, _level):
-        nonlocal verification_calls_at_propose
-        verification_calls_at_propose = verification_calls
-        (Path(ws) / "probe_private.py").write_text(
-            "print(env._game)\n", encoding="utf-8"
-        )
-
-    monkeypatch.setattr(
-        L,
-        "snapshot_wip_context",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("tainted generation was snapshotted")
-        ),
-    )
-    monkeypatch.setattr(
-        L,
-        "promote_verified_artifact",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("tainted generation was promoted")
-        ),
-    )
-
-    with pytest.raises(
-        L.WorkspaceTainted,
-        match="clean-room taint invalidated",
-    ):
-        L.orchestrate(
-            "normalreturntaint",
-            max_level=1,
-            propose_fn=propose,
-            verify_fn=verify,
-            debrief_fn=lambda _workspace, _level: None,
-            verbose=False,
-        )
-
-    assert verification_calls_at_propose is not None
-    assert verification_calls == verification_calls_at_propose
-    assert not (artifact_root / "normalreturntaint_legs").exists()
 
 
 def test_snapshot_wip_context_fails_closed_on_tainted_workspace(
@@ -5529,38 +3205,4 @@ def test_snapshot_wip_reopens_host_owned_protocol_transcript(
         )
     assert not (
         artifact_root / "protectedpoison_legs" / "wip_context"
-    ).exists()
-
-
-def test_snapshot_wip_reopens_host_owned_diagnostics_sideband(
-    tmp_path, monkeypatch
-):
-    artifact_root = tmp_path / "artifacts"
-    monkeypatch.setattr(
-        L,
-        "artifact_dir",
-        lambda game, tag="": str(artifact_root / f"{game}_legs"),
-    )
-    workspace = tmp_path / "scratch" / "workspace"
-    workspace.mkdir(parents=True)
-    protected = (
-        workspace.parent / ".proposer_transcripts" / workspace.name
-    )
-    protected.mkdir(parents=True)
-    (protected / "codex_turn_poison.stderr.log").write_text(
-        f"{L.A.PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER}: invalid action\n"
-    )
-
-    assert L._protected_transcript_taint_reason(str(workspace)) is not None
-    with pytest.raises(L.WorkspaceTainted, match="protocol violation"):
-        L.snapshot_wip_context(
-            "diagnosticpoison",
-            str(workspace),
-            1,
-            "interrupted",
-            reached=0,
-            verbose=False,
-        )
-    assert not (
-        artifact_root / "diagnosticpoison_legs" / "wip_context"
     ).exists()

@@ -18,11 +18,7 @@ import sys
 import tempfile
 import time
 
-
-def _arena():
-    """Resolve the host-authenticated private Arena without ambient import."""
-    import gkm_legs as G
-    return G.A
+import gkm_arena as A
 
 
 def discovered_context(game: str) -> str:
@@ -53,8 +49,7 @@ def discovered_context(game: str) -> str:
 
 TESTER = '''import importlib.util, sys
 sys.path.insert(0, {labdir!r})
-import gkm_legs as G
-A = G.A
+import gkm_arena as A
 spec = importlib.util.spec_from_file_location("solution", "solution.py")
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 levels, path, err = A.run_program({game!r}, m.solve)
@@ -64,7 +59,6 @@ print(f"RESULT levels={{levels}} moves={{len(path)}} replay_ok={{ok}} err={{err}
 
 
 def build_task(game: str, context: str) -> str:
-    A = _arena()
     return (
         A.PRECONCEPTIONS + "\n\n" + context + "\n\n" + A.API +
         "\n\nWORKFLOW (you have Bash/Write/Read/Edit tools in this directory):\n"
@@ -107,7 +101,6 @@ def build_task(game: str, context: str) -> str:
 
 
 def run(game="wa30", model=None, minutes=40, verbose=True):
-    A = _arena()
     ws = os.environ.get("GKM_WS") or os.path.join(tempfile.gettempdir(), f"gkm_ws_{game}")
     os.makedirs(ws, exist_ok=True)
     labdir = os.path.dirname(os.path.abspath(__file__))

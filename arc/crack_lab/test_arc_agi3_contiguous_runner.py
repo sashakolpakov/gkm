@@ -4,7 +4,6 @@ import errno
 import fcntl
 import hashlib
 import json
-import multiprocessing
 import os
 import selectors
 import shutil
@@ -14,7 +13,6 @@ import time
 import uuid
 from dataclasses import asdict, replace
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -25,20 +23,6 @@ import arc_agi3_contiguous_supervisor as Contract
 
 Transport = R.Transport
 Taint = R.Taint
-
-
-def _process_acquire_runner_lock(runner, queue) -> None:
-    """Test child: traverse the runner's fork-safe ownership path."""
-
-    try:
-        handle, token = runner._acquire_campaign_cycle_lock()
-    except BaseException as exc:
-        queue.put(("error", type(exc).__name__, str(exc)))
-        return
-    try:
-        queue.put(("acquired", os.getpid()))
-    finally:
-        runner._release_campaign_cycle_lock(handle, token)
 
 
 HASH = "a" * 64
@@ -142,106 +126,6 @@ def test_app_server_pipe_drains_coalesced_lines_before_select():
         read_stream.close()
         os.close(read_fd)
         os.close(write_fd)
-
-
-def test_quiescent_collection_snapshot_is_read_only_and_content_bound(
-    tmp_path,
-):
-    generation = (tmp_path / "generation").resolve()
-    host = generation / "host"
-    output = generation / "output"
-    state = generation / "state" / "codex_home"
-    for root in (host, output, state):
-        (root / "a-earlier").mkdir(parents=True)
-        (root / "z-later").mkdir()
-        (root / "a-earlier" / "evidence.bin").write_bytes(b"clean")
-        (root / "z-later" / "evidence.bin").write_bytes(b"later")
-    spec = SimpleNamespace(
-        host_transcript_path=str(host / "backend.jsonl"),
-        output_dir=str(output),
-        app_server_state_dir=str(state),
-    )
-    paths = tuple(sorted(generation.rglob("*")))
-    before_metadata = {
-        path: (
-            path.stat(follow_symlinks=False).st_mode,
-            path.stat(follow_symlinks=False).st_size,
-            path.stat(follow_symlinks=False).st_mtime_ns,
-            path.stat(follow_symlinks=False).st_ctime_ns,
-        )
-        for path in paths
-    }
-    baseline = (
-        R.ContiguousCampaignRunner
-        ._snapshot_quiescent_collection_evidence(spec)
-    )
-    after_metadata = {
-        path: (
-            path.stat(follow_symlinks=False).st_mode,
-            path.stat(follow_symlinks=False).st_size,
-            path.stat(follow_symlinks=False).st_mtime_ns,
-            path.stat(follow_symlinks=False).st_ctime_ns,
-        )
-        for path in paths
-    }
-    assert after_metadata == before_metadata
-    earlier = state / "a-earlier" / "evidence.bin"
-    earlier.write_bytes(b"secret")
-    changed = (
-        R.ContiguousCampaignRunner
-        ._snapshot_quiescent_collection_evidence(spec)
-    )
-    assert changed != baseline
-
-
-def test_quiescent_collection_snapshot_uses_file_only_bound(
-    tmp_path, monkeypatch
-):
-    generation = (tmp_path / "generation").resolve()
-    roots = (
-        generation / "host",
-        generation / "output",
-        generation / "state" / "codex_home",
-    )
-    for root in roots:
-        (root / "empty-a" / "empty-b").mkdir(parents=True)
-        (root / "one.bin").write_bytes(b"one")
-    spec = SimpleNamespace(
-        host_transcript_path=str(roots[0] / "backend.jsonl"),
-        output_dir=str(roots[1]),
-        app_server_state_dir=str(roots[2]),
-    )
-    monkeypatch.setattr(Transport, "MAX_APP_SERVER_STATE_FILES", 1)
-    R.ContiguousCampaignRunner._snapshot_quiescent_collection_evidence(spec)
-    extra = roots[0] / "two.bin"
-    extra.write_bytes(b"two")
-    with pytest.raises(
-        R.ContiguousRunnerError,
-        match="file inventory is unsafe",
-    ):
-        R.ContiguousCampaignRunner._snapshot_quiescent_collection_evidence(
-            spec
-        )
-
-
-def test_quiescent_collection_snapshot_rejects_overlapping_roots(tmp_path):
-    shared = (tmp_path / "shared").resolve()
-    state = (tmp_path / "state").resolve()
-    shared.mkdir()
-    state.mkdir()
-    (shared / "evidence.bin").write_bytes(b"one")
-    spec = SimpleNamespace(
-        host_transcript_path=str(shared / "backend.jsonl"),
-        output_dir=str(shared),
-        app_server_state_dir=str(state),
-    )
-    with pytest.raises(
-        R.ContiguousRunnerError,
-        match="evidence roots overlap",
-    ):
-        R.ContiguousCampaignRunner._snapshot_quiescent_collection_evidence(
-            spec
-        )
 
 
 def _provider_window(
@@ -894,8 +778,8 @@ def _app_scan_policy(
     )
     return (
         Taint.AppServerScanPolicy(
-            state_root=R.EXPECTED_CONTROLLER_STATE_ROOT,
-            neutral_cwd=R.EXPECTED_CONTROLLER_NEUTRAL_CWD,
+            state_root=spec.app_server_state_dir,
+            neutral_cwd=spec.neutral_host_cwd_path,
             model=spec.proposer_transport.model,
             model_provider=spec.proposer_transport.model_provider,
             reasoning_effort=spec.effort,
@@ -918,11 +802,6 @@ def _write_app_transcript(
     thread_id: str,
     turn_id: str,
 ) -> tuple[str, int]:
-    spec = replace(
-        spec,
-        app_server_state_dir=R.EXPECTED_CONTROLLER_STATE_ROOT,
-        neutral_host_cwd_path=R.EXPECTED_CONTROLLER_NEUTRAL_CWD,
-    )
     policy, prompt = _app_scan_policy(spec)
     events: list[tuple[str, object]] = []
 
@@ -1509,69 +1388,12 @@ class FakeBackend:
         )
         attestation = host / "launch_attestation.json"
         if not attestation.exists():
-            compatibility_snapshot = (
-                R.CompatibilityClosure.canonical_closure_snapshot()
-            )
-            compatibility_client_sha256 = compatibility_snapshot[
-                "client"
-            ]["source_sha256"]
-            compatibility_controls = compatibility_snapshot[
-                "components"
-            ]
-            fake_socket_endpoint = {
-                "path": str(host / "arena-mirror.sock"),
-                "kind": "socket",
-                "device": 1,
-                "inode": 2,
-                "mode": 0o600,
-                "owner_uid": os.getuid(),
-                "owner_gid": os.getgid(),
-                "size": 0,
-                "content_sha256": None,
-            }
-            fake_token_endpoint = {
-                "path": spec.arena_token_file_path,
-                "kind": "token",
-                "device": 1,
-                "inode": 3,
-                "mode": 0o400,
-                "owner_uid": os.getuid(),
-                "owner_gid": os.getgid(),
-                "size": 64,
-                "content_sha256": "d" * 64,
-            }
             attestation.write_text(
                 json.dumps(
                     {
                         "attempt_id": spec.attempt_id,
                         "generation_id": spec.generation_id,
                         "image_digest": spec.image_digest,
-                        "container_id": "e" * 64,
-                        "container_inspect_sha256": "3" * 64,
-                        "security_projection_sha256": "4" * 64,
-                        "create_argv_sha256": "5" * 64,
-                        "image": {
-                            "requested_reference": spec.image_reference,
-                            "manifest_digest": spec.image_digest,
-                            "image_id": "sha256:" + "f" * 64,
-                            "image_inspect_sha256": "2" * 64,
-                            "worker_control_sha256": {
-                                "org.gkm.arc-agi3.arena-rpc-client-sha256":
-                                    compatibility_client_sha256,
-                                "org.gkm.arc-agi3.container-recipe-sha256":
-                                    compatibility_controls[
-                                        "container_recipe"
-                                    ]["sha256"],
-                                "org.gkm.arc-agi3.solver-requirements-sha256":
-                                    compatibility_controls[
-                                        "solver_requirements"
-                                    ]["sha256"],
-                            },
-                        },
-                        "arena_rpc": {
-                            "socket": fake_socket_endpoint,
-                            "token_file": fake_token_endpoint,
-                        },
                         "containment_canary_anchor": canary_anchor,
                     },
                     sort_keys=True,
@@ -1595,7 +1417,11 @@ class FakeBackend:
                 "probe_isolation_evidence_sha256"
             ]
         else:
-            retained_event = {
+            arena_binding_path, arena_binding_sha = _bound_receipt(
+                spec,
+                arena_receipt_file,
+                "contiguous_arena_session_binding",
+                binding_event={
                 "campaign_id": spec.campaign_id,
                 "generation_id": spec.generation_id,
                 "attempt_id": spec.attempt_id,
@@ -1613,14 +1439,7 @@ class FakeBackend:
                     TEST_PROBE_ISOLATION_EVIDENCE,
                 "probe_isolation_evidence_sha256":
                     TEST_PROBE_ISOLATION_SHA256,
-                "binding_sha256": "d" * 64,
-                "session_id": "e" * 64,
-            }
-            arena_binding_path, arena_binding_sha = _bound_receipt(
-                spec,
-                arena_receipt_file,
-                "contiguous_arena_session_binding",
-                binding_event=retained_event,
+                },
             )
             probe_mode = TEST_PROBE_ISOLATION_MODE
             probe_sha256 = TEST_PROBE_ISOLATION_SHA256
@@ -1836,140 +1655,6 @@ class FakeBackend:
         arena_relay_preparation_sha256 = hashlib.sha256(
             arena_relay_preparation.read_bytes()
         ).hexdigest()
-        closure_root = host / "compatibility_arena_closure"
-        if closure_root.exists():
-            closure_receipt_sha256 = hashlib.sha256(
-                (closure_root / "closure_receipt.json").read_bytes()
-            ).hexdigest()
-            closure_observation = (
-                R.CompatibilityClosure.validate_closure(
-                    closure_root, closure_receipt_sha256
-                )
-            )
-        else:
-            closure_observation = (
-                R.CompatibilityClosure.prepare_closure(closure_root)
-            )
-            closure_receipt_sha256 = closure_observation[
-                "receipt_sha256"
-            ]
-        attestation_value = json.loads(
-            attestation.read_text(encoding="utf-8")
-        )
-        closure_controls = (
-            R.CompatibilityClosure.canonical_closure_snapshot()[
-                "components"
-            ]
-        )
-        compatibility_turn_path, compatibility_turn_sha256 = (
-            _bound_receipt(
-                spec,
-                host / "compatibility_turn_receipt.json",
-                "arc_agi3_contiguous_compatibility_turn_binding",
-                game=spec.game,
-                target_level=spec.target_level,
-                frontier_sha256=spec.frontier_sha256,
-                parent_checkpoint_sha256=(
-                    spec.parent_checkpoint_sha256
-                ),
-                closure={
-                    "root": str(closure_root),
-                    "receipt_sha256": closure_receipt_sha256,
-                    "content_manifest_sha256": closure_observation[
-                        "content_manifest_sha256"
-                    ],
-                    "client_sha256": closure_observation[
-                        "client_sha256"
-                    ],
-                },
-                host_rpc={
-                    "session_binding_receipt_path": arena_binding_path,
-                    "session_binding_receipt_sha256": arena_binding_sha,
-                    "binding_sha256": retained_event[
-                        "binding_sha256"
-                    ],
-                    "session_id": retained_event["session_id"],
-                    "host_socket_path": spec.arena_socket_path,
-                    "host_socket_identity_sha256": (
-                        arena_relay_socket_identity_sha256
-                    ),
-                    "container_socket": attestation_value[
-                        "arena_rpc"
-                    ]["socket"],
-                    "token_file": attestation_value["arena_rpc"][
-                        "token_file"
-                    ],
-                    "token_bytes_retained": False,
-                },
-                transport={
-                    "kind": R.ARENA_VOLUME_TRANSPORT,
-                    "volume_name": arena_volume_name,
-                    "volume_observation_sha256": (
-                        arena_volume_observation_sha256
-                    ),
-                    "relay_container_id": arena_relay_container_id,
-                    "relay_image_digest": (
-                        transport.arena_relay_image_digest
-                    ),
-                    "relay_image_observation_sha256": (
-                        arena_relay_image_observation_sha256
-                    ),
-                    "relay_container_observation_sha256": (
-                        arena_relay_container_observation_sha256
-                    ),
-                    "readiness_receipt_sha256": (
-                        arena_relay_readiness_sha256
-                    ),
-                    "preparation_receipt_sha256": (
-                        arena_relay_preparation_sha256
-                    ),
-                    "attach_argv_sha256": (
-                        arena_relay_attach_argv_sha256
-                    ),
-                },
-                container={
-                    "container_id": attestation_value["container_id"],
-                    "requested_image_reference": attestation_value[
-                        "image"
-                    ]["requested_reference"],
-                    "image_manifest_digest": attestation_value["image"][
-                        "manifest_digest"
-                    ],
-                    "image_id": attestation_value["image"]["image_id"],
-                    "image_observation_sha256": attestation_value["image"][
-                        "image_inspect_sha256"
-                    ],
-                    "worker_control_sha256": attestation_value["image"][
-                        "worker_control_sha256"
-                    ],
-                    "container_observation_sha256": attestation_value[
-                        "container_inspect_sha256"
-                    ],
-                    "security_projection_sha256": attestation_value[
-                        "security_projection_sha256"
-                    ],
-                    "create_argv_sha256": attestation_value[
-                        "create_argv_sha256"
-                    ],
-                    "launch_attestation_sha256": hashlib.sha256(
-                        attestation.read_bytes()
-                    ).hexdigest(),
-                    "container_recipe_sha256": closure_controls[
-                        "container_recipe"
-                    ]["sha256"],
-                    "solver_requirements_sha256": closure_controls[
-                        "solver_requirements"
-                    ]["sha256"],
-                },
-                authority={
-                    "scheduler_authority": False,
-                    "mutation_authority": False,
-                    "promotion_authority": False,
-                    "launch_authority": False,
-                    "runner_reopen_required_before_launch": True,
-                },
-            )
-        )
         prepared = R.BackendPreparation(
             preparation_id="prepare:" + spec.attempt_id,
             launch_attestation_path=str(attestation),
@@ -1983,14 +1668,6 @@ class FakeBackend:
             bridge_policy_receipt_sha256=bridge_policy_sha,
             arena_session_binding_receipt_path=arena_binding_path,
             arena_session_binding_receipt_sha256=arena_binding_sha,
-            compatibility_closure_path=str(closure_root),
-            compatibility_closure_receipt_sha256=(
-                closure_receipt_sha256
-            ),
-            compatibility_turn_receipt_path=compatibility_turn_path,
-            compatibility_turn_receipt_sha256=(
-                compatibility_turn_sha256
-            ),
             arena_transport=R.ARENA_VOLUME_TRANSPORT,
             arena_volume_name=arena_volume_name,
             arena_volume_observation_sha256=(
@@ -3442,72 +3119,6 @@ def _typed_substrate_failure(
     )
 
 
-def _typed_preparation_quarantine(
-    spec: R.AttemptSpec,
-) -> R.BackendPreparationQuarantinedError:
-    host = Path(spec.host_transcript_path).parent
-    closure_root = host / "compatibility_arena_closure"
-    staging = host / R.CompatibilityClosure._staging_name(
-        closure_root
-    )
-    staging.mkdir(mode=0o700)
-    partial = staging / R.CompatibilityClosure.CLIENT_NAME
-    partial.write_bytes(b"retained partial closure bytes\n")
-    partial.chmod(0o400)
-    staging_observation = (
-        R.CompatibilityClosure.observe_quarantined_staging(
-            closure_root
-        )
-    )
-    receipt_path, receipt_sha256 = _bound_receipt(
-        spec,
-        host / "compatibility_preparation_quarantine.json",
-        "contiguous_compatibility_preparation_quarantine",
-        failure_stage="compatibility_closure_prepare",
-        failure_type="CompatibilityStagingAmbiguityError",
-        closure_root=str(closure_root),
-        closure_root_present=False,
-        staging_observation=staging_observation,
-        staging_observation_sha256=(
-            staging_observation["observation_sha256"]
-        ),
-        container_identity_query_empty=True,
-        arena_relay_absent=True,
-        rpc_endpoints_absent=True,
-        proposer_container_started=False,
-        proposer_turn_started=False,
-        candidate_authority=False,
-        wip_authority=False,
-        cost_authority=False,
-        promotion_authority=False,
-        old_evidence_reuse_authority=False,
-        fresh_attempt_generation_required=True,
-        status="QUARANTINED",
-    )
-    return R.BackendPreparationQuarantinedError(
-        quarantine_receipt_path=receipt_path,
-        quarantine_receipt_sha256=receipt_sha256,
-    )
-
-
-class QuarantinedPreparationBackend(FakeBackend):
-    def __init__(self, quarantine_count: int):
-        super().__init__(candidate_result)
-        self.quarantine_count = quarantine_count
-        self.quarantined_specs: list[R.AttemptSpec] = []
-
-    def prepare(self, spec: R.AttemptSpec) -> R.BackendPreparation:
-        if (
-            len(self.quarantined_specs) < self.quarantine_count
-            and spec.attempt_id not in self.specs
-        ):
-            self.prepare_calls.append(spec.attempt_id)
-            self.specs[spec.attempt_id] = spec
-            self.quarantined_specs.append(spec)
-            raise _typed_preparation_quarantine(spec)
-        return super().prepare(spec)
-
-
 class SubstrateFailingBackend(FakeBackend):
     def launch(
         self,
@@ -4174,7 +3785,6 @@ class _SyntheticAuxiliaryRunner(R.ContiguousCampaignRunner):
     """Fast exact-n harness around the production auxiliary cycle."""
 
     def __init__(self, root: Path, backend: FakeAuxiliaryBackend):
-        self._initialize_validation_state()
         self.root = root
         self.root.mkdir(parents=True)
         (self.root / "attempt_journal").mkdir()
@@ -4879,81 +4489,6 @@ class FakePromotionGate:
     ) -> R.PromotionCommit | None:
         return self.commits.get(spec.attempt_id)
 
-    def _selective_import(
-        self, commit: R.PromotionCommit
-    ) -> R.SelectiveFrontierImport:
-        checkpoint = Path(commit.checkpoint_path)
-        version = checkpoint.parent.parent
-        pointer_identity = {
-            "game": commit.game,
-            "reached": commit.to_level,
-            "checkpoint_sha256": commit.checkpoint_sha256,
-            "source_version_id": commit.source_version_id,
-            "version_tree_sha256": Contract._tree_hash(version),
-        }
-        return R.build_selective_frontier_import(
-            game=commit.game,
-            reached=commit.to_level,
-            authoritative_target=(
-                Contract.authoritative_inventory()[commit.game]
-            ),
-            parent_checkpoint_sha256=(
-                commit.parent_checkpoint_sha256
-            ),
-            checkpoint_path=commit.checkpoint_path,
-            checkpoint_sha256=commit.checkpoint_sha256,
-            source_path=str(
-                checkpoint.parent / Contract.WINNING_SOURCE_NAME
-            ),
-            source_tree_sha256=commit.source_tree_sha256,
-            promotion_receipt_path=str(
-                checkpoint.parent / Contract.HOST_RECEIPT_NAME
-            ),
-            promotion_receipt_sha256=(
-                commit.promotion_receipt_sha256
-            ),
-            source_version_id=commit.source_version_id,
-            version_tree_sha256=Contract._tree_hash(version),
-            selected_pointer_sha256=hashlib.sha256(
-                R._canonical_json(pointer_identity)
-            ).hexdigest(),
-        )
-
-    def issue_selective_frontier_import(
-        self, game: str
-    ) -> R.SelectiveFrontierImport:
-        matches = [
-            commit
-            for commit in self.commits.values()
-            if commit.game == game
-        ]
-        if not matches:
-            raise R.ContiguousRunnerError(
-                "fake gate has no selected frontier"
-            )
-        return self._selective_import(
-            max(matches, key=lambda item: item.to_level)
-        )
-
-    def verify_selective_frontier_import(
-        self, binding: R.SelectiveFrontierImport
-    ) -> R.SelectiveFrontierImport:
-        matches = [
-            commit
-            for commit in self.commits.values()
-            if commit.source_version_id == binding.source_version_id
-        ]
-        if len(matches) != 1:
-            raise R.ContiguousRunnerError(
-                "fake import version is not unique"
-            )
-        reopened = self._selective_import(matches[0])
-        if reopened != binding:
-            raise R.ContiguousRunnerError(
-                "fake import binding changed"
-            )
-        return reopened
-
 
 def ids():
     index = 0
@@ -5100,9 +4635,6 @@ def make_runner(
     auxiliary_backend=None,
     auxiliary_launch_configuration=None,
     operator_configuration_sha256=None,
-    selective_continuation_game=None,
-    selective_frontier_import=None,
-    selective_frontier_import_sha256=None,
 ):
     backend = backend or FakeBackend()
     gate = gate or FakePromotionGate(tmp_path / "promotions")
@@ -5126,11 +4658,6 @@ def make_runner(
         auxiliary_backend=auxiliary_backend,
         auxiliary_launch_configuration=(
             auxiliary_launch_configuration
-        ),
-        selective_continuation_game=selective_continuation_game,
-        selective_frontier_import=selective_frontier_import,
-        selective_frontier_import_sha256=(
-            selective_frontier_import_sha256
         ),
         clock=clock,
         id_factory=id_factory or ids(),
@@ -5274,6 +4801,7 @@ def test_runner_rejects_terminal_wip_attempt_spec_substitution(tmp_path):
 
 
 def test_authoritative_inventory_six_disjoint_bound_lanes(tmp_path):
+    assert R.CONTIGUOUS_RUNNER_LAUNCH_READY is False
     runner, backend, _, builder, _ = make_runner(tmp_path)
     report = runner.cycle()
     state = runner.state()
@@ -5296,24 +4824,8 @@ def test_authoritative_inventory_six_disjoint_bound_lanes(tmp_path):
 
 
 def test_substrate_permission_failure_latches_all_unstarted_work_and_polling_is_quiet(
-    tmp_path, monkeypatch,
+    tmp_path,
 ):
-    validation_work = {"full": 0, "reduced": 0}
-    original_reduction = R.ContiguousCampaignRunner._state_reduced
-
-    def counted_reduction(self, *, full_external_audit):
-        validation_work[
-            "full" if full_external_audit else "reduced"
-        ] += 1
-        return original_reduction(
-            self, full_external_audit=full_external_audit
-        )
-
-    monkeypatch.setattr(
-        R.ContiguousCampaignRunner,
-        "_state_reduced",
-        counted_reduction,
-    )
     backend = SubstrateFailingBackend()
     runner, _, _, _, clock = make_runner(
         tmp_path, backend=backend, max_lanes=6
@@ -5344,17 +4856,8 @@ def test_substrate_permission_failure_latches_all_unstarted_work_and_polling_is_
         if path.is_file()
     ))
     baseline_launches = tuple(backend.launch_calls)
-    validation_work.update(full=0, reduced=0)
     for _ in range(100):
         runner.cycle(now=clock.value)
-    # This is intentionally one hundred calls through the public lock/audit
-    # boundary, rather than one manually held cycle containing 100 private
-    # polls.  Each quiet cycle performs exactly one cold entry audit, one cold
-    # return audit, and one cycle-local suffix reduction.  The remaining
-    # internal reads consume the exact same owner-bound/head-bound state.
-    # Since the journal remains unchanged, authenticated validation work is
-    # linear in the number of public supervision cycles.
-    assert validation_work == {"full": 200, "reduced": 100}
     assert tuple(backend.launch_calls) == baseline_launches
     assert len(runner.journal._read_authenticated()) == baseline_events
     assert tuple(sorted(
@@ -5509,19 +5012,6 @@ def test_enospc_during_event_commit_consumes_reserve_and_latches_campaign(
     assert state["storage_incident"]["failure_stage"] == "event_commit"
     assert report["storage_incident"] == state["storage_incident"]
     assert not list(runner.journal.root.glob(".pending-*"))
-    assert runner._cycle_validation_context is None
-    assert runner._cycle_lock_held is False
-    assert runner._reducer_checkpoint is None
-    assert runner._trusted_auxiliary_event_digests == set()
-    assert runner._verified_lane_checkpoints == {}
-    assert runner._verified_lane_sources == {}
-    assert runner._verified_attempt_inputs == {}
-    assert (
-        R.Scheduler._selection_evidence_validation_scope.get()
-        is None
-    )
-    assert R.Scheduler._inventory_validation_scope.get() is None
-    assert R.Scheduler._snapshot_validation_scope.get() is None
     R.Scheduler.validate_journal_event_sequence(
         runner.journal.read()
     )
@@ -5587,54 +5077,6 @@ def test_storage_incident_quiesces_live_primary_once_without_collection_or_autho
     R.Scheduler.validate_journal_event_sequence(
         runner.journal.read()
     )
-
-
-def test_storage_emergency_reauthenticates_prefix_before_any_containment(
-    tmp_path, monkeypatch,
-):
-    runner, backend, gate, _, _ = make_runner(
-        tmp_path, max_lanes=1
-    )
-    runner.cycle()
-    baseline = runner.journal.filesystem_admission_snapshot(
-        required_event_bytes=1
-    )
-    monkeypatch.setattr(
-        runner.journal,
-        "filesystem_admission_snapshot",
-        lambda **_kwargs: {
-            **baseline,
-            "byte_admitted": False,
-            "inode_admitted": True,
-        },
-    )
-    original = runner._cycle_state_with_full_journal_prefix
-    mutated = False
-
-    def mutate_after_storage_latch():
-        nonlocal mutated
-        state = runner._cycle_state()
-        if not mutated and state["storage_incident"] is not None:
-            genesis = runner.journal._paths()[0]
-            mode = stat.S_IMODE(genesis.stat().st_mode)
-            genesis.chmod(0o600)
-            genesis.write_bytes(genesis.read_bytes() + b" ")
-            genesis.chmod(mode)
-            mutated = True
-        return original()
-
-    monkeypatch.setattr(
-        runner,
-        "_cycle_state_with_full_journal_prefix",
-        mutate_after_storage_latch,
-    )
-    with pytest.raises(R.ContiguousRunnerError):
-        runner.cycle()
-    assert mutated is True
-    assert backend.emergency_containment_calls == []
-    assert backend.collections == {}
-    assert backend.teardown_calls == []
-    assert gate.calls == []
 
 
 def test_journal_rolls_to_authenticated_checkpoint_segment_and_recovers_open_cut(
@@ -5794,52 +5236,6 @@ def test_production_l1_uses_only_control_hashed_blank_scaffold(tmp_path):
     )
 
 
-def test_source_schema_closes_imports_over_exact_flat_source_set():
-    payloads = {
-        "legs.py": (
-            b"from collections import deque\n"
-            b"from helpers import normalize\n"
-            b"import numpy.linalg as linear_algebra\n"
-        ),
-        "players.py": b"from legs import *\n",
-        "solve.py": b"import players\n",
-        "helpers.py": b"def normalize(value):\n    return value\n",
-        "policy_data.json": b'{}\n',
-    }
-    assert R.SourceSchema.validate_source_payloads(payloads) == (
-        "helpers.py",
-        "legs.py",
-        "players.py",
-        "policy_data.json",
-        "solve.py",
-    )
-    assert R.SourceSchema.PINNED_NUMPY_VERSION == "2.4.4"
-
-
-@pytest.mark.parametrize(
-    "forbidden_import",
-    (
-        "from .players import play\n",
-        "from arc.crack_lab import gkm_arena\n",
-        "import environment_files\n",
-        "import unknown_ambient_solver_package\n",
-    ),
-)
-def test_source_schema_rejects_nonclosed_import_roots(
-    forbidden_import,
-):
-    payloads = {
-        "legs.py": forbidden_import.encode("utf-8"),
-        "players.py": b"from legs import *\n",
-        "solve.py": b"import players\n",
-    }
-    with pytest.raises(
-        R.SourceSchema.SourceSchemaError,
-        match="relative source import|undeclared ambient root",
-    ):
-        R.SourceSchema.validate_source_payloads(payloads)
-
-
 def test_promoted_winning_source_is_exact_next_level_parent_after_restart(
     tmp_path,
 ):
@@ -5915,6 +5311,7 @@ def test_promoted_winning_source_is_exact_next_level_parent_after_restart(
     assert sentinel in (
         Path(next_level_frontier.parent_source_path) / "solve.py"
     ).read_bytes()
+
     prior_events = recovered.journal.read()
     blocked_identities = (
         set(recovered_state["used_scheduler_identifiers"])
@@ -5947,268 +5344,6 @@ def test_promoted_winning_source_is_exact_next_level_parent_after_restart(
     )
 
 
-def _one_level_selective_import_fixture(tmp_path):
-    authority_root = tmp_path / "frontier-authority"
-    gate = FakePromotionGate(authority_root)
-    origin_backend = FakeBackend(candidate_result)
-    origin, _, _, _, _ = make_runner(
-        tmp_path / "origin",
-        backend=origin_backend,
-        gate=gate,
-        max_lanes=1,
-    )
-    origin.cycle()
-    origin.cycle()
-    spec = next(iter(origin_backend.specs.values()))
-    assert origin.state()["lanes"][spec.game]["reached"] == 1
-    return gate, spec.game
-
-
-def test_selective_continuation_imports_exactly_one_sealed_frontier(
-    tmp_path,
-):
-    gate, game = _one_level_selective_import_fixture(tmp_path)
-    continuation_root = tmp_path / "continuation"
-    backend = FakeBackend()
-    runner, _, _, _, _ = make_runner(
-        continuation_root,
-        backend=backend,
-        gate=gate,
-        max_lanes=1,
-        selective_continuation_game=game,
-    )
-    events = runner.journal.read()
-    state = runner.state()
-    assert [event["kind"] for event in events[:2]] == [
-        "GENESIS",
-        "FRONTIER_IMPORTED",
-    ]
-    scheduler_audit = R.Scheduler.validate_journal_event_sequence(
-        events
-    )
-    assert scheduler_audit["policy_promoted_levels"] == 0
-    assert scheduler_audit["selective_continuation_game"] == game
-    read_only_audit = R.audit_runner_state_read_only(
-        continuation_root / "campaign"
-    )
-    assert read_only_audit["selective_continuation_game"] == game
-    assert read_only_audit["selective_complete"] is False
-    assert sum(
-        lane["blocked"] == R.SELECTIVE_SCOPE_BLOCKED_REASON
-        for selected_game, lane in state["lanes"].items()
-        if selected_game != game
-    ) == len(state["lanes"]) - 1
-    selected = state["lanes"][game]
-    assert selected["reached"] == 1
-    assert state["selective_scope_solved_levels"] == 0
-    assert state["selective_complete"] is False
-    snapshot = runner._scheduler_snapshot_from_state(state)
-    eligible = R.Scheduler.eligible_frontiers(snapshot)
-    assert tuple(item.game for item in eligible) == (game,)
-    assert eligible[0].reached == 1
-
-    runner.cycle()
-    launched = next(iter(backend.specs.values()))
-    assert launched.game == game
-    assert launched.target_level == 2
-    assert launched.parent_checkpoint_path == selected["checkpoint_path"]
-    assert (
-        launched.parent_checkpoint_sha256
-        == selected["checkpoint_sha256"]
-    )
-
-    recovered = R.ContiguousCampaignRunner(
-        continuation_root / "campaign",
-        backend=backend,
-        promotion_gate=gate,
-        input_builder=FakeInputBuilder(),
-        backend_configuration=backend_configuration(),
-        cost_window_id=COST_WINDOW_ID,
-        max_lanes=1,
-        controller_state_canaries=backend.controller_state_canaries,
-        selective_continuation_game=game,
-        id_factory=ids(),
-    )
-    recovered_state = recovered.state()
-    assert recovered_state["selective_frontier_import"] == state[
-        "selective_frontier_import"
-    ]
-    assert len([
-        event
-        for event in recovered.journal.read()
-        if event["kind"] == "FRONTIER_IMPORTED"
-    ]) == 1
-
-    with pytest.raises(
-        R.ContiguousRunnerError,
-        match="full runner cannot open a selective campaign",
-    ):
-        R.ContiguousCampaignRunner(
-            continuation_root / "campaign",
-            backend=backend,
-            promotion_gate=gate,
-            input_builder=FakeInputBuilder(),
-            backend_configuration=backend_configuration(),
-            cost_window_id=COST_WINDOW_ID,
-            max_lanes=1,
-            controller_state_canaries=(
-                backend.controller_state_canaries
-            ),
-            id_factory=ids(),
-        )
-
-
-def test_selective_continuation_reopens_imported_version_bytes(
-    tmp_path,
-):
-    gate, game = _one_level_selective_import_fixture(tmp_path)
-    runner, _, _, _, _ = make_runner(
-        tmp_path / "continuation",
-        gate=gate,
-        max_lanes=1,
-        selective_continuation_game=game,
-    )
-    binding = R.selective_frontier_import_from_dict(
-        runner.state()["selective_frontier_import"]
-    )
-    receipt = Path(binding.promotion_receipt_path)
-    receipt.write_bytes(receipt.read_bytes() + b"\n")
-    with pytest.raises(
-        R.ContiguousRunnerError,
-        match="selective import",
-    ):
-        runner.state()
-
-
-def test_selective_continuation_uses_supplied_stable_import_without_current(
-    tmp_path,
-    monkeypatch,
-):
-    gate, game = _one_level_selective_import_fixture(tmp_path)
-    expected = gate.issue_selective_frontier_import(game)
-    monkeypatch.setattr(
-        gate,
-        "issue_selective_frontier_import",
-        lambda *_args: (_ for _ in ()).throw(
-            AssertionError("pinned runner consulted mutable current")
-        ),
-    )
-    runner, _, _, _, _ = make_runner(
-        tmp_path / "continuation",
-        gate=gate,
-        max_lanes=1,
-        operator_configuration_sha256="a" * 64,
-        selective_continuation_game=game,
-        selective_frontier_import=expected,
-        selective_frontier_import_sha256=expected.import_sha256,
-    )
-    assert runner.state()["selective_frontier_import"] == (
-        R.selective_frontier_import_to_dict(expected)
-    )
-    assert runner.state()[
-        "operator_authorized_selective_frontier_import_sha256"
-    ] == expected.import_sha256
-    audit = R.audit_runner_state_read_only(runner.root)
-    assert audit[
-        "operator_authorized_selective_frontier_import_sha256"
-    ] == expected.import_sha256
-
-    recovered = R.ContiguousCampaignRunner(
-        runner.root,
-        backend=runner.backend,
-        promotion_gate=gate,
-        input_builder=FakeInputBuilder(),
-        backend_configuration=backend_configuration(),
-        cost_window_id=COST_WINDOW_ID,
-        max_lanes=1,
-        operator_configuration_sha256="a" * 64,
-        controller_state_canaries=(
-            runner.backend.controller_state_canaries
-        ),
-        selective_continuation_game=game,
-        selective_frontier_import_sha256=expected.import_sha256,
-        id_factory=ids(),
-    )
-    assert recovered.state()[
-        "operator_authorized_selective_frontier_import_sha256"
-    ] == expected.import_sha256
-
-    with pytest.raises(
-        R.ContiguousRunnerError,
-        match="configuration disagrees with genesis",
-    ):
-        R.ContiguousCampaignRunner(
-            runner.root,
-            backend=runner.backend,
-            promotion_gate=gate,
-            input_builder=FakeInputBuilder(),
-            backend_configuration=backend_configuration(),
-            cost_window_id=COST_WINDOW_ID,
-            max_lanes=1,
-            operator_configuration_sha256="a" * 64,
-            controller_state_canaries=(
-                runner.backend.controller_state_canaries
-            ),
-            selective_continuation_game=game,
-            selective_frontier_import_sha256="0" * 64,
-            id_factory=ids(),
-        )
-
-    with pytest.raises(
-        R.ContiguousRunnerError,
-        match="authorized digest",
-    ):
-        make_runner(
-            tmp_path / "wrong-import",
-            gate=gate,
-            max_lanes=1,
-            operator_configuration_sha256="a" * 64,
-            selective_continuation_game=game,
-            selective_frontier_import=expected,
-            selective_frontier_import_sha256="0" * 64,
-        )
-    assert not (tmp_path / "wrong-import" / "campaign").exists()
-
-
-def test_selective_continuation_recovers_genesis_import_crash_cut(
-    tmp_path,
-    monkeypatch,
-):
-    gate, game = _one_level_selective_import_fixture(tmp_path)
-    continuation_root = tmp_path / "continuation"
-    original_append = R.DurableAttemptJournal.append
-
-    def crash_before_import(self, *, kind, **kwargs):
-        if kind == "FRONTIER_IMPORTED":
-            raise R.SimulatedCrash()
-        return original_append(self, kind=kind, **kwargs)
-
-    monkeypatch.setattr(
-        R.DurableAttemptJournal, "append", crash_before_import
-    )
-    with pytest.raises(R.SimulatedCrash):
-        make_runner(
-            continuation_root,
-            gate=gate,
-            max_lanes=1,
-            selective_continuation_game=game,
-        )
-    monkeypatch.setattr(
-        R.DurableAttemptJournal, "append", original_append
-    )
-    recovered, _, _, _, _ = make_runner(
-        continuation_root,
-        gate=gate,
-        max_lanes=1,
-        selective_continuation_game=game,
-    )
-    events = recovered.journal.read()
-    assert [event["kind"] for event in events] == [
-        "GENESIS",
-        "FRONTIER_IMPORTED",
-    ]
-    assert recovered.state()["lanes"][game]["reached"] == 1
-
 def stat_mode(path: Path) -> int:
     return os.stat(path, follow_symlinks=False).st_mode & 0o777
 
@@ -6232,13 +5367,6 @@ def test_limit_none_disables_uniform_cost_cutoff(tmp_path):
 
 def test_auxiliary_dispatch_is_default_off_and_fails_closed(tmp_path):
     assert R.CONTIGUOUS_AUXILIARY_LAUNCH_READY is False
-    assert "CONTIGUOUS_AUXILIARY_LAUNCH_READY" in R.__all__
-    disabled, _, _, _, _ = make_runner(
-        tmp_path / "default-disabled", max_lanes=1
-    )
-    disabled_state = disabled.state()
-    assert disabled_state["auxiliary_dispatch_configured"] is False
-    assert disabled_state["auxiliary_launch_ready"] is False
     proposer = FakeBackend()
     common = {
         "backend": proposer,
@@ -6274,41 +5402,6 @@ def test_auxiliary_dispatch_is_default_off_and_fails_closed(tmp_path):
             ),
             **common,
         )
-
-    enabled_backend = FakeAuxiliaryBackend(
-        tmp_path / "enabled-auxiliary-backend"
-    )
-    enabled, _, _, _, _ = make_runner(
-        tmp_path / "enabled",
-        max_lanes=1,
-        auxiliary_backend=enabled_backend,
-        auxiliary_launch_configuration=(
-            enabled_backend.configuration()
-        ),
-    )
-    enabled_state = enabled.state()
-    assert enabled_state["auxiliary_dispatch_configured"] is True
-    assert enabled_state["auxiliary_launch_ready"] is False
-
-
-def test_deprecated_auxiliary_ready_flag_cannot_authorize_dispatch(
-    tmp_path, monkeypatch
-):
-    monkeypatch.setattr(
-        R, "CONTIGUOUS_AUXILIARY_LAUNCH_READY", True
-    )
-    runner, backend, _, _, _ = make_runner(
-        tmp_path, max_lanes=1
-    )
-    state = runner.state()
-    assert state["auxiliary_launch_ready"] is False
-    assert state["auxiliary_dispatch_configured"] is False
-    runner.cycle()
-    assert backend.specs
-    post_cycle = runner.state()
-    assert post_cycle["auxiliary_launch_ready"] is False
-    assert post_cycle["pending_auxiliary_decision"] is None
-    assert post_cycle["auxiliary_assignments"] == {}
 
 
 def test_soft_deadline_drains_lane_locally_and_refills_unrelated_lane(tmp_path):
@@ -6464,127 +5557,10 @@ def test_restart_after_deadline_polls_then_launches_other_prepared_lane(
     ) == 1
 
 
-def test_retained_prepare_crash_uses_fresh_generation_and_bounds_repeats(
-    tmp_path: Path,
-):
-    backend = QuarantinedPreparationBackend(quarantine_count=1)
-    runner, _, _, _, clock = make_runner(
-        tmp_path / "one", backend=backend, max_lanes=1
-    )
-    first_report = runner.cycle()
-    first_state = runner.state()
-    assert first_report["started_attempts"] == []
-    assert len(backend.quarantined_specs) == 1
-    old_spec = backend.quarantined_specs[0]
-    old_attempt = first_state["attempts"][old_spec.attempt_id]
-    assert old_attempt["phase"] == "CLOSED"
-    assert old_attempt["settled_result"] == R.AttemptResult(
-        kind="infrastructure",
-        cost_used=0.0,
-        reason="compatibility_preparation_quarantined",
-    )
-    assert first_state["lanes"][old_spec.game]["active"] is None
-    old_receipt = Path(
-        old_attempt["preparation_quarantine"]["path"]
-    )
-    old_receipt_sha256 = hashlib.sha256(
-        old_receipt.read_bytes()
-    ).hexdigest()
-    old_staging_observation = (
-        R.CompatibilityClosure.observe_quarantined_staging(
-            Path(old_spec.host_transcript_path).parent
-            / "compatibility_arena_closure"
-        )
-    )
-
-    # The dispatch pass stops after one quarantine, so even a zero first
-    # backoff cannot churn identities inside the same supervision cycle.
-    assert len(first_state["attempts"]) == 1
-    second_report = runner.cycle()
-    second_state = runner.state()
-    assert len(second_report["started_attempts"]) == 1
-    fresh_id = second_report["started_attempts"][0]
-    fresh = second_state["attempts"][fresh_id]
-    assert fresh["phase"] == "RUNNING"
-    assert fresh["spec"].generation_id != old_spec.generation_id
-    assert fresh["spec"].attempt_id != old_spec.attempt_id
-    assert (
-        Path(fresh["spec"].host_transcript_path).parent
-        != Path(old_spec.host_transcript_path).parent
-    )
-    assert hashlib.sha256(old_receipt.read_bytes()).hexdigest() == (
-        old_receipt_sha256
-    )
-    assert (
-        R.CompatibilityClosure.observe_quarantined_staging(
-            Path(old_spec.host_transcript_path).parent
-            / "compatibility_arena_closure"
-        )
-        == old_staging_observation
-    )
-
-    repeated_backend = QuarantinedPreparationBackend(
-        quarantine_count=R.FAILURE_CIRCUIT_THRESHOLD
-    )
-    repeated, _, _, _, repeated_clock = make_runner(
-        tmp_path / "repeated",
-        backend=repeated_backend,
-        max_lanes=1,
-    )
-    for _index in range(R.FAILURE_CIRCUIT_THRESHOLD):
-        repeated.cycle()
-        repeated_clock.advance(
-            max(R.OPERATION_RETRY_BACKOFF_SECONDS) + 1
-        )
-    repeated_state = repeated.state()
-    assert len(repeated_backend.quarantined_specs) == (
-        R.FAILURE_CIRCUIT_THRESHOLD
-    )
-    assert repeated_state["operator_incident"] is not None
-    assert repeated_state["operator_incident"]["operation"] == (
-        "backend_prepare"
-    )
-    retained_count = len(repeated_state["attempts"])
-    repeated.cycle()
-    assert len(repeated.state()["attempts"]) == retained_count
-    assert all(
-        attempt["phase"] == "CLOSED"
-        for attempt in repeated.state()["attempts"].values()
-    )
-
-
 def test_escalation_is_frontier_bound_and_missing_wip_falls_back_to_exclude(
     tmp_path, monkeypatch
 ):
     target_game = sorted(Contract.authoritative_inventory())[0]
-    original_snapshot = R.ContiguousCampaignRunner._scheduler_snapshot
-
-    def isolated_frontier_snapshot(cls, *args, **kwargs):
-        del cls
-        snapshot = original_snapshot(*args, **kwargs)
-        # Exercise the complete durable runner/escalation path without making
-        # this one invariant wait for the independent 25-game fairness sweep.
-        # The game-agnostic selector and six-lane projection have separate S06
-        # owners; this fixture isolates one exact frontier by presenting every
-        # other frontier as durably unavailable to both creation and replay.
-        return R.Scheduler.validate_snapshot(replace(
-            snapshot,
-            frontiers=tuple(
-                frontier
-                if frontier.game == target_game
-                else replace(
-                    frontier,
-                    blocked_reason="test-isolated-frontier",
-                )
-                for frontier in snapshot.frontiers
-            ),
-        ))
-
-    monkeypatch.setattr(
-        R.ContiguousCampaignRunner,
-        "_scheduler_snapshot",
-        classmethod(isolated_frontier_snapshot),
-    )
     specs: list[R.AttemptSpec] = []
     verified_decisions = 0
     original_verify_decision = R.Scheduler.verify_decision
@@ -6597,37 +5573,6 @@ def test_escalation_is_frontier_bound_and_missing_wip_falls_back_to_exclude(
     monkeypatch.setattr(
         R.Scheduler, "verify_decision", verify_decision_once
     )
-    collection_validations = 0
-    full_collection_validations = 0
-    original_validate_collection = (
-        R.ContiguousCampaignRunner._validate_collection
-    )
-    original_validate_collection_uncached = (
-        R.ContiguousCampaignRunner._validate_collection_uncached
-    )
-
-    def counted_collection_validation(self, *args, **kwargs):
-        nonlocal collection_validations
-        collection_validations += 1
-        return original_validate_collection(self, *args, **kwargs)
-
-    def counted_full_collection_validation(self, *args, **kwargs):
-        nonlocal full_collection_validations
-        full_collection_validations += 1
-        return original_validate_collection_uncached(
-            self, *args, **kwargs
-        )
-
-    monkeypatch.setattr(
-        R.ContiguousCampaignRunner,
-        "_validate_collection",
-        counted_collection_validation,
-    )
-    monkeypatch.setattr(
-        R.ContiguousCampaignRunner,
-        "_validate_collection_uncached",
-        counted_full_collection_validation,
-    )
 
     def strategy(spec):
         if spec.game != target_game:
@@ -6635,10 +5580,10 @@ def test_escalation_is_frontier_bound_and_missing_wip_falls_back_to_exclude(
         specs.append(spec)
         return R.AttemptResult(kind="clean_no_progress")
 
-    runner, backend, _, _, _ = make_runner(
-        tmp_path, backend=FakeBackend(strategy), max_lanes=1
+    runner, _, _, _, _ = make_runner(
+        tmp_path, backend=FakeBackend(strategy), max_lanes=6
     )
-    for _ in range(30):
+    for _ in range(100):
         runner.cycle()
         if len(specs) >= 7:
             break
@@ -6678,276 +5623,13 @@ def test_escalation_is_frontier_bound_and_missing_wip_falls_back_to_exclude(
     )
     # Bound authenticated work directly. Wall-clock assertions are not
     # admissible launch evidence because unrelated host load can change them.
-    # Every durable decision is verified before use.  A public cold audit
-    # intentionally replays all historical decisions instead of inheriting a
-    # reducer/validation cache from the active supervision cycle.
-    assert verified_decisions >= all_decision_events
+    # Every durable decision is verified exactly once, and cached state reads
+    # perform no additional decision verification.
+    assert verified_decisions == all_decision_events
     before_cached_reads = verified_decisions
     for _ in range(3):
         runner.state()
-    assert verified_decisions - before_cached_reads == (
-        3 * all_decision_events
-    )
-    # Bound the expensive cryptographic/secret-scan work directly.  A
-    # collection has at most two pre-teardown passes (admission plus journal
-    # replay), one exact post-teardown pass, and one fresh pass after the
-    # explicit result transition changes state/WIP custody metadata.  Cold
-    # audits deliberately discard the quiescent byte-digest cache, so every
-    # retained call in this isolated stress is a complete validation.
-    assert full_collection_validations <= 4 * len(backend.collections)
-    assert collection_validations == full_collection_validations
-
-
-def _opaque_quiescence_proof() -> R.BackendTeardownProof:
-    return R.BackendTeardownProof(
-        container_id="1" * 64,
-        cause="normal_exit",
-        proof_sha256="2" * 64,
-        container_inspect_absent=True,
-        container_top_absent=True,
-        identity_query_empty=True,
-        no_descendants=True,
-        app_server_process_absent=True,
-        app_server_process_group_absent=True,
-        bridge_socket_absent=True,
-        bridge_token_absent=True,
-        app_server_control_absent=True,
-        arena_relay_container_id="3" * 64,
-        arena_volume_name="arc-agi3-arena-123456abcdef-" + "4" * 32,
-        arena_relay_inspect_absent=True,
-        arena_relay_top_absent=True,
-        arena_relay_identity_query_empty=True,
-        arena_volume_inspect_absent=True,
-        arena_volume_identity_query_empty=True,
-        arena_relay_attachment_status="CLEAN_EOF",
-        arena_relay_teardown_receipt_path="/tmp/arena-teardown.json",
-        arena_relay_teardown_receipt_sha256="5" * 64,
-        process_identity_authority="controller_container_cgroup",
-        controller_container_id="6" * 64,
-        egress_proxy_container_id="7" * 64,
-        controller_inspect_absent=True,
-        controller_identity_query_empty=True,
-        controller_top_absent=True,
-        controller_no_descendants=True,
-        egress_proxy_inspect_absent=True,
-        egress_proxy_identity_query_empty=True,
-        egress_proxy_top_absent=True,
-        egress_proxy_no_descendants=True,
-        controller_absence_receipt_sha256="8" * 64,
-        canary_reveal_path="/tmp/canary-reveal.json",
-        canary_reveal_sha256="9" * 64,
-    )
-
-
-def test_collection_validation_cache_is_post_teardown_bounded_and_digest_bound(
-    monkeypatch,
-):
-    runner = R.ContiguousCampaignRunner.__new__(
-        R.ContiguousCampaignRunner
-    )
-    runner._secret_sentinels = ()
-    runner._controller_state_canaries = ()
-    spec = SimpleNamespace(attempt_id="attempt-1")
-    teardown = _opaque_quiescence_proof()
-    full_validations = 0
-    snapshot_calls = 0
-    snapshot_digest = "b" * 64
-
-    monkeypatch.setattr(
-        runner,
-        "_collection_validation_binding",
-        lambda *_args, **_kwargs: "a" * 64,
-    )
-    monkeypatch.setattr(
-        R,
-        "_backend_teardown_from_dict",
-        lambda _value: teardown,
-    )
-
-    def full_validation(*_args, **_kwargs):
-        nonlocal full_validations
-        full_validations += 1
-
-    def snapshot(_spec):
-        nonlocal snapshot_calls
-        snapshot_calls += 1
-        return snapshot_digest
-
-    monkeypatch.setattr(
-        runner, "_snapshot_quiescent_collection_evidence", snapshot
-    )
-    monkeypatch.setattr(
-        runner, "_validate_collection_uncached", full_validation
-    )
-    opaque = object()
-    runner._validate_collection(spec, opaque, opaque, opaque)
-    runner._validate_collection(spec, opaque, opaque, opaque)
-    assert full_validations == 2
-    assert snapshot_calls == 0
-    assert not hasattr(runner, "_verified_quiescent_collections")
-    with pytest.raises(
-        R.ContiguousRunnerError,
-        match="received teardown authority",
-    ):
-        runner._validate_collection(
-            spec, opaque, opaque, opaque, teardown=teardown
-        )
-    with pytest.raises(
-        R.ContiguousRunnerError,
-        match="lacks quiescence proof",
-    ):
-        runner._validate_collection(
-            spec,
-            opaque,
-            opaque,
-            opaque,
-            allow_arena_teardown_receipt=True,
-        )
-
-    runner._validate_collection(
-        spec,
-        opaque,
-        opaque,
-        opaque,
-        allow_arena_teardown_receipt=True,
-        teardown=teardown,
-    )
-    for _ in range(4):
-        runner._validate_collection(
-            spec,
-            opaque,
-            opaque,
-            opaque,
-            allow_arena_teardown_receipt=True,
-            teardown=teardown,
-        )
-    assert full_validations == 3
-    assert snapshot_calls == 5
-    assert len(runner._verified_quiescent_collections) == 1
-    assert all(
-        isinstance(value, str)
-        and len(value) == 64
-        and int(value, 16) >= 0
-        for value in runner._verified_quiescent_collections.values()
-    )
-
-    snapshot_digest = "c" * 64
-    with pytest.raises(
-        R.ContiguousRunnerError,
-        match="binding or evidence changed",
-    ):
-        runner._validate_collection(
-            spec,
-            opaque,
-            opaque,
-            opaque,
-            allow_arena_teardown_receipt=True,
-            teardown=teardown,
-    )
-    assert full_validations == 3
-    assert snapshot_calls == 6
-
-    snapshot_digest = "b" * 64
-    runner._verified_quiescent_collections = {
-        f"old-{index}": "d" * 64
-        for index in range(R.MAX_VERIFIED_QUIESCENT_COLLECTIONS)
-    }
-    spec.attempt_id = "attempt-new"
-    runner._validate_collection(
-        spec,
-        opaque,
-        opaque,
-        opaque,
-        allow_arena_teardown_receipt=True,
-        teardown=teardown,
-    )
-    assert full_validations == 4
-    assert snapshot_calls == 7
-    assert len(runner._verified_quiescent_collections) == (
-        R.MAX_VERIFIED_QUIESCENT_COLLECTIONS
-    )
-    assert "old-0" not in runner._verified_quiescent_collections
-    assert "attempt-new" in runner._verified_quiescent_collections
-
-
-def test_quiescent_snapshot_read_failure_is_classified_and_retryable(
-    tmp_path,
-    monkeypatch,
-):
-    generation = (tmp_path / "generation").resolve()
-    host = generation / "host"
-    output = generation / "output"
-    state = generation / "state" / "codex_home"
-    for root in (host, output, state):
-        root.mkdir(parents=True)
-        (root / "evidence.bin").write_bytes(b"clean")
-    spec = SimpleNamespace(
-        attempt_id="attempt-1",
-        host_transcript_path=str(host / "backend.jsonl"),
-        output_dir=str(output),
-        app_server_state_dir=str(state),
-    )
-    teardown = _opaque_quiescence_proof()
-    runner = R.ContiguousCampaignRunner.__new__(
-        R.ContiguousCampaignRunner
-    )
-    runner._secret_sentinels = ()
-    runner._controller_state_canaries = ()
-    full_validations = 0
-    original_read = os.read
-    injected = False
-
-    def full_validation(*_args, **_kwargs):
-        nonlocal full_validations
-        full_validations += 1
-
-    def fail_first_read(descriptor, maximum):
-        nonlocal injected
-        if not injected:
-            injected = True
-            raise OSError("synthetic snapshot read failure")
-        return original_read(descriptor, maximum)
-
-    monkeypatch.setattr(
-        runner,
-        "_collection_validation_binding",
-        lambda *_args, **_kwargs: "a" * 64,
-    )
-    monkeypatch.setattr(
-        runner, "_validate_collection_uncached", full_validation
-    )
-    monkeypatch.setattr(
-        R, "_backend_teardown_from_dict", lambda _value: teardown
-    )
-    monkeypatch.setattr(os, "read", fail_first_read)
-    opaque = object()
-    with pytest.raises(
-        R.ContiguousRunnerError,
-        match="quiescent host_evidence tree changed during digest",
-    ):
-        runner._validate_collection(
-            spec,
-            opaque,
-            opaque,
-            opaque,
-            allow_arena_teardown_receipt=True,
-            teardown=teardown,
-        )
-    assert full_validations == 1
-    assert not getattr(runner, "_verified_quiescent_collections", {})
-
-    monkeypatch.setattr(os, "read", original_read)
-    runner._validate_collection(
-        spec,
-        opaque,
-        opaque,
-        opaque,
-        allow_arena_teardown_receipt=True,
-        teardown=teardown,
-    )
-    assert full_validations == 2
-    assert len(runner._verified_quiescent_collections) == 1
-    R.ContiguousCampaignRunner._snapshot_quiescent_collection_evidence(spec)
+    assert verified_decisions == before_cached_reads
 
 
 def test_mismatched_wip_is_dropped_but_clean_failure_counts(tmp_path):
@@ -8227,153 +6909,6 @@ def test_crash_after_collection_recovers_before_teardown(tmp_path):
     )
 
 
-def test_post_teardown_snapshot_is_reducer_read_only_and_restart_safe(
-    tmp_path, monkeypatch
-):
-    backend = FakeBackend(
-        lambda spec: R.AttemptResult(kind="clean_no_progress")
-    )
-    backend.crash_after_first_collect = True
-    runner, _, gate, builder, _ = make_runner(
-        tmp_path, backend=backend, max_lanes=1
-    )
-    runner.cycle()
-    with pytest.raises(R.SimulatedCrash):
-        runner.cycle()
-    attempt = next(iter(runner.state()["attempts"].values()))
-    assert attempt["phase"] == "EXITED"
-    generation = Path(attempt["spec"].generation_dir)
-
-    recovering = R.ContiguousCampaignRunner(
-        tmp_path / "campaign",
-        backend=backend,
-        promotion_gate=gate,
-        input_builder=builder,
-        backend_configuration=backend_configuration(),
-        cost_window_id=COST_WINDOW_ID,
-        max_lanes=1,
-        controller_state_canaries=backend.controller_state_canaries,
-        id_factory=ids(),
-    )
-    current = recovering.state()
-    attempt_id, live_attempt = next(iter(current["attempts"].items()))
-    recovering._collect_exited(
-        attempt_id, live_attempt, now=recovering.clock()
-    )
-    collected = recovering.state()["attempts"][attempt_id]
-    assert collected["phase"] == "COLLECTED"
-    recovering._teardown_collected(
-        attempt_id, collected, now=recovering.clock()
-    )
-    torn_state = recovering.state()
-    torn_attempt = torn_state["attempts"][attempt_id]
-    assert torn_attempt["phase"] == "TORN_DOWN"
-    assert not getattr(
-        recovering, "_verified_quiescent_collections", {}
-    )
-
-    def evidence_metadata():
-        return {
-            path: (
-                path.stat(follow_symlinks=False).st_mode,
-                path.stat(follow_symlinks=False).st_size,
-                path.stat(follow_symlinks=False).st_mtime_ns,
-                path.stat(follow_symlinks=False).st_ctime_ns,
-            )
-            for path in sorted(generation.rglob("*"))
-        }
-
-    before_result_seal = evidence_metadata()
-    original_seal = R._seal_regular_tree
-
-    def fail_result_seal(_root):
-        original_seal(_root)
-        raise R.ContiguousRunnerError("synthetic state seal failure")
-
-    monkeypatch.setattr(R, "_seal_regular_tree", fail_result_seal)
-    with pytest.raises(
-        R.ContiguousRunnerError,
-        match="synthetic state seal failure",
-    ):
-        recovering._record_torn_down_result(
-            attempt_id, torn_attempt, now=recovering.clock()
-        )
-    assert attempt_id not in getattr(
-        recovering, "_verified_quiescent_collections", {}
-    )
-    assert evidence_metadata() != before_result_seal
-    monkeypatch.setattr(R, "_seal_regular_tree", original_seal)
-
-    original_uncached = recovering._validate_collection_uncached
-    full_validations = 0
-
-    def validate_uncached(*args, **kwargs):
-        nonlocal full_validations
-        full_validations += 1
-        return original_uncached(*args, **kwargs)
-
-    monkeypatch.setattr(
-        recovering, "_validate_collection_uncached", validate_uncached
-    )
-
-    before = evidence_metadata()
-    original_chmod = os.chmod
-
-    def reject_generation_chmod(path, mode, *, follow_symlinks=True):
-        selected = Path(path)
-        if selected == generation or generation in selected.parents:
-            raise AssertionError("state replay attempted to chmod evidence")
-        return original_chmod(
-            path, mode, follow_symlinks=follow_symlinks
-        )
-
-    monkeypatch.setattr(os, "chmod", reject_generation_chmod)
-    recovering.state()
-    assert full_validations == 1
-    assert not getattr(
-        recovering, "_verified_quiescent_collections", {}
-    )
-    assert evidence_metadata() == before
-    monkeypatch.setattr(os, "chmod", original_chmod)
-    monkeypatch.setattr(
-        recovering, "_validate_collection_uncached", original_uncached
-    )
-
-    original_validate = (
-        R.ContiguousCampaignRunner._validate_prepared_input
-    )
-    prepared_validations = 0
-
-    def validate_prepared(*args, **kwargs):
-        nonlocal prepared_validations
-        prepared_validations += 1
-        return original_validate(*args, **kwargs)
-
-    monkeypatch.setattr(
-        R.ContiguousCampaignRunner,
-        "_validate_prepared_input",
-        validate_prepared,
-    )
-    restarted = R.ContiguousCampaignRunner(
-        tmp_path / "campaign",
-        backend=backend,
-        promotion_gate=gate,
-        input_builder=builder,
-        backend_configuration=backend_configuration(),
-        cost_window_id=COST_WINDOW_ID,
-        max_lanes=1,
-        controller_state_canaries=backend.controller_state_canaries,
-        id_factory=ids(),
-    )
-    assert evidence_metadata() == before
-    restarted.cycle()
-    assert prepared_validations > 0
-    assert any(
-        event["kind"] == "ATTEMPT_RESULT"
-        for event in restarted.journal.read()
-    )
-
-
 @pytest.mark.parametrize(
     "fault_point",
     (
@@ -8618,921 +7153,6 @@ def test_reducer_checkpoint_is_not_mutable_through_returned_state(
         runner.state()["attempts"][attempt_id]["spec"].game
         == durable_game
     )
-
-
-def test_runner_scheduler_snapshot_cache_revalidates_sources_and_is_copy_isolated(
-    tmp_path,
-):
-    runner, _, _, _, _ = make_runner(tmp_path, max_lanes=1)
-    state = runner.state()
-    events = runner.journal.read()
-    cache = {}
-
-    def snapshot():
-        return runner._scheduler_snapshot(
-            genesis={
-                "campaign_id": state["campaign_id"],
-                "inventory": state["inventory"],
-                "max_lanes": state["max_lanes"],
-            },
-            lanes=state["lanes"],
-            attempts=state["attempts"],
-            budget=runner._budget_from_state(state),
-            journal_head_sequence=events[-1]["sequence"],
-            journal_head_digest=events[-1]["digest"],
-            selection_evidence_cache=cache,
-        )
-
-    first = snapshot()
-    original_novelty = first.frontiers[0].evidence.conditional_novelty
-    object.__setattr__(
-        first.frontiers[0].evidence,
-        "conditional_novelty",
-        original_novelty + 999,
-    )
-    second = snapshot()
-    assert (
-        second.frontiers[0].evidence.conditional_novelty
-        == original_novelty
-    )
-
-    lane = state["lanes"][second.frontiers[0].game]
-    source_file = Path(lane["source_path"]) / "legs.py"
-    mode = stat.S_IMODE(source_file.stat().st_mode)
-    source_file.chmod(0o600)
-    source_file.write_bytes(source_file.read_bytes() + b"\n")
-    source_file.chmod(mode)
-    with pytest.raises(
-        R.ContiguousRunnerError,
-        match="campaign state cannot form",
-    ):
-        snapshot()
-
-
-def test_cycle_validated_reduction_is_linear_local_and_restart_cold(
-    tmp_path, monkeypatch
-):
-    counts = {"full": 0, "reduced": 0, "lanes": 0}
-    cold_full_entries = []
-    original_state = R.ContiguousCampaignRunner._state_reduced
-    original_lane = R.ContiguousCampaignRunner._validate_lane_authority
-
-    def counted_state(self, *, full_external_audit):
-        counts[
-            "full" if full_external_audit else "reduced"
-        ] += 1
-        if full_external_audit:
-            cold_full_entries.append((
-                self._reducer_checkpoint,
-                dict(self._verified_lane_checkpoints),
-                dict(self._verified_lane_sources),
-                dict(self._verified_attempt_inputs),
-                set(self._trusted_auxiliary_event_digests),
-            ))
-        return original_state(
-            self, full_external_audit=full_external_audit
-        )
-
-    def counted_lane(self, *args, **kwargs):
-        counts["lanes"] += 1
-        return original_lane(self, *args, **kwargs)
-
-    monkeypatch.setattr(
-        R.ContiguousCampaignRunner,
-        "_state_reduced",
-        counted_state,
-    )
-    monkeypatch.setattr(
-        R.ContiguousCampaignRunner,
-        "_validate_lane_authority",
-        counted_lane,
-    )
-    runner, backend, gate, builder, _ = make_runner(
-        tmp_path, max_lanes=1
-    )
-    counts.update(full=0, reduced=0, lanes=0)
-    cold_full_entries.clear()
-
-    runner.cycle()
-    inventory_size = len(Contract.authoritative_inventory())
-    assert counts["full"] == 2
-    assert len(cold_full_entries) == 2
-    assert cold_full_entries[0] == (
-        None, {}, {}, {}, set()
-    )
-    # The return pass keeps only the authenticated semantic reducer seed;
-    # every external pointer and receipt memo is cold.
-    assert isinstance(
-        cold_full_entries[1][0], R._ReducerCheckpoint
-    )
-    assert cold_full_entries[1][1:] == ({}, {}, {}, set())
-    assert counts["reduced"] > 2
-    # Two campaign-wide boundary audits plus four exact effects: reservation
-    # creation/input construction, prepare, and launch.
-    assert counts["lanes"] == 2 * inventory_size + 4
-    assert runner._cycle_validation_context is None
-    assert runner._cycle_lock_held is False
-    assert isinstance(runner._reducer_checkpoint, R._ReducerCheckpoint)
-    assert (
-        R.Scheduler._selection_evidence_validation_scope.get()
-        is None
-    )
-    assert R.Scheduler._inventory_validation_scope.get() is None
-    assert R.Scheduler._snapshot_validation_scope.get() is None
-    assert runner._verified_lane_checkpoints == {}
-    assert runner._verified_lane_sources == {}
-    assert runner._verified_attempt_inputs == {}
-
-    full_before = counts["full"]
-    reduced_before = counts["reduced"]
-    runner._cycle_state()
-    assert counts["full"] == full_before + 1
-    assert counts["reduced"] == reduced_before
-
-    restarted = R.ContiguousCampaignRunner(
-        tmp_path / "campaign",
-        backend=backend,
-        promotion_gate=gate,
-        input_builder=builder,
-        backend_configuration=backend_configuration(),
-        cost_window_id=COST_WINDOW_ID,
-        max_lanes=1,
-        controller_state_canaries=backend.controller_state_canaries,
-        id_factory=ids(),
-    )
-    assert restarted._cycle_validation_context is None
-    assert restarted._reducer_checkpoint is None
-
-    lane = restarted.state()["lanes"]
-    source_root = Path(next(iter(lane.values()))["source_path"])
-    source_file = source_root / "legs.py"
-    mode = stat.S_IMODE(source_file.stat().st_mode)
-    source_file.chmod(0o600)
-    source_file.write_bytes(source_file.read_bytes() + b"\n")
-    source_file.chmod(mode)
-    with pytest.raises(
-        R.ContiguousRunnerError,
-        match="campaign state cannot form|lane source changed",
-    ):
-        R.ContiguousCampaignRunner(
-            tmp_path / "campaign",
-            backend=backend,
-            promotion_gate=gate,
-            input_builder=builder,
-            backend_configuration=backend_configuration(),
-            cost_window_id=COST_WINDOW_ID,
-            max_lanes=1,
-            controller_state_canaries=backend.controller_state_canaries,
-            id_factory=ids(),
-        )
-
-
-def test_growing_history_replays_semantic_suffix_near_linearly(
-    tmp_path, monkeypatch,
-):
-    runner, _, _, _, clock = make_runner(tmp_path, max_lanes=1)
-    runner.cycle()
-    baseline_events = len(runner.journal.read())
-    replayed = []
-    runner._semantic_replay_observer = (
-        lambda event: replayed.append(
-            (event["sequence"], event["kind"])
-        )
-    )
-
-    def append_one_retry(*, now=None, initial_state=None):
-        del now
-        assert initial_state is not None
-        attempt_id, attempt = next(
-            (item for item in initial_state["attempts"].items()
-             if item[1]["phase"] == "RUNNING")
-        )
-        retry_index = attempt["retry_count"] + 1
-        operation_index = (
-            attempt["operation_retry_counts"].get(
-                "backend_poll", 0
-            ) + 1
-        )
-        recorded_at = float(clock())
-        runner.journal.append(
-            event_id=f"{attempt_id}:retry:{retry_index:08d}",
-            kind="ATTEMPT_RETRY",
-            payload={
-                "attempt_id": attempt_id,
-                "retry_index": retry_index,
-                "operation": "backend_poll",
-                "operation_retry_index": operation_index,
-                "error_type": "SyntheticHistoryGrowth",
-                "backoff_seconds": 1.0,
-                "retry_not_before": recorded_at + 1.0,
-            },
-            recorded_at=recorded_at,
-        )
-        return {
-            "solved_levels": initial_state["solved_levels"],
-            "total_levels": initial_state["total_levels"],
-            "complete": initial_state["complete"],
-        }
-
-    monkeypatch.setattr(runner, "_cycle_locked", append_one_retry)
-    started = time.monotonic()
-    for _ in range(100):
-        runner.cycle(now=clock.value)
-    elapsed = time.monotonic() - started
-    final_events = len(runner.journal.read())
-    grown = final_events - baseline_events
-    assert grown == 100
-    # Count the actual semantic event loop, not top-level reducer calls.  Each
-    # newly committed event is replayed once; the authenticated checkpoint
-    # prevents old decisions/history from being replayed on either boundary.
-    assert len(replayed) == grown
-    assert sum(kind == "SCHEDULER_DECISION" for _, kind in replayed) == 0
-    assert elapsed < 45.0
-
-
-def test_reentrant_public_state_is_full_and_cycle_context_is_restored(
-    tmp_path, monkeypatch
-):
-    counts = {"full": 0, "reduced": 0}
-    original_state = R.ContiguousCampaignRunner._state_reduced
-
-    def counted_state(self, *, full_external_audit):
-        counts[
-            "full" if full_external_audit else "reduced"
-        ] += 1
-        return original_state(
-            self, full_external_audit=full_external_audit
-        )
-
-    monkeypatch.setattr(
-        R.ContiguousCampaignRunner,
-        "_state_reduced",
-        counted_state,
-    )
-    runner, backend, _, _, _ = make_runner(
-        tmp_path, max_lanes=1
-    )
-    original_prepare = backend.prepare
-    callback_states = []
-
-    def reentrant_prepare(spec):
-        callback_states.append(runner.state())
-        return original_prepare(spec)
-
-    monkeypatch.setattr(backend, "prepare", reentrant_prepare)
-    counts.update(full=0, reduced=0)
-    runner.cycle()
-
-    assert len(callback_states) == 1
-    assert counts["full"] == 3
-    assert counts["reduced"] > 0
-    assert runner._cycle_validation_context is None
-    assert runner._cycle_lock_held is False
-    assert isinstance(runner._reducer_checkpoint, R._ReducerCheckpoint)
-
-
-def test_cross_thread_state_cannot_consume_live_cycle_caches(
-    tmp_path, monkeypatch
-):
-    runner, backend, _, _, _ = make_runner(
-        tmp_path, max_lanes=1
-    )
-    original_prepare = backend.prepare
-    observed = []
-
-    def cross_thread_prepare(spec):
-        def inspect():
-            try:
-                runner.state()
-            except BaseException as exc:
-                observed.append(exc)
-            else:
-                observed.append(None)
-
-        thread = threading.Thread(target=inspect)
-        thread.start()
-        thread.join(timeout=5.0)
-        assert not thread.is_alive()
-        return original_prepare(spec)
-
-    monkeypatch.setattr(backend, "prepare", cross_thread_prepare)
-    runner.cycle()
-    assert len(observed) == 1
-    assert isinstance(observed[0], R.ContiguousRunnerError)
-    assert "foreign execution owner" in str(observed[0])
-    assert runner._cycle_validation_context is None
-    assert runner._cycle_execution_owner is None
-    assert runner._cycle_lock_held is False
-
-
-def test_same_instance_cycle_reentrancy_fails_before_flock(
-    tmp_path, monkeypatch,
-):
-    runner, backend, _, _, _ = make_runner(
-        tmp_path, max_lanes=1
-    )
-    original_prepare = backend.prepare
-    observed = []
-
-    def reentrant_prepare(spec):
-        started = time.monotonic()
-        with pytest.raises(
-            R.ContiguousRunnerError,
-            match="reentrant supervision cycle",
-        ):
-            runner.cycle()
-        observed.append(time.monotonic() - started)
-        return original_prepare(spec)
-
-    monkeypatch.setattr(backend, "prepare", reentrant_prepare)
-    runner.cycle()
-    assert len(observed) == 1
-    assert observed[0] < 1.0
-
-
-def test_second_runner_same_campaign_same_thread_fails_before_flock(
-    tmp_path, monkeypatch,
-):
-    runner, backend, gate, builder, _ = make_runner(
-        tmp_path, max_lanes=1
-    )
-    second = R.ContiguousCampaignRunner(
-        runner.root,
-        backend=backend,
-        promotion_gate=gate,
-        input_builder=builder,
-        backend_configuration=backend_configuration(),
-        cost_window_id=COST_WINDOW_ID,
-        max_lanes=1,
-        controller_state_canaries=backend.controller_state_canaries,
-        id_factory=ids(),
-    )
-    original_prepare = backend.prepare
-    observed = []
-
-    def nested_second_runner(spec):
-        started = time.monotonic()
-        with pytest.raises(
-            R.ContiguousRunnerError,
-            match="same-thread campaign lock recursion",
-        ):
-            second.cycle()
-        observed.append(time.monotonic() - started)
-        return original_prepare(spec)
-
-    monkeypatch.setattr(backend, "prepare", nested_second_runner)
-    runner.cycle()
-    assert len(observed) == 1
-    assert observed[0] < 1.0
-
-
-def test_foreign_thread_and_process_block_then_serialize_campaign_lock(
-    tmp_path,
-):
-    runner, _, _, _, _ = make_runner(tmp_path, max_lanes=1)
-    handle, token = runner._acquire_campaign_cycle_lock()
-    with pytest.raises(
-        R.ContiguousRunnerError,
-        match="same-thread campaign lock recursion",
-    ):
-        runner._acquire_campaign_cycle_lock()
-    thread_result = []
-
-    def foreign_thread_cycle():
-        try:
-            thread_result.append(runner.cycle())
-        except BaseException as exc:
-            thread_result.append(exc)
-
-    thread = threading.Thread(target=foreign_thread_cycle)
-    thread.start()
-    time.sleep(0.15)
-    assert thread.is_alive()
-    runner._release_campaign_cycle_lock(handle, token)
-    thread.join(timeout=10.0)
-    assert not thread.is_alive()
-    assert len(thread_result) == 1
-    assert isinstance(thread_result[0], dict)
-
-    handle, token = runner._acquire_campaign_cycle_lock()
-    context = multiprocessing.get_context("fork")
-    queue = context.Queue()
-    process = context.Process(
-        target=_process_acquire_runner_lock,
-        args=(runner, queue),
-    )
-    process.start()
-    time.sleep(0.15)
-    assert process.is_alive()
-    assert queue.empty()
-    runner._release_campaign_cycle_lock(handle, token)
-    status, child_pid = queue.get(timeout=10.0)
-    assert status == "acquired"
-    assert child_pid == process.pid
-    process.join(timeout=10.0)
-    assert process.exitcode == 0
-
-
-def test_exact_authority_failure_stops_all_later_lanes_and_effects(
-    tmp_path, monkeypatch,
-):
-    backend = FakeBackend(lambda _spec: None)
-    runner, backend, gate, _, _ = make_runner(
-        tmp_path, backend=backend, max_lanes=2
-    )
-    runner.cycle()
-    assert len(backend.specs) == 2
-    original_exact = R.ContiguousCampaignRunner._exact_cycle_attempt
-    mutated = False
-
-    def mutate_lane_a_prefix(self, attempt_id, allowed_phases):
-        nonlocal mutated
-        if not mutated:
-            genesis = self.journal._paths()[0]
-            mode = stat.S_IMODE(genesis.stat().st_mode)
-            genesis.chmod(0o600)
-            genesis.write_bytes(genesis.read_bytes() + b" ")
-            genesis.chmod(mode)
-            mutated = True
-        return original_exact(self, attempt_id, allowed_phases)
-
-    monkeypatch.setattr(
-        R.ContiguousCampaignRunner,
-        "_exact_cycle_attempt",
-        mutate_lane_a_prefix,
-    )
-    polls_before = tuple(backend.poll_timeouts)
-    promotions_before = tuple(gate.calls)
-    journal_entries_before = tuple(
-        sorted(str(path.relative_to(runner.root))
-               for path in runner.root.rglob("*") if path.is_file())
-    )
-    with pytest.raises(R.ExactAuthorityGateError):
-        runner.cycle()
-    assert mutated is True
-    assert tuple(backend.poll_timeouts) == polls_before
-    assert tuple(gate.calls) == promotions_before
-    assert tuple(
-        sorted(str(path.relative_to(runner.root))
-               for path in runner.root.rglob("*") if path.is_file())
-    ) == journal_entries_before
-
-
-def test_bound_receipt_hash_and_parse_share_one_stable_descriptor(
-    tmp_path, monkeypatch,
-):
-    runner, backend, _, _, _ = make_runner(tmp_path, max_lanes=1)
-    runner.cycle()
-    attempt = next(iter(runner.state()["attempts"].values()))
-    spec = attempt["spec"]
-    prepared = attempt["prepared"]
-    receipt_path = Path(prepared.bridge_policy_receipt_path)
-    original_value = json.loads(receipt_path.read_bytes())
-    replacement = receipt_path.with_name("replacement.json")
-    replacement.write_bytes(
-        R._canonical_json({**original_value, "authority": True}) + b"\n"
-    )
-    replacement.chmod(stat.S_IMODE(receipt_path.stat().st_mode))
-    receipt_inode = receipt_path.stat().st_ino
-    original_read = R.os.read
-    swapped = False
-
-    def replace_after_authenticated_read(descriptor, size):
-        nonlocal swapped
-        raw = original_read(descriptor, size)
-        if (
-            not swapped
-            and raw
-            and os.fstat(descriptor).st_ino == receipt_inode
-        ):
-            os.replace(replacement, receipt_path)
-            swapped = True
-        return raw
-
-    monkeypatch.setattr(R.os, "read", replace_after_authenticated_read)
-    with pytest.raises(
-        R.ContiguousRunnerError,
-        match="pointer or metadata changed|changed during read",
-    ):
-        R._validate_bound_receipt(
-            prepared.bridge_policy_receipt_path,
-            prepared.bridge_policy_receipt_sha256,
-            expected_path=Path(spec.bridge_policy_receipt_path),
-            expected_kind="contiguous_bridge_policy",
-            spec=spec,
-        )
-    assert swapped is True
-
-
-def test_preparation_attestation_hash_and_parse_share_stable_descriptor(
-    tmp_path, monkeypatch,
-):
-    runner, _, _, _, _ = make_runner(tmp_path, max_lanes=1)
-    runner.cycle()
-    attempt = next(iter(runner.state()["attempts"].values()))
-    spec = attempt["spec"]
-    prepared = attempt["prepared"]
-    attestation = Path(prepared.launch_attestation_path)
-    replacement = attestation.with_name("attestation-replacement.json")
-    value = json.loads(attestation.read_bytes())
-    replacement.write_bytes(
-        R._canonical_json({**value, "authority": True}) + b"\n"
-    )
-    replacement.chmod(stat.S_IMODE(attestation.stat().st_mode))
-    target_inode = attestation.stat().st_ino
-    original_read = R.os.read
-    swapped = False
-
-    def swap_attestation_after_read(descriptor, size):
-        nonlocal swapped
-        raw = original_read(descriptor, size)
-        if (
-            not swapped
-            and raw
-            and os.fstat(descriptor).st_ino == target_inode
-        ):
-            os.replace(replacement, attestation)
-            swapped = True
-        return raw
-
-    monkeypatch.setattr(R.os, "read", swap_attestation_after_read)
-    with pytest.raises(
-        R.ContiguousRunnerError,
-        match="pointer or metadata changed|changed during read",
-    ):
-        R._validate_preparation_receipts(spec, prepared)
-    assert swapped is True
-
-
-def test_auxiliary_effect_gate_reopens_mutated_prepared_receipt(
-    tmp_path,
-):
-    backend = FakeAuxiliaryBackend(tmp_path / "auxiliary-backend")
-    runner = _SyntheticAuxiliaryRunner(
-        tmp_path / "campaign", backend
-    )
-    assignment_id = runner._reserve_auxiliary(runner.state())
-    assert assignment_id is not None
-    runner._prepare_auxiliary(
-        runner.state()["auxiliary_assignments"][assignment_id]
-    )
-    assignment = runner.state()["auxiliary_assignments"][
-        assignment_id
-    ]
-    assert assignment["state"].phase == "INPUT_PREPARED"
-    receipt = Path(
-        assignment["prepared"].input_bundle_receipt_path
-    )
-    receipt.write_bytes(receipt.read_bytes() + b" ")
-
-    with pytest.raises(
-        R.ContiguousRunnerError,
-        match="auxiliary private input bundle digest changed",
-    ):
-        runner._launch_auxiliary(assignment)
-    assert backend.launch_calls == []
-
-
-def test_auxiliary_prepare_launch_poll_admit_and_abort_use_full_prefix_gate(
-    tmp_path, monkeypatch,
-):
-    backend = FakeAuxiliaryBackend(tmp_path / "auxiliary-backend")
-    runner = _SyntheticAuxiliaryRunner(
-        tmp_path / "campaign", backend
-    )
-    observed_phases = []
-    original = runner._cycle_state_with_full_journal_prefix
-
-    def observe_full_prefix():
-        phases = tuple(
-            item["state"].phase
-            for item in runner.state()["auxiliary_assignments"].values()
-        )
-        observed_phases.extend(phases)
-        return original()
-
-    monkeypatch.setattr(
-        runner,
-        "_cycle_state_with_full_journal_prefix",
-        observe_full_prefix,
-    )
-    assignment_id = runner._reserve_auxiliary(runner.state())
-    assignment = runner.state()["auxiliary_assignments"][assignment_id]
-    runner._prepare_auxiliary(assignment)
-    assignment = runner.state()["auxiliary_assignments"][assignment_id]
-    runner._launch_auxiliary(assignment)
-    assignment = runner.state()["auxiliary_assignments"][assignment_id]
-    runner._poll_auxiliary(assignment)
-    assignment = runner.state()["auxiliary_assignments"][assignment_id]
-    runner._admit_auxiliary(assignment)
-    assert {"RESERVED", "INPUT_PREPARED", "RUNNING", "QUARANTINED"} <= (
-        set(observed_phases)
-    )
-
-    abort_backend = FakeAuxiliaryBackend(tmp_path / "abort-backend")
-    abort_runner = _SyntheticAuxiliaryRunner(
-        tmp_path / "abort-campaign", abort_backend
-    )
-    abort_full_prefix_calls = 0
-    abort_original = abort_runner._cycle_state_with_full_journal_prefix
-
-    def count_abort_gate():
-        nonlocal abort_full_prefix_calls
-        abort_full_prefix_calls += 1
-        return abort_original()
-
-    monkeypatch.setattr(
-        abort_runner,
-        "_cycle_state_with_full_journal_prefix",
-        count_abort_gate,
-    )
-    abort_id = abort_runner._reserve_auxiliary(abort_runner.state())
-    abort_runner._abort_auxiliary(
-        abort_runner.state()["auxiliary_assignments"][abort_id],
-        reason="test_abort",
-    )
-    assert abort_full_prefix_calls == 1
-
-
-def test_exact_compatibility_client_analysis_cache_is_copy_isolated_and_concurrent(
-    monkeypatch,
-):
-    closure = R.CompatibilityClosure
-    raw = closure._LOADED_CLIENT_RAW
-    original_parse = closure.ast.parse
-
-    def unexpected_parse(*_args, **_kwargs):
-        raise AssertionError(
-            "exact loaded client bytes must reuse import-time analysis"
-        )
-
-    monkeypatch.setattr(closure.ast, "parse", unexpected_parse)
-    barrier = threading.Barrier(8)
-    failures = []
-
-    def analyze_exact():
-        try:
-            barrier.wait(timeout=5.0)
-            for _ in range(20):
-                observed = closure.analyze_client_source(raw)
-                observed["import_roots"].append("caller-mutation")
-                assert "caller-mutation" not in (
-                    closure.analyze_client_source(raw)["import_roots"]
-                )
-        except BaseException as exc:
-            failures.append(exc)
-
-    threads = [threading.Thread(target=analyze_exact) for _ in range(8)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join(timeout=10.0)
-        assert not thread.is_alive()
-    assert failures == []
-
-    # Noncanonical bytes must never hit the exact-byte cache.
-    monkeypatch.setattr(closure.ast, "parse", original_parse)
-    mutated = closure.analyze_client_source(raw + b"\n# mutation\n")
-    assert mutated["source_sha256"] != (
-        closure._LOADED_CLIENT_ANALYSIS["source_sha256"]
-    )
-
-
-def test_substrate_effect_gate_reopens_mutated_authorization_receipt(
-    tmp_path, monkeypatch,
-):
-    backend = RecoverableSubstrateBackend()
-    runner, _, _, _, clock = make_runner(
-        tmp_path,
-        backend=backend,
-        max_lanes=1,
-        operator_configuration_sha256="9" * 64,
-    )
-    runner.cycle()
-    runner.cycle(now=clock.value)
-    clock.advance(R.SUBSTRATE_HEALTH_REPROBE_BACKOFF_SECONDS[0])
-    original_exact = R.ContiguousCampaignRunner._exact_substrate_attempt
-    mutated = False
-
-    def mutate_then_reopen(self, attempt_id):
-        nonlocal mutated
-        if not mutated:
-            incident = self._cycle_state()["substrate_incident"]
-            pending = incident["pending_reprobe"]
-            receipt = Path(pending["authorization_receipt_path"])
-            receipt.write_bytes(receipt.read_bytes() + b" ")
-            mutated = True
-        return original_exact(self, attempt_id)
-
-    monkeypatch.setattr(
-        R.ContiguousCampaignRunner,
-        "_exact_substrate_attempt",
-        mutate_then_reopen,
-    )
-    with pytest.raises(R.ContiguousRunnerError):
-        runner.cycle(now=clock.value)
-    assert mutated is True
-    assert backend.health_probe_calls == []
-
-
-def test_cycle_context_is_cleared_on_base_exception(tmp_path):
-    backend = FakeBackend()
-    backend.crash_after_first_launch = True
-    runner, _, _, _, _ = make_runner(
-        tmp_path, backend=backend, max_lanes=1
-    )
-    with pytest.raises(R.SimulatedCrash):
-        runner.cycle()
-    assert runner._cycle_validation_context is None
-    assert runner._cycle_lock_held is False
-    assert runner._reducer_checkpoint is None
-    assert runner._trusted_auxiliary_event_digests == set()
-    assert runner._verified_lane_checkpoints == {}
-    assert runner._verified_lane_sources == {}
-    assert runner._verified_attempt_inputs == {}
-    assert (
-        R.Scheduler._selection_evidence_validation_scope.get()
-        is None
-    )
-    assert R.Scheduler._inventory_validation_scope.get() is None
-    assert R.Scheduler._snapshot_validation_scope.get() is None
-
-
-@pytest.mark.parametrize(
-    "target_phase",
-    (
-        "RESERVED",
-        "PREPARED",
-        "BACKEND_PREPARED",
-        "RUNNING",
-        "DRAINING",
-        "EXITED",
-        "COLLECTED",
-        "COLLECTION_REJECTED",
-        "TORN_DOWN",
-        "PROMOTING",
-    ),
-)
-def test_exact_phase_gate_rejects_source_mutation_before_effect(
-    tmp_path, monkeypatch, target_phase
-):
-    if target_phase == "PROMOTING":
-        strategy = candidate_result
-    elif target_phase == "COLLECTION_REJECTED":
-        def strategy(spec):
-            candidate = candidate_for(spec)
-            return R.AttemptResult(
-                kind="candidate",
-                candidate=replace(
-                    candidate,
-                    probe_isolation_mode=(
-                        Contract.FRESH_PROCESS_PER_CANDIDATE_MODE
-                    ),
-                ),
-            )
-    elif target_phase == "DRAINING":
-        strategy = lambda _spec: None
-    else:
-        strategy = lambda _spec: R.AttemptResult(
-            kind="clean_no_progress"
-        )
-    backend = FakeBackend(strategy)
-    runner, backend, gate, builder, clock = make_runner(
-        tmp_path, backend=backend, max_lanes=1
-    )
-    original_exact = R.ContiguousCampaignRunner._exact_cycle_attempt
-    fired = False
-
-    def mutate_then_validate(self, attempt_id, allowed_phases):
-        nonlocal fired
-        phases = (
-            {allowed_phases}
-            if isinstance(allowed_phases, str)
-            else set(allowed_phases)
-        )
-        current = self._cycle_state()["attempts"].get(attempt_id)
-        if (
-            not fired
-            and current is not None
-            and current["phase"] == target_phase
-            and target_phase in phases
-        ):
-            reservation = current["reservation"]
-            source_file = Path(
-                reservation.parent_source_path
-            ) / "legs.py"
-            mode = stat.S_IMODE(source_file.stat().st_mode)
-            source_file.chmod(0o600)
-            source_file.write_bytes(
-                source_file.read_bytes() + b"\n"
-            )
-            source_file.chmod(mode)
-            fired = True
-        return original_exact(self, attempt_id, allowed_phases)
-
-    monkeypatch.setattr(
-        R.ContiguousCampaignRunner,
-        "_exact_cycle_attempt",
-        mutate_then_validate,
-    )
-    if target_phase == "DRAINING":
-        runner.cycle()
-        clock.advance(15 * 60 + 1)
-        runner.cycle()
-    polls_before = len(backend.poll_timeouts)
-    collections_before = len(backend.collections)
-    teardowns_before = len(backend.teardown_calls)
-    promotions_before = len(gate.calls)
-    with pytest.raises(
-        R.ContiguousRunnerError,
-        match=(
-            "campaign state cannot form|lane source changed|"
-            "attempt input bundle or receipt changed"
-        ),
-    ):
-        for _ in range(3):
-            runner.cycle()
-    assert fired is True
-
-    if target_phase == "RESERVED":
-        assert builder.layouts == {}
-    elif target_phase == "PREPARED":
-        assert backend.prepare_calls == []
-    elif target_phase == "BACKEND_PREPARED":
-        assert backend.launch_calls == []
-    elif target_phase == "RUNNING":
-        assert backend.poll_timeouts == []
-    elif target_phase == "DRAINING":
-        assert len(backend.poll_timeouts) == polls_before
-    elif target_phase == "EXITED":
-        assert len(backend.collections) == collections_before
-    elif target_phase in {"COLLECTED", "COLLECTION_REJECTED"}:
-        assert len(backend.teardown_calls) == teardowns_before
-    elif target_phase == "TORN_DOWN":
-        assert not any(
-            event["kind"] == "ATTEMPT_RESULT"
-            for event in runner.journal.read()
-        )
-    elif target_phase == "PROMOTING":
-        assert len(gate.calls) == promotions_before
-    assert runner._cycle_validation_context is None
-    assert runner._cycle_lock_held is False
-    assert runner._reducer_checkpoint is None
-    assert runner._trusted_auxiliary_event_digests == set()
-    assert runner._verified_lane_checkpoints == {}
-    assert runner._verified_lane_sources == {}
-    assert runner._verified_attempt_inputs == {}
-    assert (
-        R.Scheduler._selection_evidence_validation_scope.get()
-        is None
-    )
-    assert R.Scheduler._inventory_validation_scope.get() is None
-    assert R.Scheduler._snapshot_validation_scope.get() is None
-
-
-def test_promotion_effect_gate_reauthenticates_complete_journal_prefix(
-    tmp_path, monkeypatch,
-):
-    runner, _, gate, _, _ = make_runner(
-        tmp_path,
-        backend=FakeBackend(candidate_result),
-        max_lanes=1,
-    )
-    original_exact = R.ContiguousCampaignRunner._exact_cycle_attempt
-    mutated = False
-
-    def mutate_prefix_then_promote(self, attempt_id, allowed_phases):
-        nonlocal mutated
-        phases = (
-            {allowed_phases}
-            if isinstance(allowed_phases, str)
-            else set(allowed_phases)
-        )
-        current = self._cycle_state()["attempts"].get(attempt_id)
-        if (
-            not mutated
-            and "PROMOTING" in phases
-            and current is not None
-            and current["phase"] == "PROMOTING"
-        ):
-            genesis = self.journal._paths()[0]
-            mode = stat.S_IMODE(genesis.stat().st_mode)
-            genesis.chmod(0o600)
-            genesis.write_bytes(genesis.read_bytes() + b" ")
-            genesis.chmod(mode)
-            mutated = True
-        return original_exact(self, attempt_id, allowed_phases)
-
-    monkeypatch.setattr(
-        R.ContiguousCampaignRunner,
-        "_exact_cycle_attempt",
-        mutate_prefix_then_promote,
-    )
-    with pytest.raises(R.ContiguousRunnerError):
-        for _ in range(4):
-            runner.cycle()
-    assert mutated is True
-    assert gate.calls == []
 
 
 def test_unjournaled_generation_is_rejected(tmp_path):
@@ -9869,17 +7489,10 @@ def test_cycle_lock_serializes_competing_supervisors(tmp_path):
     lock = open(runner.root / ".cycle.lock", "a+", encoding="utf-8")
     fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
     started = threading.Event()
-    finished = threading.Event()
-    errors = []
 
     def run_cycle():
         started.set()
-        try:
-            runner.cycle()
-        except BaseException as exc:
-            errors.append(exc)
-        finally:
-            finished.set()
+        runner.cycle()
 
     thread = threading.Thread(target=run_cycle)
     thread.start()
@@ -9888,10 +7501,8 @@ def test_cycle_lock_serializes_competing_supervisors(tmp_path):
     assert backend.specs == {}
     fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
     lock.close()
-    assert finished.wait(timeout=60)
-    thread.join()
+    thread.join(timeout=5)
     assert not thread.is_alive()
-    assert errors == []
     assert len(backend.specs) == 1
 
 

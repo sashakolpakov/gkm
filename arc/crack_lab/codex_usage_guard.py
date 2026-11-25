@@ -26,8 +26,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 
-import codex_failure_revision_contract as Revision
-
 
 WEEK_MINUTES = 7 * 24 * 60
 RESET_EPOCH_TOLERANCE_SECONDS = 120
@@ -424,22 +422,8 @@ def current_window_records(records: Iterable[Dict[str, Any]],
 
 def local_window_totals(records: Iterable[Dict[str, Any]]) -> Dict[str, int]:
     records = list(records)
-
-    def charged_runs(record: Dict[str, Any]) -> int:
-        try:
-            aggregate = Revision.validate_exec(
-                record,
-                target_level=record.get("target_level"),
-                reached_before=record.get("reached"),
-            )
-        except Revision.ContractError as exc:
-            raise CodexUsageGuardError(
-                f"Codex failure-revision aggregate is malformed: {exc}"
-            ) from exc
-        return aggregate.rounds_used if aggregate is not None else 1
-
     return {
-        "runs": sum(charged_runs(record) for record in records),
+        "runs": len(records),
         "observed_tokens": sum(int(record.get("observed_tokens") or 0) for record in records),
         "input_tokens": sum(int(record.get("input_tokens") or 0) for record in records),
         "cached_input_tokens": sum(

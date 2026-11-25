@@ -25,10 +25,8 @@ try:
     from arc.crack_lab import (
         arc_agi3_codex_app_server_transport as Transport,
     )
-    from arc.crack_lab import arc_agi3_proposer_boundary as Boundary
 except ModuleNotFoundError:  # pragma: no cover - direct-script fallback
     import arc_agi3_codex_app_server_transport as Transport
-    import arc_agi3_proposer_boundary as Boundary
 
 
 SCHEMA = 1
@@ -574,12 +572,7 @@ class AppServerScanPolicy:
 
 
 def source_sha256() -> str:
-    digest = hashlib.sha256(b"arc-agi3-contiguous-taint-controls-v2\0")
-    for path in (Path(__file__), Path(Boundary.__file__)):
-        raw = path.read_bytes()
-        digest.update(len(raw).to_bytes(8, "big"))
-        digest.update(raw)
-    return digest.hexdigest()
+    return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 
 def _canonical_json(value: object) -> bytes:
@@ -1582,14 +1575,7 @@ class _AppServerLifecycle:
         self.dynamic_call_ids.add(call_id)
         self.pending_server[request_id] = (call_id, tool)
         self.last_method = method
-        hits = _scan_model_value(params["arguments"])
-        hits.extend(
-            "filesystem_boundary:" + hit
-            for hit in Boundary.dynamic_tool_boundary_hits(
-                tool, params["arguments"]
-            )
-        )
-        return hits
+        return _scan_model_value(params["arguments"])
 
     def client_response(self, payload: object) -> list[str]:
         if not isinstance(payload, dict) or "id" not in payload:
@@ -2219,25 +2205,6 @@ def scan_regular_file(path: Path, *, evidence_kind: str) -> ScanRecord:
     raw = _regular_bytes(path)
     text = raw.decode("utf-8", errors="strict")
     hits = _scan_text_full(text, execution_surface=True)
-    suffix = Path(path).suffix.lower()
-    if suffix in Boundary.SOURCE_SUFFIXES:
-        if suffix in {".py", ".pyw"}:
-            boundary = Boundary.scan_python_source(
-                text,
-                logical_path=Path(path).name,
-                arena_module_root=None,
-            )
-        else:
-            boundary = Boundary.scan_shell_command(
-                text,
-                logical_path=Path(path).name,
-                line=1,
-                arena_module_root=None,
-            )
-        hits.extend(
-            "filesystem_boundary:" + finding.code
-            for finding in boundary
-        )
     return ScanRecord(
         path=str(path),
         sha256=hashlib.sha256(raw).hexdigest(),

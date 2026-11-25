@@ -15,15 +15,13 @@ import json
 import math
 import os
 import stat
-from collections import Counter, defaultdict
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median
 from typing import Any, Optional
 
 import codex_usage_guard as Guard
-import arc_agi3_proposer_boundary as Boundary
-import codex_failure_revision_contract as Revision
 
 
 HERE = Path(__file__).resolve().parent
@@ -59,32 +57,6 @@ FRONTIER_BINDING_CORRECTION_EVIDENCE_FIELDS = (
     "terminal_turn_audited",
     "taint_scan_passed",
 )
-INFRASTRUCTURE_WIP_PHASES = frozenset({
-    "infrastructure_failure",
-    "infrastructure_failure_transport",
-    "containment_timeout",
-})
-INFRASTRUCTURE_NONCOUNTING_EVENT = (
-    "codex_infrastructure_generation_quarantined"
-)
-SANDBOX_ISOLATION_NONCOUNTING_EVENT = (
-    "codex_sandbox_isolated_generation_abandoned"
-)
-INFRASTRUCTURE_NONCOUNTING_SCHEMAS = {
-    INFRASTRUCTURE_NONCOUNTING_EVENT:
-        frozenset({
-            "scheduler_zero_ledger_generation_quarantine_v1",
-            "scheduler_quiesced_incomplete_evidence_recovery_v1",
-            "scheduler_quiesced_pre_workspace_recovery_v1",
-        }),
-    SANDBOX_ISOLATION_NONCOUNTING_EVENT:
-        frozenset({
-            "scheduler_sandbox_isolated_generation_abandoned_v1",
-            "scheduler_sandbox_isolated_generation_abandoned_v2",
-            "scheduler_sandbox_isolated_generation_abandoned_v3",
-            "scheduler_sandbox_isolated_generation_abandoned_v4",
-        }),
-}
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -605,143 +577,6 @@ def exact_frontier_binding(
     )
 
 
-def latest_wip_descriptor(
-    artifact: Path,
-    *,
-    game: str,
-    reached: int,
-    target_level: int,
-    frontier_binding: dict[str, Any],
-) -> dict[str, Any]:
-    """Validate the host-sealed latest WIP pointer for one exact frontier.
-
-    Merely finding a ``wip_context`` directory is not enough to authorize a
-    continuation.  The pointer, metadata, complete file inventory, and the
-    snapshot-time exact-parent binding must all agree with the current
-    promoted frontier.  The proposer runner re-runs the current taint scanner
-    when it restores the selected capsule; this descriptor is the scheduler's
-    path/binding gate, not a substitute for that dispatch-time scan.
-    """
-    unavailable = {
-        "warm_wip_available": False,
-        "warm_wip_attempt": None,
-        "warm_wip_phase": None,
-        "warm_wip_recovery_required": False,
-        "warm_wip_validation": "unavailable",
-    }
-    level_dir = (
-        Path(artifact) / "wip_context" / f"level_{target_level:02d}"
-    )
-    latest_path = level_dir / "latest.json"
-    if not latest_path.exists():
-        return unavailable
-    try:
-        latest_raw = _read_stable_regular(latest_path)
-        latest = json.loads(latest_raw.decode("utf-8"))
-        if not isinstance(latest, dict) or set(latest) != {
-            "attempt", "metadata"
-        }:
-            raise ValueError("latest pointer has a noncanonical field set")
-        attempt = latest["attempt"]
-        if (
-            not isinstance(attempt, str)
-            or not attempt
-            or Path(attempt).name != attempt
-        ):
-            raise ValueError("latest attempt is not one path component")
-        attempt_dir = level_dir / attempt
-        files_dir = attempt_dir / "files"
-        metadata_path = attempt_dir / "metadata.json"
-        if (
-            attempt_dir.is_symlink()
-            or files_dir.is_symlink()
-            or not files_dir.is_dir()
-        ):
-            raise ValueError("latest attempt directory is absent or aliased")
-        metadata_raw = _read_stable_regular(metadata_path)
-        metadata = json.loads(metadata_raw.decode("utf-8"))
-        if not isinstance(metadata, dict):
-            raise ValueError("latest metadata is not an object")
-        if metadata != latest["metadata"]:
-            raise ValueError("latest pointer does not seal its metadata")
-        if (
-            metadata.get("filesystem_boundary_policy_schema")
-            != Boundary.POLICY_SCHEMA
-            or metadata.get("filesystem_boundary_policy_sha256")
-            != Boundary.policy_sha256()
-            or metadata.get("compatibility_arena_module_sha256")
-            != Boundary.arena_module_sha256(HERE)
-            or metadata.get("compatibility_boundary_authority")
-            != "behavioral_defense_in_depth"
-        ):
-            return {
-                **unavailable,
-                "warm_wip_validation": (
-                    "rejected:filesystem_boundary_policy_binding"
-                ),
-            }
-        if (
-            metadata.get("attempt") != attempt
-            or metadata.get("game") != game
-            or metadata.get("level") != target_level
-            or metadata.get("reached") != reached
-            or metadata.get("taint_verdict") != "clean"
-        ):
-            raise ValueError("latest metadata is not for this clean frontier")
-        phase = metadata.get("phase")
-        if not isinstance(phase, str) or not phase:
-            raise ValueError("latest metadata lacks a phase")
-        sealed_binding = validate_frontier_binding(
-            metadata.get("frontier_binding"),
-            expected_game=game,
-            expected_target_level=target_level,
-        )
-        if sealed_binding != frontier_binding:
-            raise ValueError("latest WIP belongs to a different exact parent")
-        advertised_files = metadata.get("files")
-        if (
-            not isinstance(advertised_files, list)
-            or not advertised_files
-            or any(not isinstance(name, str) or not name for name in advertised_files)
-            or len(set(advertised_files)) != len(advertised_files)
-        ):
-            raise ValueError("latest WIP has an invalid file inventory")
-        actual_files = []
-        for path in sorted(files_dir.rglob("*")):
-            if path.is_symlink():
-                raise ValueError("latest WIP inventory contains a symlink")
-            if not path.is_file():
-                continue
-            relative = path.relative_to(files_dir).as_posix()
-            if (
-                Path(relative).is_absolute()
-                or ".." in Path(relative).parts
-            ):
-                raise ValueError("latest WIP inventory escapes its capsule")
-            _read_stable_regular(path)
-            actual_files.append(relative)
-        if sorted(advertised_files) != actual_files:
-            raise ValueError("latest WIP file inventory is stale")
-    except (
-        OSError,
-        UnicodeError,
-        json.JSONDecodeError,
-        TypeError,
-        ValueError,
-    ) as exc:
-        return {
-            **unavailable,
-            "warm_wip_validation": f"rejected:{exc}",
-        }
-    return {
-        "warm_wip_available": True,
-        "warm_wip_attempt": attempt,
-        "warm_wip_phase": phase,
-        "warm_wip_recovery_required": phase in INFRASTRUCTURE_WIP_PHASES,
-        "warm_wip_validation": "exact_frontier_capsule",
-    }
-
-
 def _external_profiles(audits: Path = AUDITS) -> dict[str, dict[str, int]]:
     result: dict[str, dict[str, int]] = defaultdict(dict)
     for system, name in (
@@ -869,6 +704,7 @@ def frontier_rows(artifacts: Path = ARTIFACTS,
     for game in sorted(inventory):
         artifact, checkpoint = local.get(game, (None, {}))
         candidate_dir = artifacts / f"{game}_legs"
+        warm_wip = (candidate_dir / "wip_context").exists()
         reached = checkpoint.get("reached", 0)
         if not isinstance(reached, int):
             reached = 0
@@ -892,14 +728,6 @@ def frontier_rows(artifacts: Path = ARTIFACTS,
             game=game,
             target_level=next_level,
         )
-        wip = latest_wip_descriptor(
-            candidate_dir,
-            game=game,
-            reached=reached,
-            target_level=next_level,
-            frontier_binding=binding,
-        )
-        warm_wip = wip["warm_wip_available"]
         sources = (
             [artifact / name for name in ("legs.py", "players.py", "solve.py")]
             if artifact is not None else []
@@ -930,9 +758,9 @@ def frontier_rows(artifacts: Path = ARTIFACTS,
                 priority_score += 1.0
         rows.append({
             **binding,
-            **wip,
             "game": game,
             "incumbent_kind": "promoted" if artifact is not None else "cold_start",
+            "warm_wip_available": warm_wip,
             "current_level": reached,
             "next_level": next_level,
             "frontier_scaffold_version": scaffold.get("version"),
@@ -1023,8 +851,6 @@ def _is_clean_no_progress(turn: dict[str, Any]) -> bool:
 
 
 def _is_solver_attempt(turn: dict[str, Any]) -> bool:
-    if turn.get("failure_revision_contract_valid") == 0:
-        return False
     if turn.get("failure_class") is not None:
         return False
     if turn.get("solved_target") is True:
@@ -1180,6 +1006,7 @@ WALL_SAFETY_FACTOR = 1.15
 # Per-effort floors mirror the headroom floors; the ceiling is a secondary safety cap.
 WALL_MINUTES_FLOOR = {"medium": 5, "high": 6}
 WALL_MINUTES_CEILING = 15
+CAMPAIGN_PROPOSER_MODEL = "gpt-6.1-sol"
 
 
 def _phase_of_level(level: Any) -> Optional[str]:
@@ -1251,7 +1078,7 @@ def recommend_minutes(
 
 
 def retry_policy(n: int) -> dict[str, Any]:
-    """Project one exact-frontier clean-retry coordinate onto both ladders."""
+    """Project one exact-frontier coordinate onto the GPT-6.1 retry ladder."""
     if not isinstance(n, int) or isinstance(n, bool) or n < 0:
         raise ValueError("retry coordinate n must be a nonnegative integer")
     table = {
@@ -1289,6 +1116,7 @@ def retry_policy(n: int) -> dict[str, Any]:
     sidecars = 0 if n < 5 else 1 if n < 7 else 2
     return {
         "n": n,
+        "model": CAMPAIGN_PROPOSER_MODEL,
         "effort": effort,
         "minutes": minutes,
         "wip_mode": wip_mode,
@@ -1353,17 +1181,6 @@ def ranked_frontiers(frontiers: list[dict[str, Any]],
         non_solver = [
             turn for turn in exact_history if not _is_solver_attempt(turn)
         ]
-        non_solver_failure_classes = Counter(
-            str(turn.get("failure_class") or "unclassified")
-            for turn in non_solver
-        )
-        attempt_taint_history = [
-            turn for turn in non_solver
-            if (
-                turn.get("failure_class") == "taint"
-                or turn.get("taint_verdict") == "tainted"
-            )
-        ]
         failed_efforts = sorted({
             str(turn.get("reasoning_effort")) for turn in failures
             if turn.get("reasoning_effort")
@@ -1377,21 +1194,6 @@ def ranked_frontiers(frontiers: list[dict[str, Any]],
                 infrastructure_history
             ),
             "non_solver_turns_at_frontier": len(non_solver),
-            "attempt_taint_turns_at_frontier": len(
-                attempt_taint_history
-            ),
-            "containment_turns_at_frontier": (
-                non_solver_failure_classes["containment"]
-            ),
-            "evidence_turns_at_frontier": (
-                non_solver_failure_classes["evidence"]
-            ),
-            "unclassified_non_solver_turns_at_frontier": (
-                non_solver_failure_classes["unclassified"]
-            ),
-            "non_solver_failure_classes_at_frontier": dict(sorted(
-                non_solver_failure_classes.items()
-            )),
             "superseded_attempts_at_frontier": len(superseded_history),
             "unbound_legacy_turns_for_game_level": len(unbound_history),
             "exact_bound_turns_at_frontier": len(exact_history),
@@ -1401,6 +1203,7 @@ def ranked_frontiers(frontiers: list[dict[str, Any]],
             "retry_history_authority": "exact_parent_bound_only",
             "failed_efforts": failed_efforts,
             "quarantined_after_escalation_failure": False,
+            "recommended_model": policy["model"],
             "recommended_effort": policy["effort"],
             "recommended_minutes": policy["minutes"],
             "recommended_wip_mode": policy["wip_mode"],
@@ -1421,190 +1224,20 @@ def ranked_frontiers(frontiers: list[dict[str, Any]],
     )
 
 
-def _configured_transcript_roots(
-    transcript_roots: Optional[tuple[Path, ...]] = None,
-) -> tuple[Path, ...]:
-    """Return canonical plus explicitly configured transcript roots.
-
-    Historical turns remain under the repository scratch root, while a
-    scheduler may place a newer isolated generation under ``GKM_SCRATCH``.
-    Treat the environment root as additive rather than replacing canonical
-    history.  Lexical absolute normalization deliberately does not resolve
-    symlinks; physical-root checks happen before evidence is read.
-    """
-
-    canonical = HERE / "runs" / "scratch"
-    requested: list[Path] = [canonical]
-    if transcript_roots is None:
-        configured = os.environ.get("GKM_SCRATCH")
-        if configured:
-            requested.append(Path(configured))
-    else:
-        requested.extend(transcript_roots)
-
-    result: list[Path] = []
-    seen: set[str] = set()
-    for root in requested:
-        if not root.is_absolute():
-            raise ValueError(f"transcript root is not absolute: {root}")
-        normalized = Path(os.path.abspath(os.fspath(root)))
-        key = os.path.normcase(os.fspath(normalized))
-        if key in seen:
-            continue
-        seen.add(key)
-        result.append(normalized)
-    return tuple(result)
-
-
-def _physical_transcript_candidate(root: Path, path: Path) -> bool:
-    """Reject aliases anywhere below one trusted transcript root."""
-
-    try:
-        if (
-            any(ancestor.is_symlink() for ancestor in (root, *root.parents))
-            or not root.is_dir()
-        ):
-            return False
-        current = path.parent
-        while True:
-            if current.is_symlink() or not current.is_dir():
-                return False
-            if current == root:
-                return True
-            if current == current.parent or not current.is_relative_to(root):
-                return False
-            current = current.parent
-    except OSError:
-        return False
-
-
-def _transcript_counts(
-    record: dict[str, Any],
-    *,
-    transcript_roots: Optional[tuple[Path, ...]] = None,
-) -> dict[str, int]:
+def _transcript_counts(record: dict[str, Any]) -> dict[str, int]:
     workspace = record.get("workspace")
     transcript = record.get("transcript")
-    aggregate_claimed = Revision.has_aggregate_markers(record)
     result = {
         "command_executions": 0,
         "file_changes": 0,
         "turn_completed_events": 0,
     }
-    if aggregate_claimed:
-        result.update({
-            "failure_revision_contract_valid": 0,
-            "authenticated_revision_rounds_used": 0,
-            "authenticated_revision_rounds_max": 0,
-        })
     if not isinstance(workspace, str) or not isinstance(transcript, str):
         return result
-    # ``gkm_legs`` seals the authoritative transcript outside the proposer-
-    # writable workspace before that workspace may be retired.  Retry
-    # accounting must follow the sealed copy; otherwise ordinary cleanup turns
-    # a completed clean attempt back into an unknown outcome and silently
-    # lowers the escalation coordinate.  Accept only single path components so
-    # a malformed ledger entry cannot escape either transcript root.
-    if (
-        not workspace
-        or Path(workspace).name != workspace
-        or not transcript
-        or Path(transcript).name != transcript
-    ):
+    path = HERE / "runs" / "scratch" / workspace / transcript
+    if not path.exists():
         return result
-    roots = _configured_transcript_roots(transcript_roots)
-    canonical = roots[0]
-    diagnostics = record.get("diagnostics")
-    if aggregate_claimed and (
-        not isinstance(diagnostics, str)
-        or not diagnostics
-        or Path(diagnostics).name != diagnostics
-    ):
-        return result
-    raw_candidates: dict[str, bytes] = {}
-    aggregate_candidates: dict[tuple[str, str], tuple[bytes, bytes]] = {}
-    for scratch in roots:
-        protected = (
-            scratch / ".proposer_transcripts" / workspace / transcript
-        )
-        live = scratch / workspace / transcript
-        is_canonical = scratch == canonical
-        if protected.exists():
-            path = protected
-        elif not aggregate_claimed and is_canonical and live.exists():
-            # Backward compatibility for legacy canonical turns that predate
-            # protected transcript sealing.  Noncanonical evidence must always
-            # use the protected copy authenticated by the terminal ledger row.
-            path = live
-        else:
-            continue
-        if not _physical_transcript_candidate(scratch, path):
-            return result
-        try:
-            raw = _read_stable_regular(path)
-        except (OSError, ValueError):
-            return result
-        if aggregate_claimed:
-            assert isinstance(diagnostics, str)
-            diagnostics_path = path.parent / diagnostics
-            if (
-                not diagnostics_path.exists()
-                or not _physical_transcript_candidate(
-                    scratch, diagnostics_path
-                )
-            ):
-                return result
-            try:
-                diagnostics_raw = _read_stable_regular(diagnostics_path)
-            except (OSError, ValueError):
-                return result
-            aggregate_candidates[(
-                hashlib.sha256(raw).hexdigest(),
-                hashlib.sha256(diagnostics_raw).hexdigest(),
-            )] = (raw, diagnostics_raw)
-        if not is_canonical:
-            expected_sha = record.get("protected_transcript_sha256")
-            if (
-                record.get("protected_transcript_status") != "sealed"
-                or not isinstance(expected_sha, str)
-                or len(expected_sha) != 64
-                or any(ch not in "0123456789abcdef" for ch in expected_sha)
-                or hashlib.sha256(raw).hexdigest() != expected_sha
-            ):
-                return result
-        raw_candidates[hashlib.sha256(raw).hexdigest()] = raw
-    if len(raw_candidates) != 1:
-        # Missing evidence and conflicting cross-root candidates are both
-        # noncounting.  In particular, never pick one root by precedence.
-        return result
-    if aggregate_claimed:
-        if len(aggregate_candidates) != 1:
-            return result
-        transcript_payload, diagnostics_payload = next(
-            iter(aggregate_candidates.values())
-        )
-        try:
-            aggregate = Revision.validate_exec(
-                record,
-                target_level=record.get("target_level"),
-                reached_before=record.get("reached"),
-                transcript_payload=transcript_payload,
-                diagnostics_payload=diagnostics_payload,
-                require_evidence=True,
-            )
-        except Revision.ContractError:
-            return result
-        if aggregate is None:
-            return result
-        result.update({
-            "failure_revision_contract_valid": 1,
-            "authenticated_revision_rounds_used": aggregate.rounds_used,
-            "authenticated_revision_rounds_max": aggregate.rounds_max,
-        })
-    raw_transcript = next(iter(raw_candidates.values())).decode(
-        "utf-8", errors="ignore"
-    )
-    for raw in raw_transcript.splitlines():
+    for raw in path.read_text(encoding="utf-8", errors="ignore").splitlines():
         try:
             event = json.loads(raw)
         except json.JSONDecodeError:
@@ -1621,76 +1254,12 @@ def _transcript_counts(
     return result
 
 
-def _failure_revision_counts(
-    record: dict[str, Any], transcript: dict[str, Any],
-    outcome: dict[str, Any],
-) -> tuple[int | None, int | None]:
-    """Project legacy rows to one turn and reject malformed aggregates."""
-
-    if not Revision.has_aggregate_markers(record):
-        return 1, 1
-    if transcript.get("failure_revision_contract_valid") != 1:
-        return None, None
-    try:
-        aggregate = Revision.validate_exec(
-            record,
-            target_level=record.get("target_level"),
-            reached_before=record.get("reached"),
-        )
-        if outcome:
-            if any((
-                outcome.get("thread_id") != record.get("thread_id"),
-                outcome.get("codex_exec_transcript")
-                != record.get("transcript"),
-            )):
-                raise Revision.ContractError(
-                    "aggregate outcome binding changed"
-                )
-            assert aggregate is not None
-            Revision.validate_outcome(
-                record, outcome, aggregate,
-                target_level=record.get("target_level"),
-                reached_before=record.get("reached"),
-            )
-    except Revision.ContractError:
-        return None, None
-    return (
-        transcript["authenticated_revision_rounds_used"],
-        transcript["authenticated_revision_rounds_max"],
-    )
-
-
-def _monotonic_aggregate_correction(
-    correction: dict[str, Any],
-) -> bool:
-    """Allow a post-hoc aggregate correction only to remove solver authority."""
-
-    if not correction:
-        return True
-    solved = correction.get("solved_target")
-    failure_class = correction.get("failure_class")
-    taint = correction.get("taint_verdict")
-    return bool(
-        failure_class in {"taint", "infrastructure"}
-        and correction.get("retry_increment") == 0
-        and (solved is None or solved is False)
-        and taint != "clean"
-        and (failure_class != "taint" or taint == "tainted")
-    )
-
-
-def joined_turns(
-    records: list[dict[str, Any]],
-    *,
-    transcript_roots: Optional[tuple[Path, ...]] = None,
-) -> list[dict[str, Any]]:
-    outcomes: dict[object, list[dict[str, Any]]] = defaultdict(list)
-    for record in records:
-        if (
-            record.get("event") == "codex_level_outcome"
-            and record.get("thread_id")
-        ):
-            outcomes[record["thread_id"]].append(record)
+def joined_turns(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    outcomes = {
+        row.get("thread_id"): row
+        for row in records
+        if row.get("event") == "codex_level_outcome" and row.get("thread_id")
+    }
     corrections_by_thread = {
         row.get("thread_id"): row
         for row in records
@@ -1722,98 +1291,25 @@ def joined_turns(
     for row in records:
         if row.get("event") != "codex_exec":
             continue
-        aggregate_claimed = Revision.has_aggregate_markers(row)
-        bound_outcomes = outcomes.get(row.get("thread_id"), [])
-        outcome = bound_outcomes[-1] if bound_outcomes else {}
+        outcome = outcomes.get(row.get("thread_id"), {})
         correction = (
             corrections_by_thread.get(row.get("thread_id"))
             or corrections_by_transcript.get(row.get("transcript"))
             or {}
         )
-        transcript = (
-            _transcript_counts(row)
-            if transcript_roots is None
-            else _transcript_counts(
-                row, transcript_roots=transcript_roots
-            )
+        transcript = _transcript_counts(row)
+        failure_class = correction.get(
+            "failure_class", row.get("failure_class")
         )
-        if aggregate_claimed and len(bound_outcomes) > 1:
-            # The treatment protocol appends at most one bound outcome.  A
-            # duplicate is ambiguous even when both JSON objects happen to
-            # compare equal; do not let the last row silently win status or
-            # retry authority.
-            transcript["failure_revision_contract_valid"] = 0
-        rounds_used, rounds_max = _failure_revision_counts(
-            row, transcript, outcome
+        solved_target = (
+            correction["solved_target"]
+            if "solved_target" in correction
+            else outcome.get("solved_target")
         )
-        if aggregate_claimed and rounds_used is None:
-            transcript["failure_revision_contract_valid"] = 0
-        aggregate_valid = bool(
-            not aggregate_claimed or rounds_used is not None
+        taint_verdict = correction.get(
+            "taint_verdict", outcome.get("taint_verdict")
         )
-        correction_valid = bool(
-            not aggregate_claimed
-            or _monotonic_aggregate_correction(correction)
-        )
-        if aggregate_claimed and not correction_valid:
-            # A retrospective row may veto a solver result, but it cannot
-            # upgrade, reclassify, or make an authenticated aggregate count.
-            transcript["failure_revision_contract_valid"] = 0
-            rounds_used = rounds_max = None
-            aggregate_valid = False
-        if aggregate_claimed:
-            failure_class = row.get("failure_class")
-            failure_detail_class = row.get("failure_detail_class")
-            terminal_errors = row.get("terminal_errors")
-            solved_target = outcome.get("solved_target")
-            taint_verdict = outcome.get(
-                "taint_verdict", row.get("taint_verdict")
-            )
-            retry_increment: int | object | None = None
-            if correction and correction_valid and aggregate_valid:
-                failure_class = correction["failure_class"]
-                failure_detail_class = correction.get(
-                    "failure_detail_class", failure_detail_class
-                )
-                terminal_errors = correction.get(
-                    "terminal_errors", terminal_errors
-                )
-                solved_target = correction.get("solved_target")
-                taint_verdict = correction.get(
-                    "taint_verdict", taint_verdict
-                )
-                retry_increment = 0
-            if not aggregate_valid:
-                solved_target = None
-                taint_verdict = row.get("taint_verdict")
-                retry_increment = 0
-        else:
-            failure_class = correction.get(
-                "failure_class", row.get("failure_class")
-            )
-            failure_detail_class = correction.get(
-                "failure_detail_class", row.get("failure_detail_class")
-            )
-            terminal_errors = correction.get(
-                "terminal_errors", row.get("terminal_errors")
-            )
-            solved_target = (
-                correction["solved_target"]
-                if "solved_target" in correction
-                else outcome.get("solved_target")
-            )
-            taint_verdict = correction.get(
-                "taint_verdict", outcome.get("taint_verdict")
-            )
-            retry_increment = correction.get("retry_increment")
-        transcript_complete = bool(
-            rounds_used is not None
-            and (
-                transcript.get("failure_revision_contract_valid") == 1
-                if aggregate_claimed
-                else transcript["turn_completed_events"] == 1
-            )
-        )
+        transcript_complete = transcript["turn_completed_events"] == 1
         clean_no_progress = bool(
             solved_target is False
             and failure_class is None
@@ -1822,8 +1318,6 @@ def joined_turns(
             and taint_verdict == "clean"
             and transcript_complete
         )
-        if retry_increment is None:
-            retry_increment = int(clean_no_progress)
         before, after = row.get("weekly_remaining_before"), row.get("weekly_remaining_after")
         weekly_delta = before - after if isinstance(before, int) and isinstance(after, int) else None
         binding_claims = []
@@ -1884,25 +1378,17 @@ def joined_turns(
                 "parent_action_count",
             )
         }
-        aggregate_telemetry = (
-            {
-                "failure_revision_rounds_used": rounds_used,
-                "failure_revision_rounds_max": rounds_max,
-                "failure_revision_protocol_sha256": row.get(
-                    "failure_revision_protocol_sha256"
-                ),
-            }
-            if aggregate_claimed else {}
-        )
-        trusted_outcome = outcome if aggregate_valid else {}
         result.append({
             "thread_id": row.get("thread_id"),
-            "transcript": row.get("transcript"),
             "started_at": row.get("started_at"),
             "run_label": row.get("run_label"),
             "failure_class": failure_class,
-            "failure_detail_class": failure_detail_class,
-            "terminal_errors": terminal_errors,
+            "failure_detail_class": correction.get(
+                "failure_detail_class", row.get("failure_detail_class")
+            ),
+            "terminal_errors": correction.get(
+                "terminal_errors", row.get("terminal_errors")
+            ),
             "model": row.get("model"),
             "reasoning_effort": row.get("reasoning_effort"),
             "duration_seconds": row.get("duration_seconds"),
@@ -1920,85 +1406,23 @@ def joined_turns(
             "displayed_weekly_points_used": weekly_delta,
             "solved_target": solved_target,
             "clean_no_progress": clean_no_progress,
-            "retry_increment": retry_increment,
-            "game": trusted_outcome.get(
-                "game",
-                correction.get("game", row.get("game"))
-                if not aggregate_claimed else row.get("game"),
+            "retry_increment": correction.get(
+                "retry_increment", int(clean_no_progress)
             ),
-            "target_level": trusted_outcome.get(
+            "game": outcome.get(
+                "game", correction.get("game", row.get("game"))
+            ),
+            "target_level": outcome.get(
                 "target_level",
-                correction.get("target_level", row.get("target_level"))
-                if not aggregate_claimed else row.get("target_level"),
+                correction.get("target_level", row.get("target_level")),
             ),
-            "winning_marginal_C": trusted_outcome.get(
-                "winning_marginal_C"
-            ),
+            "winning_marginal_C": outcome.get("winning_marginal_C"),
             "taint_verdict": taint_verdict,
             "transcript_complete": transcript_complete,
             "frontier_binding_authority": binding_authority,
             **frontier_binding,
-            **aggregate_telemetry,
             **transcript,
         })
-    return result
-
-
-def infrastructure_noncounting_events(
-    records: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Return scheduler failures that deliberately are not solver turns."""
-
-    result: list[dict[str, Any]] = []
-    for index, row in enumerate(records):
-        if not (
-            row.get("event") in INFRASTRUCTURE_NONCOUNTING_SCHEMAS
-            and row.get("schema")
-            in INFRASTRUCTURE_NONCOUNTING_SCHEMAS[row["event"]]
-            and row.get("failure_class") == "infrastructure"
-            and row.get("retry_increment") == 0
-            and row.get("codex_exec_appended") is (
-                row.get("schema") in {
-                    "scheduler_sandbox_isolated_generation_abandoned_v2",
-                    "scheduler_sandbox_isolated_generation_abandoned_v3",
-                    "scheduler_sandbox_isolated_generation_abandoned_v4",
-                }
-            )
-        ):
-            continue
-        if row.get("schema") == (
-            "scheduler_sandbox_isolated_generation_abandoned_v4"
-        ):
-            valid_transition = (
-                row.get("canonical_digest_transition_schema")
-                == "scheduler_audited_canonical_digest_transition_v1"
-                and _is_sha256(row.get("canonical_digest"))
-                and _is_sha256(row.get("observed_canonical_digest"))
-                and row.get("observed_canonical_digest")
-                != row.get("canonical_digest")
-                and isinstance(
-                    row.get("canonical_digest_transition_id"), str
-                )
-                and bool(row.get("canonical_digest_transition_id"))
-            )
-            authority = (
-                records[index + 1] if index + 1 < len(records) else None
-            )
-            sealed_transition = (
-                isinstance(authority, dict)
-                and authority.get("event")
-                == "codex_dispatch_release_authorized"
-                and authority.get("dispatch_id") == row.get("dispatch_id")
-                and authority.get("projected_item_sha256")
-                == row.get("projected_item_sha256")
-                and authority.get("terminal_kind")
-                == "interrupted_sandbox_isolated_operator_terminal_v1"
-                and authority.get("terminal_record_sha256")
-                == _sha256_json(row)
-            )
-            if not valid_transition or not sealed_transition:
-                continue
-        result.append(row)
     return result
 
 
@@ -2169,9 +1593,6 @@ def campaign_report(*, ledger: Path = Guard.DEFAULT_LEDGER,
         "local_window": local_totals,
         "readiness": readiness,
         "turns": turns,
-        "infrastructure_noncounting_events": (
-            infrastructure_noncounting_events(records)
-        ),
         "effort_efficiency": effort_efficiency(turns),
         "window_effort_efficiency": effort_efficiency(window_turns),
         "effort_efficiency_by_phase": effort_efficiency_by_phase(turns),

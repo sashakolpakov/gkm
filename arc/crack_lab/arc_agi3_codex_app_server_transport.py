@@ -34,11 +34,6 @@ from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Literal, Mapping, Protocol, Sequence
 
-try:
-    from arc.crack_lab import arc_agi3_proposer_boundary as Boundary
-except ModuleNotFoundError:  # pragma: no cover - direct-script fallback
-    import arc_agi3_proposer_boundary as Boundary
-
 
 SCHEMA = 1
 BRIDGE_PROTOCOL_VERSION = 1
@@ -1582,14 +1577,6 @@ class BridgeClient:
         *,
         idempotency_key: str,
     ) -> Any:
-        boundary_hits = Boundary.dynamic_tool_boundary_hits(
-            operation, arguments
-        )
-        if boundary_hits:
-            raise AppServerTransportError(
-                "workspace source violates the clean-room filesystem "
-                "boundary: " + ",".join(boundary_hits)
-            )
         if (
             getattr(self, "target_boundary_sha256", None) is not None
             and operation
@@ -5399,3 +5386,6 @@ class CodexAppServerController:
                 stopped.absence_receipt_sha256
             ),
         )
+
+
+CONTIGUOUS_APP_SERVER_TRANSPORT_LAUNCH_READY = False

@@ -107,39 +107,24 @@ def _request_short_private_test_root(
     request: pytest.FixtureRequest,
 ) -> Path:
     configured = os.environ.get("ARC_AGI3_TEST_SHORT_TMPDIR")
-    checkout = _CHECKOUT_ROOT
-    if configured is not None:
-        candidates = (Path(configured),)
-    else:
-        # macOS commonly exposes a long per-user TMPDIR even though its
-        # private system temp root is available.  Select the shortest safe
-        # resolved temp base so AF_UNIX tests pass without hidden shell setup.
-        candidates = tuple({
-            Path(tempfile.gettempdir()).resolve(),
-            Path("/private/tmp"),
-            Path("/tmp").resolve(),
-        })
-    valid_bases: list[Path] = []
-    for candidate in candidates:
-        if (
-            not candidate.is_absolute()
-            or candidate.is_symlink()
-            or not candidate.is_dir()
-            or not os.access(candidate, os.W_OK | os.X_OK)
-        ):
-            continue
-        resolved = candidate.resolve()
-        if resolved == checkout or checkout in resolved.parents:
-            continue
-        valid_bases.append(resolved)
-    if not valid_bases:
+    base = Path(
+        configured
+        if configured is not None
+        else Path(tempfile.gettempdir()).resolve()
+    )
+    if not base.is_absolute() or base.is_symlink() or not base.is_dir():
         raise RuntimeError(
             "short private test root base is unavailable"
         )
-    resolved_base = min(
-        set(valid_bases),
-        key=lambda path: (len(os.fsencode(path)), str(path)),
-    )
+    checkout = _CHECKOUT_ROOT
+    resolved_base = base.resolve()
+    if (
+        resolved_base == checkout
+        or checkout in resolved_base.parents
+    ):
+        raise RuntimeError(
+            "short private test root cannot be inside the checkout"
+        )
     root: Path | None = None
     for _ in range(32):
         candidate = resolved_base / ("a" + uuid.uuid4().hex[:2])
@@ -1406,6 +1391,7 @@ def _build(
 
 
 def test_identity_generation_is_unique_and_canonical():
+    assert B.CONTIGUOUS_CONTAINER_LAUNCH_READY is False
     first = B.AttemptIdentity.create(game="wa30", target_level=9)
     second = B.AttemptIdentity.create(
         game="wa30",
@@ -1853,32 +1839,19 @@ def test_managed_child_ledger_audit_reopens_terminal_and_rejects_drift(
 def test_image_must_bind_exact_current_rpc_and_worker_sources(
     attempt_spec: B.AttemptSpec,
 ):
-    for label in B.trusted_worker_hashes():
-        missing = _image_record()
-        missing["Config"]["Labels"].pop(label)
-        runner = FakeDockerRunner(attempt_spec, image_records=[missing])
-        with pytest.raises(
-            B.ContainerContractError, match="pinned worker controls"
-        ):
-            B.DockerContainerBackend(runner).build_launch_attestation(
-                attempt_spec
-            )
-        assert not any(
-            command[2] == "create" for command in runner.commands
-        )
+    missing = _image_record()
+    missing["Config"]["Labels"].pop(B.LABEL_CONTAINER_WORKER_SHA256)
+    runner = FakeDockerRunner(attempt_spec, image_records=[missing])
+    with pytest.raises(B.ContainerContractError, match="pinned worker controls"):
+        B.DockerContainerBackend(runner).build_launch_attestation(attempt_spec)
+    assert not any(command[2] == "create" for command in runner.commands)
 
-        stale = _image_record()
-        stale["Config"]["Labels"][label] = "0" * 64
-        runner = FakeDockerRunner(attempt_spec, image_records=[stale])
-        with pytest.raises(
-            B.ContainerContractError, match="pinned worker controls"
-        ):
-            B.DockerContainerBackend(runner).build_launch_attestation(
-                attempt_spec
-            )
-        assert not any(
-            command[2] == "create" for command in runner.commands
-        )
+    stale = _image_record()
+    stale["Config"]["Labels"][B.LABEL_ARENA_RPC_SHA256] = "0" * 64
+    runner = FakeDockerRunner(attempt_spec, image_records=[stale])
+    with pytest.raises(B.ContainerContractError, match="pinned worker controls"):
+        B.DockerContainerBackend(runner).build_launch_attestation(attempt_spec)
+    assert not any(command[2] == "create" for command in runner.commands)
 
 
 def test_image_or_container_auth_environment_is_rejected(
@@ -2518,21 +2491,13 @@ def test_formal_container_recipe_pins_base_and_nonroot_user():
     assert len(from_line.rsplit("@sha256:", 1)[1]) == 64
     assert "USER 65532:65532" in recipe
     assert 'ENTRYPOINT ["/usr/local/bin/python3", "-I"]' in recipe
-    assert "arc_agi3_arena_rpc_client.py" in recipe
-    assert "arc_agi3_arena_rpc.py" not in recipe
+    assert "arc_agi3_arena_rpc.py" in recipe
     assert "arc_agi3_container_worker.py" in recipe
     assert "arc_agi3_proposer_worker.py" in recipe
     assert B.LABEL_PROPOSER_WORKER_SHA256 in recipe
-    assert B.LABEL_SOURCE_SCHEMA_SHA256 in recipe
-    assert B.LABEL_CONTAINER_RECIPE_SHA256 in recipe
-    assert B.LABEL_SOLVER_REQUIREMENTS_SHA256 in recipe
-    assert "ARG ARC_AGI3_CONTAINER_RECIPE_SHA256\n" in recipe
-    assert "numpy-version" not in recipe
     assert "/run/arc-agi3/arena.sock" in recipe
     assert "/run/arc-agi3/token" in recipe
-    for label, digest in B.trusted_worker_hashes().items():
-        if label == B.LABEL_CONTAINER_RECIPE_SHA256:
-            continue
+    for digest in B.trusted_worker_hashes().values():
         assert digest in recipe
     assert "sha256sum --check --strict" in recipe
     assert "contiguous campaign" in recipe.lower()
@@ -3468,178 +3433,6 @@ class _AuthenticatedControllerDouble:
         return tuple(sorted(set(self.credentials.leak_sentinels)))
 
 
-def _append_rejected_boundary_write_to_app_transcript(
-    path: Path,
-    *,
-    thread_id: str,
-    turn_id: str,
-    arguments: dict[str, Any],
-) -> tuple[str, int]:
-    """Insert the exact app-server evidence left by a pre-write rejection."""
-
-    retained = [
-        (
-            row["direction"],
-            row["payload"],
-        )
-        for row in (
-            json.loads(line)
-            for line in path.read_text(encoding="utf-8").splitlines()
-        )
-    ]
-    insertion = next(
-        index
-        for index, (direction, payload) in enumerate(retained)
-        if direction == "server_notification"
-        and isinstance(payload, dict)
-        and payload.get("method") == "turn/completed"
-    )
-    call_id = "boundary-write-call"
-    namespace = "contiguous_lane"
-    tool = "workspace_write"
-    retained[insertion:insertion] = [
-        (
-            "server_notification",
-            {
-                "method": "item/started",
-                "params": {
-                    "threadId": thread_id,
-                    "turnId": turn_id,
-                    "item": {
-                        "arguments": dict(arguments),
-                        "id": call_id,
-                        "namespace": namespace,
-                        "status": "inProgress",
-                        "tool": tool,
-                        "type": "dynamicToolCall",
-                    },
-                },
-            },
-        ),
-        (
-            "server_request",
-            {
-                "id": "boundary-write-request",
-                "method": "item/tool/call",
-                "params": {
-                    "arguments": dict(arguments),
-                    "callId": call_id,
-                    "namespace": namespace,
-                    "threadId": thread_id,
-                    "tool": tool,
-                    "turnId": turn_id,
-                },
-            },
-        ),
-        (
-            "client_response",
-            {
-                "id": "boundary-write-request",
-                "result": {
-                    "contentItems": [
-                        {
-                            "type": "inputText",
-                            "text": json.dumps(
-                                {"error": "AppServerTransportError"},
-                                sort_keys=True,
-                                separators=(",", ":"),
-                            ),
-                        }
-                    ],
-                    "success": False,
-                },
-            },
-        ),
-        (
-            "server_notification",
-            {
-                "method": "item/completed",
-                "params": {
-                    "threadId": thread_id,
-                    "turnId": turn_id,
-                    "item": {
-                        "arguments": dict(arguments),
-                        "id": call_id,
-                        "namespace": namespace,
-                        "status": "completed",
-                        "success": False,
-                        "tool": tool,
-                        "type": "dynamicToolCall",
-                    },
-                },
-            },
-        ),
-    ]
-    previous: str | None = None
-    rows: list[bytes] = []
-    for sequence, (direction, payload) in enumerate(retained, 1):
-        body = {
-            "schema": 1,
-            "sequence": sequence,
-            "previous_digest": previous,
-            "direction": direction,
-            "payload": payload,
-        }
-        digest = hashlib.sha256(T.canonical_json(body)).hexdigest()
-        rows.append(T.canonical_json({**body, "digest": digest}))
-        previous = digest
-    assert previous is not None
-    path.write_bytes(b"\n".join(rows) + b"\n")
-    return previous, len(rows)
-
-
-class _BoundaryRejectedControllerDouble(_AuthenticatedControllerDouble):
-    def __init__(self, spec, *, boundary_arguments, **kwargs):
-        super().__init__(spec, **kwargs)
-        self.boundary_arguments = dict(boundary_arguments)
-
-    def start_turn(self, *, frontier_brief):
-        evidence = super().start_turn(frontier_brief=frontier_brief)
-        if getattr(self, "_boundary_write_recorded", False):
-            return self.turn_start
-        (
-            self.transcript_chain_sha256,
-            self.transcript_event_count,
-        ) = _append_rejected_boundary_write_to_app_transcript(
-            Path(self.spec.app_server_transcript_path),
-            thread_id=evidence.thread_id,
-            turn_id=evidence.turn_id,
-            arguments=self.boundary_arguments,
-        )
-        self.turn_start = dataclasses.replace(
-            evidence,
-            transcript_chain_sha256=self.transcript_chain_sha256,
-        )
-        self._boundary_write_recorded = True
-        return self.turn_start
-
-    def run_turn(self):
-        evidence = super().run_turn()
-        observations = tuple(
-            {
-                **observation,
-                "threadId": evidence.thread_id,
-                "turnId": evidence.turn_id,
-            }
-            for observation in evidence.token_usage_observations
-        )
-        if (
-            evidence.tool_call_count == 0
-            or observations != evidence.token_usage_observations
-        ):
-            self.turn_final = dataclasses.replace(
-                evidence,
-                tool_call_count=1,
-                token_usage_observations=observations,
-                provider_usage_settlement=T.settle_provider_usage(
-                    evidence.pre_provider_usage_window,
-                    evidence.post_provider_usage_window,
-                    token_usage_observations=observations,
-                ),
-            )
-        return self.turn_final
-
-
 def _authenticated_adapter_test_kwargs(
     low_backend: B.DockerContainerBackend,
     spec,
@@ -3697,31 +3490,6 @@ def _authenticated_adapter_test_kwargs(
             _test_controller_canaries(canary_prefix),
         "arena_volume_lifecycle": arena_lifecycle,
     }
-
-
-def _prepare_only_adapter(spec):
-    from arc_agi3_arena_rpc import ArenaHostSession
-
-    low_spec = B.validate_runner_attempt_contract(
-        spec,
-        containment_canary_anchor=_test_canary_anchor(spec),
-    )
-    docker_runner = FakeDockerRunner(low_spec)
-    low_backend = B.DockerContainerBackend(docker_runner)
-    adapter = B.ContiguousDockerAttemptBackend(
-        low_backend,
-        result_collector=lambda *_args, **_kwargs: None,
-        **_authenticated_adapter_test_kwargs(low_backend, spec),
-        arena_session_factory=lambda game, *, binding, parent_path, token:
-        ArenaHostSession(
-            game,
-            binding=binding,
-            parent_path=parent_path,
-            token=token,
-            arena_factory=lambda _game: _TinyArena(),
-        ),
-    )
-    return adapter, low_backend
 
 
 def test_canary_escrow_survives_crash_between_launch_and_teardown(
@@ -3892,16 +3660,6 @@ def test_terminal_canary_reveal_is_post_containment_and_idempotent(
             / "arena_session_binding_receipt.json"
         ),
         arena_session_binding_receipt_sha256="9" * 64,
-        compatibility_closure_path=str(
-            Path(spec.host_transcript_path).parent
-            / B.COMPATIBILITY_CLOSURE_DIRECTORY
-        ),
-        compatibility_closure_receipt_sha256="b" * 64,
-        compatibility_turn_receipt_path=str(
-            Path(spec.host_transcript_path).parent
-            / B.COMPATIBILITY_TURN_RECEIPT_NAME
-        ),
-        compatibility_turn_receipt_sha256="c" * 64,
         arena_transport=B.ARENA_VOLUME_TRANSPORT,
         arena_volume_name=B.arena_volume_name(
             B.AttemptIdentity(
@@ -5085,8 +4843,6 @@ def test_candidate_manifest_is_bound_to_arena_and_bridge_exports(
             R.Contract.VERIFIED_ISOLATED_CLONE_MODE
         ),
         probe_isolation_evidence_sha256="9" * 64,
-        supervisory_handoff_sha256=None,
-        supervisory_native_reproduction_receipt_sha256=None,
     )
     evidence = B._validate_authenticated_candidate_export(
         spec=spec,
@@ -5307,55 +5063,6 @@ def test_wip_manifest_is_bound_to_authenticated_broad_and_source_trees(
             ),
         )
 
-    # Even a fully rehashed, bridge-acknowledged WIP cannot retain source
-    # that depends on an ambient game/environment module.
-    (wip_root / "context" / "notes.txt").write_bytes(
-        payloads["wip/context/notes.txt"]
-    )
-    bad_players = b"import environment_files\nPLAYERS = ()\n"
-    players_relative = "wip/solver_source/players.py"
-    (output / players_relative).write_bytes(bad_players)
-    payloads[players_relative] = bad_players
-    exported_hashes[players_relative] = hashlib.sha256(
-        bad_players
-    ).hexdigest()
-    manifest["exported_files_sha256"] = dict(exported_hashes)
-    manifest["wip_tree_sha256"] = S._tree_hash(wip_root)
-    manifest["solver_source_tree_sha256"] = S._tree_hash(source_root)
-    manifest_path.write_text(
-        json.dumps(
-            manifest, sort_keys=True, separators=(",", ":")
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    bad_manifest_sha256 = hashlib.sha256(
-        manifest_path.read_bytes()
-    ).hexdigest()
-    bad_response = {
-        **response_event,
-        "result": {
-            **response_event["result"],
-            "manifest_sha256": bad_manifest_sha256,
-            "exported_files_sha256": dict(exported_hashes),
-            "total_export_bytes": sum(
-                len(raw) for raw in payloads.values()
-            ),
-        },
-    }
-    with pytest.raises(
-        B.ContainerContractError,
-        match="closed source schema",
-    ):
-        B._validate_authenticated_wip_export(
-            spec=spec,
-            output_root=output,
-            bridge_events=(
-                ("bridge_request", request_event),
-                ("bridge_response", bad_response),
-            ),
-        )
-
 
 def test_orphan_process_pid_reuse_never_authorizes_a_signal(
     request: pytest.FixtureRequest,
@@ -5412,114 +5119,6 @@ def test_orphan_process_pid_reuse_never_authorizes_a_signal(
     assert signals == []
 
 
-def test_prepare_process_death_preserves_staging_then_quarantines_attempt(
-    monkeypatch: pytest.MonkeyPatch,
-    request: pytest.FixtureRequest,
-):
-    import arc_agi3_contiguous_runner as R
-
-    class SimulatedProcessDeath(BaseException):
-        pass
-
-    spec = _short_runner_attempt_spec(request)
-    adapter, low_backend = _prepare_only_adapter(spec)
-    original_checkpoint = (
-        B.compatibility_closure._publication_checkpoint
-    )
-
-    def die_after_partial_staging(checkpoint: str) -> None:
-        if checkpoint == "content_manifest_fsynced":
-            raise SimulatedProcessDeath(checkpoint)
-
-    monkeypatch.setattr(
-        B.compatibility_closure,
-        "_publication_checkpoint",
-        die_after_partial_staging,
-    )
-    with pytest.raises(
-        SimulatedProcessDeath, match="content_manifest_fsynced"
-    ):
-        adapter.prepare(spec)
-    staging = B._compatibility_staging_path(spec)
-    assert staging.is_dir()
-    retained_observation = (
-        B.compatibility_closure.observe_quarantined_staging(
-            B._compatibility_closure_paths(spec)[0]
-        )
-    )
-    assert not B._preparation_quarantine_path(spec).exists()
-
-    monkeypatch.setattr(
-        B.compatibility_closure,
-        "_publication_checkpoint",
-        original_checkpoint,
-    )
-    restarted = B.ContiguousDockerAttemptBackend(
-        low_backend,
-        result_collector=lambda *_args, **_kwargs: None,
-        **_authenticated_adapter_test_kwargs(low_backend, spec),
-        arena_session_factory=adapter._arena_session_factory,
-    )
-    with pytest.raises(
-        R.BackendPreparationQuarantinedError
-    ) as first:
-        restarted.prepare(spec)
-    receipt_path = Path(
-        first.value.quarantine_receipt_path
-    )
-    receipt = B._read_unaliased_json(
-        receipt_path,
-        label="test preparation quarantine receipt",
-    )
-    assert receipt["failure_type"] == (
-        "CompatibilityStagingAmbiguityError"
-    )
-    assert receipt["staging_observation"] == retained_observation
-    assert receipt["staging_observation_sha256"] == (
-        retained_observation["observation_sha256"]
-    )
-    assert receipt["old_evidence_reuse_authority"] is False
-    assert receipt["fresh_attempt_generation_required"] is True
-    assert staging.is_dir()
-    with pytest.raises(
-        R.BackendPreparationQuarantinedError
-    ) as reopened:
-        restarted.prepare(spec)
-    assert (
-        reopened.value.quarantine_receipt_sha256
-        == first.value.quarantine_receipt_sha256
-    )
-    assert staging.is_dir()
-
-
-def test_ordinary_closure_error_without_retained_staging_remains_retryable(
-    monkeypatch: pytest.MonkeyPatch,
-    request: pytest.FixtureRequest,
-):
-    spec = _short_runner_attempt_spec(request)
-    adapter, _low_backend = _prepare_only_adapter(spec)
-
-    def ordinary_failure(_root):
-        raise B.compatibility_closure.CompatibilityClosureError(
-            "injected ordinary failure"
-        )
-
-    monkeypatch.setattr(
-        B.compatibility_closure,
-        "prepare_closure",
-        ordinary_failure,
-    )
-    with pytest.raises(
-        B.ContainerContractError,
-        match="without typed retained-staging ambiguity",
-    ):
-        adapter.prepare(spec)
-    closure_root, _turn_receipt = B._compatibility_closure_paths(spec)
-    assert not closure_root.exists()
-    assert not B._compatibility_staging_path(spec).exists()
-    assert not B._preparation_quarantine_path(spec).exists()
-
-
 def test_typed_adapter_full_mocked_lifecycle_and_token_secrecy(
     tmp_path: Path,
     request: pytest.FixtureRequest,
@@ -5562,49 +5161,13 @@ def test_typed_adapter_full_mocked_lifecycle_and_token_secrecy(
     prepared = adapter.prepare(spec)
     token_path = Path(spec.arena_token_file_path)
     token = token_path.read_text(encoding="ascii")
-    closure = B.compatibility_closure.validate_closure(
-        Path(prepared.compatibility_closure_path),
-        prepared.compatibility_closure_receipt_sha256,
-    )
-    assert closure["status"] == "PASS"
-    assert closure["launch_authorized"] is False
-    compatibility_turn = B._read_unaliased_json(
-        Path(prepared.compatibility_turn_receipt_path),
-        label="test compatibility turn receipt",
-    )
-    assert compatibility_turn["closure"]["client_sha256"] == dict(
-        low_backend.inspect_image(spec.image_reference).worker_control_sha256
-    )[B.LABEL_ARENA_RPC_CLIENT_SHA256]
-    assert compatibility_turn["container"]["container_id"] == (
-        adapter._attempts[spec.attempt_id].attestation.container_id
-    )
-    assert compatibility_turn["authority"] == {
-        "scheduler_authority": False,
-        "mutation_authority": False,
-        "promotion_authority": False,
-        "launch_authority": False,
-        "runner_reopen_required_before_launch": True,
-    }
     docker_runner.log_stdout = f"solver said {token}\\n"
     attestation_bytes = Path(
         prepared.launch_attestation_path
     ).read_bytes()
     assert token.encode("ascii") not in attestation_bytes
     assert token not in json.dumps(dataclasses.asdict(prepared))
-    assert token not in json.dumps(compatibility_turn)
     assert adapter.prepare(spec) == prepared
-
-    turn_path = Path(prepared.compatibility_turn_receipt_path)
-    retained_turn_raw = turn_path.read_bytes()
-    substituted_turn = json.loads(retained_turn_raw)
-    substituted_turn["authority"]["launch_authority"] = True
-    turn_path.write_bytes(B._canonical_json_bytes(substituted_turn))
-    with pytest.raises(
-        B.ContainerContractError,
-        match="existing .* receipt differs",
-    ):
-        adapter.launch(spec, prepared)
-    turn_path.write_bytes(retained_turn_raw)
 
     launched = adapter.launch(spec, prepared)
     assert adapter.launch(spec, prepared) == launched
@@ -5680,175 +5243,6 @@ def test_typed_adapter_full_mocked_lifecycle_and_token_secrecy(
         command[:3] == ("docker", "container", "kill")
         for command in docker_runner.commands
     )
-
-
-def test_prewrite_boundary_rejection_is_backend_taint_and_noncounting_scheduler_transition(
-    request: pytest.FixtureRequest,
-):
-    import arc_agi3_contiguous_runner as R
-    from arc_agi3_arena_rpc import ArenaHostSession
-
-    boundary_arguments = {
-        "path": "probe.py",
-        "text": (
-            "from pathlib import Path\n"
-            "Path('/private/controller/secret').read_text()\n"
-        ),
-    }
-
-    # Production BridgeClient rejects the source before it emits a bridge
-    # request.  The app-server protocol still retains the paired dynamic-tool
-    # attempt, which is the immutable classification authority exercised below.
-    callbacks: list[tuple[str, dict[str, Any]]] = []
-    prewrite_client = T.BridgeClient.__new__(T.BridgeClient)
-    prewrite_client._callback = (
-        lambda kind, payload: callbacks.append((kind, payload))
-    )
-    with pytest.raises(
-        T.AppServerTransportError,
-        match="clean-room filesystem boundary",
-    ):
-        prewrite_client.call(
-            "workspace_write",
-            boundary_arguments,
-            idempotency_key="boundary-write-call",
-        )
-    assert callbacks == []
-
-    spec = _short_runner_attempt_spec(request)
-    canary_prefix = "boundary-prewrite-e2e"
-    low_spec = B.validate_runner_attempt_contract(
-        spec,
-        containment_canary_anchor=_test_canary_anchor(
-            spec, canary_prefix
-        ),
-    )
-    docker_runner = FakeDockerRunner(low_spec)
-    low_backend = B.DockerContainerBackend(docker_runner)
-    adapter_kwargs = _authenticated_adapter_test_kwargs(
-        low_backend,
-        spec,
-        canary_prefix=canary_prefix,
-    )
-    adapter_kwargs["controller_factory"] = lambda **kwargs: (
-        _BoundaryRejectedControllerDouble(
-            kwargs["probe_spec"],
-            boundary_arguments=boundary_arguments,
-            **kwargs,
-        )
-    )
-    adapter = B.ContiguousDockerAttemptBackend(
-        low_backend,
-        result_collector=lambda *_args: R.AttemptResult(
-            kind="clean_no_progress",
-            reason="collector observed no authenticated candidate",
-        ),
-        **adapter_kwargs,
-        arena_session_factory=lambda game, *, binding, parent_path, token:
-            ArenaHostSession(
-                game,
-                binding=binding,
-                parent_path=parent_path,
-                token=token,
-                arena_factory=lambda _game: _TinyArena(),
-            ),
-    )
-
-    prepared = adapter.prepare(spec)
-    launched = adapter.launch(spec, prepared)
-    Path(spec.output_dir, "worker_outcome.json").write_text(
-        json.dumps(
-            {
-                "schema": 1,
-                "kind": "arc_agi3_contiguous_proposer_worker",
-                "attempt_id": spec.attempt_id,
-                "authoritative": False,
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    docker_runner.running = False
-    terminal = adapter.poll(
-        spec=spec,
-        prepared=prepared,
-        launched=launched,
-        timeout_seconds=1,
-    )
-    collection = adapter.collect(
-        spec=spec,
-        prepared=prepared,
-        launched=launched,
-        terminal=terminal,
-    )
-
-    assert collection.result.kind == "tainted"
-    assert collection.result.candidate is None
-    assert collection.result.wip is None
-    assert collection.result.blocker is None
-    assert "filesystem_boundary:absolute_path" in collection.result.reason
-    taint_receipt = json.loads(
-        Path(collection.taint_scan_receipt_path).read_text(
-            encoding="utf-8"
-        )
-    )
-    assert taint_receipt["status"] == "TAINT"
-    assert "filesystem_boundary:absolute_path" in taint_receipt["hits"]
-    export_receipt = json.loads(
-        Path(collection.bridge_export_receipt_path).read_text(
-            encoding="utf-8"
-        )
-    )
-    assert export_receipt["outcome"] == "tainted"
-    assert export_receipt["candidate_manifest_sha256"] is None
-    assert export_receipt["wip_manifest_sha256"] is None
-
-    # Reopen the backend evidence through the runner's independent validator,
-    # then apply the exact scheduler transition consumed by its journal reducer.
-    reducer = R.ContiguousCampaignRunner.__new__(
-        R.ContiguousCampaignRunner
-    )
-    reducer._controller_state_canaries = _test_controller_canaries(
-        canary_prefix
-    )
-    reducer._secret_sentinels = tuple(
-        adapter_kwargs["credentials"].leak_sentinels
-    )
-    reducer._validate_collection(
-        spec,
-        prepared,
-        launched,
-        collection,
-    )
-    transition = R.Scheduler.terminal_policy_transition(
-        collection.result.kind
-    )
-    assert transition.next_lane_phase == "READY"
-    assert transition.retry_coordinate_delta == 0
-    assert transition.current_attempt_wip_disposition == "discard"
-    assert transition.prior_wip_disposition == (
-        "revoke_same_thread_frontier_context"
-    )
-    prior_lineage = object()
-    assert R.Scheduler.reduce_terminal_wip(
-        transition=transition,
-        prior_wip=prior_lineage,
-        current_attempt_wip=collection.result.wip,
-        exposure_detected=False,
-    ) is None
-    assert R.advance_exact_frontier_clean_no_progress(
-        4, collection.result.kind
-    ) == 4
-
-    proof = adapter.teardown(
-        spec=spec,
-        prepared=prepared,
-        launched=launched,
-        cause="normal_exit",
-    )
-    assert proof.no_descendants is True
 
 
 def test_adapter_prepare_failure_cleans_private_rpc_endpoints(
@@ -6207,30 +5601,6 @@ def test_adapter_rehydrates_live_orphan_as_containment_fault(
     ) == 1
 
 
-@pytest.mark.parametrize("surface", ("workspace", "app_server_state"))
-def test_fresh_contract_rejects_mutable_tree_drift(
-    request: pytest.FixtureRequest,
-    surface: str,
-):
-    spec = _short_runner_attempt_spec(request)
-    root = Path(
-        spec.workspace_dir
-        if surface == "workspace"
-        else spec.app_server_state_dir
-    )
-    (root / "unexpected-post-snapshot").write_text(
-        "drift\n", encoding="utf-8"
-    )
-    with pytest.raises(
-        B.ContainerContractError,
-        match="workspace, or staged state hash changed",
-    ):
-        B.validate_runner_attempt_contract(
-            spec,
-            containment_canary_anchor=_test_canary_anchor(spec),
-        )
-
-
 def test_adapter_recovers_unacknowledged_teardown_from_intent(
     request: pytest.FixtureRequest,
 ):
@@ -6392,14 +5762,6 @@ def test_adapter_recovers_unacknowledged_teardown_from_intent(
             host_root / "arena_session_binding_receipt.json"
         ),
         arena_session_binding_receipt_sha256="9" * 64,
-        compatibility_closure_path=str(
-            host_root / B.COMPATIBILITY_CLOSURE_DIRECTORY
-        ),
-        compatibility_closure_receipt_sha256="b" * 64,
-        compatibility_turn_receipt_path=str(
-            host_root / B.COMPATIBILITY_TURN_RECEIPT_NAME
-        ),
-        compatibility_turn_receipt_sha256="c" * 64,
         arena_transport=B.ARENA_VOLUME_TRANSPORT,
         arena_volume_name=B.arena_volume_name(
             B.AttemptIdentity(

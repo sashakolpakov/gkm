@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Build the exact-frontier ARC-AGI-3 Codex campaign queue.
 
-One journal-reconstructed coordinate, ``retry_complexity_n``, selects effort,
-soft allocation, WIP mode, and auxiliary eligibility through
+One journal-reconstructed coordinate, ``retry_complexity_n``, selects model,
+effort, soft allocation, WIP mode, and auxiliary eligibility through
 ``codex_campaign_status.retry_policy``.  Paid-turn, timeout, transcript, and
 branch counts are diagnostic only and must never steer dispatch.  Explicit
 provider ``unlimited`` semantics disable every cost cutoff uniformly while
@@ -20,23 +20,11 @@ from typing import Any
 
 import codex_campaign_status as Status
 import codex_usage_guard as Guard
-import codex_failure_revision_contract as Revision
 
 
 DEFAULT_RESERVE = 20
 DEFAULT_MAX_RUNS = 60
 DEFAULT_MAX_TOKENS = 32_000_000
-DEFAULT_FAILURE_REVISION_ROUNDS = Revision.DEFAULT_ROUNDS
-FAILURE_REVISION_ROUND_CHOICES = frozenset({
-    Revision.DEFAULT_ROUNDS, Revision.TREATMENT_ROUNDS,
-})
-FAILURE_REVISION_PROTOCOL_SHA256 = Revision.PROTOCOL_SHA256
-FAILURE_REVISION_TREATMENT_EFFORT = "max"
-FAILURE_REVISION_TREATMENT_MINUTES = 300
-FAILURE_REVISION_TREATMENT_ALLOCATION_POLICY = "hard"
-BOUNDARY_POLICY_WIP_REJECTION = (
-    "rejected:filesystem_boundary_policy_binding"
-)
 
 
 def lineage_input_modes(
@@ -61,36 +49,14 @@ def lineage_input_modes(
         else "verified_parent"
     )
     wip_mode = str(policy["wip_mode"])
-    if row.get("warm_wip_recovery_required") is True:
-        if (
-            row.get("warm_wip_available") is not True
-            or not isinstance(row.get("warm_wip_attempt"), str)
-            or not row["warm_wip_attempt"]
-        ):
-            raise ValueError(
-                "infrastructure recovery requires one exact-frontier WIP "
-                "capsule"
-            )
-        # A provider/containment interruption is not a solver outcome and may
-        # not discard the clean partial turn merely because retry n happens to
-        # project to a coherence-reset row.  The retry coordinate, effort, and
-        # allocation remain unchanged; only the exact input capsule resumes.
-        wip_mode = "restore_clean_same_frontier"
     if (
         wip_mode == "restore_clean_same_frontier"
         and row.get("warm_wip_available") is not True
     ):
-        if row.get("warm_wip_validation") == BOUNDARY_POLICY_WIP_REJECTION:
-            # Capsules created before this exact capability policy remain
-            # forensic evidence only.  The scheduler must choose a clean
-            # reset before it emits a plan, rather than advertising a warm
-            # continuation that the dispatch gate will inevitably reject.
-            wip_mode = "exclude"
-        else:
-            raise ValueError(
-                "retry policy requires clean same-frontier WIP, but none is "
-                "eligible"
-            )
+        raise ValueError(
+            "retry policy requires clean same-frontier WIP, but none is "
+            "eligible"
+        )
     return seed_mode, wip_mode
 
 
@@ -128,18 +94,6 @@ def required_headroom(effort: str, minutes: int,
     return max(floor, math.ceil(max(rates) * minutes) + 1)
 
 
-def validate_failure_revision_rounds(value: object) -> int:
-    """Return the one canonical bounded inner-revision configuration."""
-
-    if (
-        not isinstance(value, int)
-        or isinstance(value, bool)
-        or value not in FAILURE_REVISION_ROUND_CHOICES
-    ):
-        raise ValueError("failure revision rounds must be exactly 1 or 4")
-    return value
-
-
 def _command(
     row: dict[str, Any],
     effort: str,
@@ -148,14 +102,7 @@ def _command(
     turns: list[dict[str, Any]],
     minutes: int,
     unlimited: bool,
-    failure_revision_rounds: int = DEFAULT_FAILURE_REVISION_ROUNDS,
 ) -> dict[str, Any]:
-    failure_revision_rounds = validate_failure_revision_rounds(
-        failure_revision_rounds
-    )
-    failure_revision_treatment = (
-        failure_revision_rounds > DEFAULT_FAILURE_REVISION_ROUNDS
-    )
     binding = Status.validate_frontier_binding({
         field: row.get(field)
         for field in (
@@ -185,6 +132,7 @@ def _command(
             f"n={n} requires {policy['effort']}/{policy['minutes']}"
         )
     advertised = {
+        "recommended_model": policy["model"],
         "recommended_effort": policy["effort"],
         "recommended_minutes": policy["minutes"],
         "recommended_wip_mode": policy["wip_mode"],
@@ -199,57 +147,30 @@ def _command(
                 f"frontier {key} disagrees with retry policy: "
                 f"{row[key]!r} != {value!r}"
             )
-    generation_effort = (
-        FAILURE_REVISION_TREATMENT_EFFORT
-        if failure_revision_treatment
-        else effort
-    )
-    generation_minutes = (
-        FAILURE_REVISION_TREATMENT_MINUTES
-        if failure_revision_treatment
-        else minutes
-    )
-    allocation_policy = (
-        FAILURE_REVISION_TREATMENT_ALLOCATION_POLICY
-        if failure_revision_treatment
-        else "drain"
-    )
     headroom = 1 if unlimited else required_headroom(
-        generation_effort, generation_minutes, turns
+        effort, minutes, turns
     )
     effective_reserve = 0 if unlimited else reserve
     max_runs = -1 if unlimited else DEFAULT_MAX_RUNS
     max_tokens = -1 if unlimited else DEFAULT_MAX_TOKENS
     seed_mode, wip_mode = lineage_input_modes(row, minutes=minutes)
-    recovery_required = row.get("warm_wip_recovery_required") is True
-    boundary_policy_reset = (
-        policy["wip_mode"] == "restore_clean_same_frontier"
-        and wip_mode == "exclude"
-        and row.get("warm_wip_validation") == BOUNDARY_POLICY_WIP_REJECTION
-    )
-    if recovery_required:
-        effective_dispatch_mode = "recover_clean_infrastructure_wip"
-    elif boundary_policy_reset:
-        effective_dispatch_mode = "filesystem_boundary_clean_reset"
-    else:
-        effective_dispatch_mode = policy["dispatch_mode"]
     args = [
         "python3", "-u", "arc/crack_lab/gkm_legs.py",
         f"--game={row['game']}",
         f"--max-level={row['next_level']}",
         "--proposer=codex",
-        "--model=gpt-5.6-sol",
-        f"--minutes={generation_minutes}",
-        f"--codex-effort={generation_effort}",
+        f"--model={policy['model']}",
+        f"--minutes={minutes}",
+        f"--codex-effort={effort}",
         "--codex-debrief-effort=medium",
-        f"--codex-allocation-policy={allocation_policy}",
+        "--codex-allocation-policy=drain",
         "--debrief-policy=never",
         f"--codex-weekly-reserve={effective_reserve}",
         f"--codex-weekly-headroom={headroom}",
         f"--codex-max-campaign-runs={max_runs}",
         f"--codex-max-campaign-tokens={max_tokens}",
         "--transient-retries=0",
-        f"--tag=arc_agi3_n{n}_{effective_dispatch_mode}",
+        f"--tag=arc_agi3_n{n}_{policy['dispatch_mode']}",
         f"--seed-mode={seed_mode}",
         f"--wip-mode={wip_mode}",
         f"--expected-parent-reached={binding['reached']}",
@@ -267,27 +188,15 @@ def _command(
         ),
         f"--expected-frontier-sha256={binding['frontier_sha256']}",
     ]
-    expected_wip_attempt = None
-    if wip_mode == "restore_clean_same_frontier":
-        expected_wip_attempt = row.get("warm_wip_attempt")
-        if not isinstance(expected_wip_attempt, str) or not expected_wip_attempt:
-            raise ValueError(
-                "WIP continuation lacks one scheduler-selected capsule"
-            )
-        args.append(f"--expected-wip-attempt={expected_wip_attempt}")
-    if failure_revision_rounds > DEFAULT_FAILURE_REVISION_ROUNDS:
-        args.append(
-            f"--failure-revision-rounds={failure_revision_rounds}"
-        )
-    item = {
+    return {
         **binding,
         "game": row["game"],
         "target_level": row["next_level"],
-        "effort": generation_effort,
-        "minutes": generation_minutes,
+        "model": policy["model"],
+        "effort": effort,
+        "minutes": minutes,
         "retry_complexity_n": n,
-        "policy_dispatch_mode": policy["dispatch_mode"],
-        "dispatch_mode": effective_dispatch_mode,
+        "dispatch_mode": policy["dispatch_mode"],
         "recommended_auxiliary_parallelism": policy[
             "auxiliary_parallelism"
         ],
@@ -297,24 +206,12 @@ def _command(
         "required_headroom_percent": headroom,
         "external_evidence": row.get("external_evidence", {}),
         "warm_wip_available": bool(row.get("warm_wip_available")),
-        "warm_wip_phase": row.get("warm_wip_phase"),
-        "warm_wip_recovery_required": recovery_required,
-        "warm_wip_validation": row.get("warm_wip_validation"),
-        "expected_wip_attempt": expected_wip_attempt,
         "seed_mode": seed_mode,
         "wip_mode": wip_mode,
         "lineage_input_mode": f"{seed_mode}+{wip_mode}",
         "argv": args,
         "command": shlex.join(args),
     }
-    if failure_revision_rounds > DEFAULT_FAILURE_REVISION_ROUNDS:
-        item.update({
-            "failure_revision_rounds": failure_revision_rounds,
-            "failure_revision_protocol_sha256": (
-                FAILURE_REVISION_PROTOCOL_SHA256
-            ),
-        })
-    return item
 
 
 def choose_exploitation_effort(
@@ -426,8 +323,7 @@ def unlimited_escalation(
 
 
 def adaptive_campaign_item(
-    report: dict[str, Any], *, reserve: int,
-    failure_revision_rounds: int = DEFAULT_FAILURE_REVISION_ROUNDS,
+    report: dict[str, Any], *, reserve: int
 ) -> dict[str, Any] | None:
     """Build the next item from fresh exact-frontier retry evidence."""
     frontiers = report.get("frontiers", [])
@@ -469,37 +365,20 @@ def adaptive_campaign_item(
         turns=turns,
         minutes=minutes,
         unlimited=unlimited,
-        failure_revision_rounds=failure_revision_rounds,
     )
-    if item["warm_wip_recovery_required"]:
-        item["experiment_role"] = (
-            f"retry_n{n}_recover_clean_infrastructure_wip"
-        )
-    elif item["dispatch_mode"] == "filesystem_boundary_clean_reset":
-        item["experiment_role"] = (
-            f"retry_n{n}_filesystem_boundary_clean_reset"
-        )
-    else:
-        item["experiment_role"] = role
+    item["experiment_role"] = role
     item["policy_projection"] = policy
     return item
 
 
-def initial_queue(
-    report: dict[str, Any], *, reserve: int,
-    failure_revision_rounds: int = DEFAULT_FAILURE_REVISION_ROUNDS,
-) -> list[dict[str, Any]]:
+def initial_queue(report: dict[str, Any], *, reserve: int) -> list[dict[str, Any]]:
     """Seed one fresh, currently highest-ranked item.
 
     Only one item is frozen into the plan because every clear or failed attempt
     changes the frontier ranking.  The runner rebuilds all later items from fresh
     artifacts and a fresh allowance read.
     """
-    item = adaptive_campaign_item(
-        report,
-        reserve=reserve,
-        failure_revision_rounds=failure_revision_rounds,
-    )
+    item = adaptive_campaign_item(report, reserve=reserve)
     return [item] if item is not None else []
 
 
@@ -530,18 +409,8 @@ def cold_screen_cohort(report: dict[str, Any], *, reserve: int,
 
 
 def policy_report(report: dict[str, Any], *, reserve: int = DEFAULT_RESERVE,
-                  cohort_size: int = 4,
-                  failure_revision_rounds: int = (
-                      DEFAULT_FAILURE_REVISION_ROUNDS
-                  )) -> dict[str, Any]:
-    failure_revision_rounds = validate_failure_revision_rounds(
-        failure_revision_rounds
-    )
-    queue = initial_queue(
-        report,
-        reserve=reserve,
-        failure_revision_rounds=failure_revision_rounds,
-    )
+                  cohort_size: int = 4) -> dict[str, Any]:
+    queue = initial_queue(report, reserve=reserve)
     allowance = report.get("allowance") or {}
     unlimited = allowance.get("window_name") == "unlimited"
     remaining = allowance.get("remaining_percent")
@@ -568,12 +437,7 @@ def policy_report(report: dict[str, Any], *, reserve: int = DEFAULT_RESERVE,
     else:
         phase = "run_initial_item_then_adapt"
         admit = True
-    if (
-        failure_revision_rounds > DEFAULT_FAILURE_REVISION_ROUNDS
-        and phase == "run_initial_item_then_adapt"
-    ):
-        phase = "run_one_frozen_failure_revision_item"
-    payload = {
+    return {
         "phase": phase,
         "admit_next_turn": admit,
         "reserve_percent": 0 if unlimited else reserve,
@@ -613,14 +477,6 @@ def policy_report(report: dict[str, Any], *, reserve: int = DEFAULT_RESERVE,
         "cold_screen_cohort": [],
         "next_frontiers": report.get("frontiers", []),
     }
-    if failure_revision_rounds > DEFAULT_FAILURE_REVISION_ROUNDS:
-        payload.update({
-            "failure_revision_rounds": failure_revision_rounds,
-            "failure_revision_protocol_sha256": (
-                FAILURE_REVISION_PROTOCOL_SHA256
-            ),
-        })
-    return payload
 
 
 def main() -> int:
@@ -629,12 +485,6 @@ def main() -> int:
     parser.add_argument("--ledger", type=Path, default=Guard.DEFAULT_LEDGER)
     parser.add_argument("--reserve-percent", type=int, default=DEFAULT_RESERVE)
     parser.add_argument("--cohort-size", type=int, default=4)
-    parser.add_argument(
-        "--failure-revision-rounds",
-        type=int,
-        choices=sorted(FAILURE_REVISION_ROUND_CHOICES),
-        default=DEFAULT_FAILURE_REVISION_ROUNDS,
-    )
     parser.add_argument("--write-plan", type=Path)
     args = parser.parse_args()
     snapshot = Guard.query_rate_limits() if args.live else None
@@ -648,10 +498,7 @@ def main() -> int:
         max_tokens=DEFAULT_MAX_TOKENS,
     )
     payload = policy_report(
-        report,
-        reserve=args.reserve_percent,
-        cohort_size=args.cohort_size,
-        failure_revision_rounds=args.failure_revision_rounds,
+        report, reserve=args.reserve_percent, cohort_size=args.cohort_size
     )
     rendered = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     if args.write_plan:

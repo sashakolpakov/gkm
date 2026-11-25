@@ -116,8 +116,8 @@ INVARIANTS = (
         "scenario_driver_never_synthesizes_pass",
         "conformance",
         "arc/crack_lab/test_arc_agi3_contiguous_scenario_driver.py::"
-        "test_missing_production_observers_emit_typed_blocked_receipts",
-        "The production S01-S12 run/verify driver leaves unavailable observers typed BLOCKED and cannot derive PASS from caller-supplied status metadata.",
+        "test_s01_s12_driver_emits_only_typed_blocked_receipts",
+        "The production S01-S12 run/verify driver emits typed BLOCKED receipts for unavailable observers and cannot derive PASS from unit metadata.",
     ),
     Invariant(
         "formal_operator_rejects_cli_before_mutation",
@@ -449,41 +449,6 @@ INVARIANTS = (
         "At the configured full journal-byte scale, an authenticated cached prefix is metadata-revalidated while event-byte parsing remains bounded to the new suffix.",
     ),
     Invariant(
-        "runner_exact_authority_failure_stops_later_effects",
-        "runner",
-        "arc/crack_lab/test_arc_agi3_contiguous_runner.py::"
-        "test_exact_authority_failure_stops_all_later_lanes_and_effects",
-        "An exact authority-gate failure aborts the complete cycle before any later lane poll, promotion, or filesystem effect.",
-    ),
-    Invariant(
-        "runner_campaign_lock_serializes_threads_and_processes",
-        "runner",
-        "arc/crack_lab/test_arc_agi3_contiguous_runner.py::"
-        "test_foreign_thread_and_process_block_then_serialize_campaign_lock",
-        "Same-thread recursive acquisition is rejected before flock, while foreign native threads and forked processes block and serialize on one campaign lock.",
-    ),
-    Invariant(
-        "runner_bound_receipt_read_is_descriptor_stable",
-        "runner",
-        "arc/crack_lab/test_arc_agi3_contiguous_runner.py::"
-        "test_bound_receipt_hash_and_parse_share_one_stable_descriptor",
-        "Bound receipt hashing and parsing use one stable descriptor and reject an in-read directory-entry replacement.",
-    ),
-    Invariant(
-        "runner_auxiliary_effects_reopen_full_journal_prefix",
-        "runner",
-        "arc/crack_lab/test_arc_agi3_contiguous_runner.py::"
-        "test_auxiliary_prepare_launch_poll_admit_and_abort_use_full_prefix_gate",
-        "Auxiliary prepare, launch, poll, admission, and abort each reopen the complete authenticated journal prefix before effect.",
-    ),
-    Invariant(
-        "runner_promotion_effect_reauthenticates_full_journal_prefix",
-        "runner",
-        "arc/crack_lab/test_arc_agi3_contiguous_runner.py::"
-        "test_promotion_effect_gate_reauthenticates_complete_journal_prefix",
-        "Promotion reopens the complete journal prefix immediately before the gate call, so prior-prefix mutation prevents gate invocation.",
-    ),
-    Invariant(
         "runner_rejects_wip_provider_path_substitution",
         "runner",
         "arc/crack_lab/test_arc_agi3_contiguous_runner.py::"
@@ -558,10 +523,7 @@ INVARIANTS = (
         "container_backend",
         "arc/crack_lab/test_arc_agi3_container_backend.py::"
         "test_typed_adapter_full_mocked_lifecycle_and_token_secrecy",
-        "The typed clean lifecycle binds image, compatibility closure, exact "
-        "per-turn RPC/container receipt, output, transcript, and token "
-        "secrecy; launch reopens the non-authoritative receipt and fails "
-        "closed on drift.",
+        "The typed clean lifecycle binds image, RPC, output, transcript, and token secrecy.",
     ),
     Invariant(
         "container_backend_uses_canonical_terminal_precedence",
@@ -637,57 +599,6 @@ INVARIANTS = (
         "arc/crack_lab/test_arc_agi3_arena_rpc.py::"
         "test_pinned_worker_uses_only_default_rpc_clone",
         "The pinned worker reaches the engine only through authenticated Arena RPC.",
-    ),
-    Invariant(
-        "compatibility_arena_client_source_is_purified",
-        "arena_rpc",
-        "arc/crack_lab/test_arc_agi3_compatibility_arena_closure.py::"
-        "test_client_closure_is_exact_and_has_no_host_read_capability",
-        "The canonical compatibility RPC client has no repository, engine, "
-        "environment-file, parent-path, private-state, raw-Arena, or host-"
-        "filesystem capability.",
-    ),
-    Invariant(
-        "compatibility_arena_closure_custody_is_descriptor_safe",
-        "arena_rpc",
-        "arc/crack_lab/test_arc_agi3_compatibility_arena_closure.py::"
-        "test_root_swap_during_inventory_fails_final_descriptor_recheck",
-        "The deterministic compatibility content manifest and instance "
-        "custody receipt are read through one held directory descriptor, "
-        "reopened at decision, and reject path, inode, mode, or inventory "
-        "substitution.",
-    ),
-    Invariant(
-        "compatibility_arena_closure_publication_is_crash_atomic",
-        "arena_rpc",
-        "arc/crack_lab/test_arc_agi3_compatibility_arena_closure.py::"
-        "test_crash_atomic_publication_fault_matrix_is_behavioral",
-        "Closure files and their directory are fsynced under one deterministic "
-        "non-authoritative sibling, exclusively atomically renamed into an "
-        "absent destination, and parent-fsynced. Ordinary failures may clean "
-        "only the current invocation's still-held staging inode and recorded "
-        "child inodes; every pre-existing, racing, or post-crash staging inode "
-        "is preserved fail-closed. Only the typed pre-existing-staging signal "
-        "permits zero-cost quarantine and a fresh scheduler root.",
-    ),
-    Invariant(
-        "compatibility_arena_closure_receipt_is_non_authoritative",
-        "arena_rpc",
-        "arc/crack_lab/test_arc_agi3_compatibility_arena_closure.py::"
-        "test_compatibility_closure_has_no_standalone_launch_authority",
-        "The compatibility closure may be consumed by the existing backend, "
-        "but its receipt alone explicitly grants no launch, scheduling, "
-        "mutation, or promotion authority.",
-    ),
-    Invariant(
-        "retained_prepare_crash_is_quarantined_and_fresh_generation_is_bounded",
-        "runner",
-        "arc/crack_lab/test_arc_agi3_contiguous_runner.py::"
-        "test_retained_prepare_crash_uses_fresh_generation_and_bounds_repeats",
-        "A process death that leaves typed compatibility staging closes the "
-        "old PREPARED identity at zero authority, preserves a bounded "
-        "descriptor observation, dispatches only a distinct fresh generation "
-        "after circuit policy permits it, and gates repeated quarantines.",
     ),
     Invariant(
         "arena_named_volume_relay_is_byte_exact",
@@ -813,18 +724,6 @@ INVARIANTS = (
         "The exact app-server lifecycle and dynamic-tool pairs pass the strict taint parser.",
     ),
     Invariant(
-        "filesystem_boundary_is_prewrite_and_scheduler_visible",
-        "taint",
-        "arc/crack_lab/test_arc_agi3_container_backend.py::"
-        "test_prewrite_boundary_rejection_is_backend_taint_and_noncounting_scheduler_transition",
-        "The production BridgeClient and container backend, exercised with "
-        "authenticated controller/Docker doubles, carry a prewrite-denied "
-        "filesystem-boundary workspace_write from its immutable transcript "
-        "through runner validation into candidate/WIP-free taint, scheduler "
-        "lineage revocation, and a zero retry delta. Live Docker execution "
-        "remains a pilot/conformance-gate obligation.",
-    ),
-    Invariant(
         "general_taint_dependency_is_control_bound_and_syntax_aware",
         "taint",
         "arc/crack_lab/test_arc_agi3_contiguous_taint.py::"
@@ -902,7 +801,6 @@ COMPONENT_TEST_FILES = (
     "arc/crack_lab/test_arc_agi3_arena_volume_transport.py",
     "arc/crack_lab/test_arc_agi3_boundary_certifier.py",
     "arc/crack_lab/test_arc_agi3_codex_app_server_transport.py",
-    "arc/crack_lab/test_arc_agi3_compatibility_arena_closure.py",
     "arc/crack_lab/test_arc_agi3_container_backend.py",
     "arc/crack_lab/test_arc_agi3_container_worker.py",
     "arc/crack_lab/test_arc_agi3_containment_canary_operator.py",
@@ -918,7 +816,6 @@ COMPONENT_TEST_FILES = (
     "arc/crack_lab/test_arc_agi3_controller_egress_guardian.py",
     "arc/crack_lab/test_arc_agi3_controller_guardian.py",
     "arc/crack_lab/test_arc_agi3_controller_supply_chain.py",
-    "arc/crack_lab/test_arc_agi3_leaderboard_v3_gate.py",
     "arc/crack_lab/test_arc_agi3_proposer_worker.py",
     "arc/crack_lab/test_arc_agi3_python_runtime_manifest.py",
     "arc/crack_lab/test_arc_agi3_release_gate.py",
@@ -984,11 +881,8 @@ CONTROL_CONTRACT_FILES = (
     "arc/audit_submission_taint.py",
     "arc/audit_action_protocol.py",
     "arc/crack_lab/arc_agi3_contiguous_taint.py",
-    "arc/crack_lab/arc_agi3_proposer_boundary.py",
     "arc/crack_lab/arc_agi3_source_schema.py",
     "arc/crack_lab/arc_agi3_arena_rpc.py",
-    "arc/crack_lab/arc_agi3_arena_rpc_client.py",
-    "arc/crack_lab/arc_agi3_compatibility_arena_closure.py",
     "arc/crack_lab/arc_agi3_arena_volume_relay.py",
     "arc/crack_lab/arc_agi3_arena_volume_transport.py",
     "arc/crack_lab/arc_agi3_proposer_worker.py",
@@ -1000,7 +894,6 @@ CONTROL_CONTRACT_FILES = (
     "arc/crack_lab/arc_agi3_boundary_certifier.py",
     "arc/arc_agi3_adapter.py",
     "arc/crack_lab/codex_campaign_status.py",
-    "arc/crack_lab/codex_failure_revision_contract.py",
     "arc/crack_lab/claude_usage_guard.py",
     "arc/crack_lab/codex_usage_guard.py",
     "arc/crack_lab/gkm_arena.py",
@@ -1012,11 +905,9 @@ CONTROL_CONTRACT_FILES = (
     "arc/crack_lab/priors.py",
     "arc/crack_lab/proposer.py",
     "arc/crack_lab/replay_scorecard.py",
-    "arc/crack_lab/verify_frozen_release.py",
     "cone/cone_foraging.py",
     "cone/cone_foraging_bound.py",
     "arc/crack_lab/container/Containerfile.arc-agi3-contiguous",
-    "arc/crack_lab/container/arc_agi3_solver_requirements.lock",
     "arc/crack_lab/container/Containerfile.arc-agi3-controller",
     "arc/crack_lab/container/Containerfile.arc-agi3-controller-egress",
     "arc/crack_lab/container/Containerfile.arc-agi3-arena-volume-relay",
@@ -1039,7 +930,6 @@ CONTROL_CONTRACT_FILES = (
     "arc/crack_lab/test_arc_agi3_contiguous_taint.py",
     "arc/crack_lab/test_arc_agi3_contiguous_watchdog.py",
     "arc/crack_lab/test_arc_agi3_action_protocol.py",
-    "arc/crack_lab/test_arc_agi3_compatibility_arena_closure.py",
     "arc/crack_lab/test_arc_agi3_arena_rpc.py",
     "arc/crack_lab/test_arc_agi3_arena_volume_relay.py",
     "arc/crack_lab/test_arc_agi3_arena_volume_transport.py",
@@ -1048,10 +938,8 @@ CONTROL_CONTRACT_FILES = (
     "arc/crack_lab/test_arc_agi3_controller_supply_chain.py",
     "arc/crack_lab/test_arc_agi3_controller_guardian.py",
     "arc/crack_lab/test_arc_agi3_controller_egress_guardian.py",
-    "arc/crack_lab/test_arc_agi3_leaderboard_v3_gate.py",
     "arc/crack_lab/test_arc_agi3_release_gate.py",
     "arc/crack_lab/test_arc_agi3_boundary_certifier.py",
-    "arc/crack_lab/test_verify_frozen_release.py",
     "arc/test_audit_action_protocol.py",
     *AUTHORITATIVE_INVENTORY_METADATA_FILES,
 )

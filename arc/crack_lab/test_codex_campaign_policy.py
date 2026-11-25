@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-
 import codex_campaign_policy as P
 
 
@@ -211,59 +209,11 @@ def test_adaptive_campaign_item_uses_retry_policy_not_historical_cost_arm():
         }],
     }
     item = P.adaptive_campaign_item(report, reserve=20)
+    assert item["model"] == "gpt-6.1-sol"
+    assert item["argv"].count("--model=gpt-6.1-sol") == 1
     assert item["effort"] == "medium"
     assert "--codex-weekly-reserve=20" in item["argv"]
     assert item["experiment_role"] == "retry_n0_fresh_frontier"
-    assert "failure_revision_rounds" not in item
-    assert "failure_revision_protocol_sha256" not in item
-    assert not any(
-        arg.startswith("--failure-revision-rounds=")
-        for arg in item["argv"]
-    )
-
-
-def test_failure_revision_treatment_overrides_only_generation_intensity():
-    report = {
-        "allowance": {"remaining_percent": 100},
-        "local_window": {"runs": 0},
-        "turns": [],
-        "frontiers": [{
-            **_binding("cold", 0),
-            "game": "cold", "next_level": 1,
-            "current_level": 0, "authoritative_level_count": 8,
-            "incumbent_kind": "cold_start", "retry_complexity_n": 0,
-            "recommended_effort": "medium", "recommended_minutes": 15,
-            "recommended_wip_mode": "exclude",
-            "recommended_auxiliary_parallelism": 0,
-            "dispatch_mode": "fresh_frontier",
-            "warm_wip_available": False, "external_evidence": {},
-        }],
-    }
-    omitted = P.policy_report(report)
-    explicit_default = P.policy_report(report, failure_revision_rounds=1)
-    assert json.dumps(omitted, sort_keys=True) == json.dumps(
-        explicit_default, sort_keys=True
-    )
-
-    plan = P.policy_report(report, failure_revision_rounds=4)
-    item = plan["initial_queue"][0]
-
-    assert plan["phase"] == "run_one_frozen_failure_revision_item"
-    assert plan["failure_revision_rounds"] == 4
-    assert item["retry_complexity_n"] == 0
-    assert item["seed_mode"] == "zero_seed"
-    assert item["wip_mode"] == "exclude"
-    assert item["dispatch_mode"] == "fresh_frontier"
-    assert item["effort"] == "max"
-    assert item["minutes"] == 300
-    assert item["failure_revision_rounds"] == 4
-    assert item["failure_revision_protocol_sha256"] == (
-        P.FAILURE_REVISION_PROTOCOL_SHA256
-    )
-    assert "--codex-effort=max" in item["argv"]
-    assert "--minutes=300" in item["argv"]
-    assert "--codex-allocation-policy=hard" in item["argv"]
-    assert item["argv"].count("--failure-revision-rounds=4") == 1
 
 
 def test_adaptive_campaign_item_ranks_by_retry_coordinate_not_paid_attempts():
@@ -326,7 +276,6 @@ def test_unlimited_campaign_retries_quarantined_frontier_at_xhigh():
             "recommended_auxiliary_parallelism": 0,
             "dispatch_mode": "continue_clean_wip",
             "warm_wip_available": True,
-            "warm_wip_attempt": "not_reached_abc123",
             "external_evidence": {},
         }],
     }
@@ -338,8 +287,6 @@ def test_unlimited_campaign_retries_quarantined_frontier_at_xhigh():
     assert item["experiment_role"] == "retry_n2_continue_clean_wip"
     assert item["seed_mode"] == "verified_parent"
     assert item["wip_mode"] == "restore_clean_same_frontier"
-    assert item["expected_wip_attempt"] == "not_reached_abc123"
-    assert "--expected-wip-attempt=not_reached_abc123" in item["argv"]
     assert item["cost_control_enabled"] is False
     assert item["max_campaign_runs"] == -1
     assert item["max_campaign_tokens"] == -1
@@ -370,125 +317,6 @@ def test_long_turns_alternate_coherent_reset_and_wip_continuation():
     assert P.lineage_input_modes(row, minutes=180) == (
         "verified_parent", "restore_clean_same_frontier"
     )
-
-
-def test_policy_rejected_legacy_wip_becomes_clean_reset_before_plan():
-    report = {
-        "allowance": {"window_name": "unlimited"},
-        "turns": [],
-        "frontiers": [{
-            **_binding("hard", 2),
-            "game": "hard",
-            "current_level": 2,
-            "next_level": 3,
-            "authoritative_level_count": 7,
-            "incumbent_kind": "promoted",
-            "retry_complexity_n": 2,
-            "priority_score": 3.0,
-            "recommended_effort": "xhigh",
-            "recommended_minutes": 25,
-            "recommended_wip_mode": "restore_clean_same_frontier",
-            "recommended_auxiliary_parallelism": 0,
-            "dispatch_mode": "continue_clean_wip",
-            "warm_wip_available": False,
-            "warm_wip_attempt": None,
-            "warm_wip_phase": None,
-            "warm_wip_recovery_required": False,
-            "warm_wip_validation": (
-                "rejected:filesystem_boundary_policy_binding"
-            ),
-            "external_evidence": {},
-        }],
-    }
-
-    item = P.adaptive_campaign_item(report, reserve=5)
-
-    assert item["wip_mode"] == "exclude"
-    assert item["dispatch_mode"] == "filesystem_boundary_clean_reset"
-    assert item["expected_wip_attempt"] is None
-    assert item["warm_wip_validation"] == (
-        "rejected:filesystem_boundary_policy_binding"
-    )
-    assert item["experiment_role"] == (
-        "retry_n2_filesystem_boundary_clean_reset"
-    )
-    assert "--wip-mode=exclude" in item["argv"]
-
-
-def test_clean_infrastructure_wip_overrides_n7_reset_without_advancing_n():
-    report = {
-        "allowance": {"window_name": "unlimited"},
-        "turns": [],
-        "frontiers": [{
-            **_binding("hard", 8),
-            "game": "hard",
-            "current_level": 8,
-            "next_level": 9,
-            "authoritative_level_count": 10,
-            "incumbent_kind": "promoted",
-            "retry_complexity_n": 7,
-            "priority_score": 3.0,
-            "recommended_effort": "max",
-            "recommended_minutes": 180,
-            "recommended_wip_mode": "exclude",
-            "recommended_auxiliary_parallelism": 2,
-            "dispatch_mode": "repeated_hard_frontier_reset",
-            "warm_wip_available": True,
-            "warm_wip_attempt": "infrastructure_failure_transport_abc123",
-            "warm_wip_phase": "infrastructure_failure_transport",
-            "warm_wip_recovery_required": True,
-            "external_evidence": {},
-        }],
-    }
-    item = P.adaptive_campaign_item(report, reserve=5)
-    assert item["retry_complexity_n"] == 7
-    assert item["effort"] == "max"
-    assert item["minutes"] == 180
-    assert item["policy_dispatch_mode"] == "repeated_hard_frontier_reset"
-    assert item["dispatch_mode"] == "recover_clean_infrastructure_wip"
-    assert item["wip_mode"] == "restore_clean_same_frontier"
-    assert item["experiment_role"] == (
-        "retry_n7_recover_clean_infrastructure_wip"
-    )
-    assert item["expected_wip_attempt"] == (
-        "infrastructure_failure_transport_abc123"
-    )
-    assert "--wip-mode=restore_clean_same_frontier" in item["argv"]
-
-
-def test_n7_solver_no_progress_still_excludes_wip():
-    row = {
-        "game": "hard",
-        "current_level": 8,
-        "next_level": 9,
-        "incumbent_kind": "promoted",
-        "retry_complexity_n": 7,
-        "warm_wip_available": True,
-        "warm_wip_attempt": "not_reached_abc123",
-        "warm_wip_phase": "not_reached",
-        "warm_wip_recovery_required": False,
-    }
-    assert P.lineage_input_modes(row, minutes=180) == (
-        "verified_parent", "exclude"
-    )
-
-
-def test_infrastructure_recovery_without_exact_capsule_fails_closed():
-    row = {
-        "game": "hard",
-        "current_level": 8,
-        "next_level": 9,
-        "incumbent_kind": "promoted",
-        "retry_complexity_n": 7,
-        "warm_wip_available": True,
-        "warm_wip_recovery_required": True,
-    }
-    try:
-        P.lineage_input_modes(row, minutes=180)
-    except ValueError as exc:
-        assert "exact-frontier WIP capsule" in str(exc)
-    else:
-        raise AssertionError("unbound infrastructure WIP was accepted")
 
 
 def test_unlimited_escalation_lengthens_uninterrupted_hard_frontier_turns():

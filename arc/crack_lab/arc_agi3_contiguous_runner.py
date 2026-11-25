@@ -15,7 +15,6 @@ backend's container/cgroup boundary.
 
 from __future__ import annotations
 
-import asyncio
 import copy
 import errno
 import fcntl
@@ -28,7 +27,6 @@ import re
 import shutil
 import stat
 import time
-import threading
 import uuid
 from dataclasses import asdict, dataclass, is_dataclass, replace
 from pathlib import Path, PurePosixPath
@@ -39,32 +37,24 @@ import arc_agi3_codex_app_server_transport as Transport
 import arc_agi3_source_schema as SourceSchema
 import arc_agi3_contiguous_taint as Taint
 import arc_agi3_contiguous_scheduler as Scheduler
-import arc_agi3_compatibility_arena_closure as CompatibilityClosure
 
 
 JOURNAL_SCHEMA = 1
 RUNNER_SCHEMA = 1
-SELECTIVE_FRONTIER_IMPORT_SCHEMA = 1
-SELECTIVE_FRONTIER_IMPORT_AUTHORITY = (
-    "contiguous_schema_v2_selected_version_v1"
-)
-SELECTIVE_SCOPE_BLOCKED_REASON = "selective_continuation_scope_excluded"
 MAX_LANES = 6
-MAX_VERIFIED_QUIESCENT_COLLECTIONS = 2 * MAX_LANES
-MAX_QUIESCENT_COLLECTION_DIRECTORIES = (
-    Transport.MAX_APP_SERVER_STATE_FILES
-)
 JOURNAL_SEGMENT_EVENT_LIMIT = 256
 MIN_JOURNAL_FILESYSTEM_FREE_BYTES = 64 * 1024 * 1024
 MIN_JOURNAL_FILESYSTEM_FREE_INODES = 256
 JOURNAL_EMERGENCY_RESERVE_BYTES = 64 * 1024
 JOURNAL_QUIESCENCE_RESERVE_BYTES = 1024 * 1024
 # The runtime is deliberately not a release authorization.  The independent
-# image-level release receipt must authorize the operator after the backend
-# adapter, taint suite, and exact replay checks all pass.  Auxiliary readiness
-# is therefore derived from the exact genesis-bound launch configuration and
-# backend attestations in ``__init__``; the deprecated false-valued module
-# alias below is compatibility metadata, not a separately flippable authority.
+# image-level release receipt must flip its own gate after the backend adapter,
+# taint suite, and exact replay checks all pass.
+CONTIGUOUS_RUNNER_LAUNCH_READY = False
+# No production auxiliary adapter is released by this module.  Tests and future
+# adapters can exercise the abstract contract only when the durable campaign
+# manifest independently attests every isolation/input/admission boundary.
+CONTIGUOUS_AUXILIARY_LAUNCH_READY = False
 POLL_TIMEOUT_SECONDS = 5.0
 MAX_HOST_TRANSCRIPT_BYTES = 64 * 1024 * 1024
 MAX_AUXILIARY_RECEIPT_BYTES = 32 * 1024 * 1024
@@ -108,8 +98,6 @@ EXPECTED_CONTROLLER_IMAGE_USER = "65532:65532"
 # it group/world-accessible or requiring a privileged chown helper.
 EXPECTED_CONTROLLER_USER = f"{os.getuid()}:{os.getgid()}"
 EXPECTED_CONTROLLER_EGRESS_POLICY = "openai_https_only"
-EXPECTED_CONTROLLER_STATE_ROOT = "/controller-state"
-EXPECTED_CONTROLLER_NEUTRAL_CWD = "/controller-neutral"
 EXPECTED_REASONING_EFFORT_ALLOWLIST = (
     "medium",
     "high",
@@ -165,59 +153,9 @@ FAILURE_FAULT_DOMAINS = frozenset(
     Scheduler.FAILURE_FAULT_DOMAINS
 )
 
-# Deprecated schema-1 compatibility surface.  This historical flag was never
-# launch authority and remains permanently false.  Operational configuration
-# is reported separately by ``auxiliary_dispatch_configured`` and every actual
-# dispatch still passes the exact configuration/backend/effect gates.
-CONTIGUOUS_AUXILIARY_LAUNCH_READY = False
-
-# ``flock`` can self-deadlock when a native thread opens the same campaign lock
-# through another runner instance.  Track only locks actually acquired by this
-# process; foreign threads and processes still enter the kernel lock and block
-# normally.  Tokens prevent an old releaser from deleting a new owner's entry.
-_CAMPAIGN_LOCK_REGISTRY_GUARD = threading.RLock()
-_CAMPAIGN_LOCK_OWNERS: dict[
-    str, tuple[int, str, "_CycleExecutionOwner"]
-] = {}
-_CAMPAIGN_LOCK_REGISTRY_PID = os.getpid()
-
-
-def _reset_campaign_lock_registry_after_fork() -> None:
-    """Discard process-local lock owners and inherited lock internals.
-
-    A fork copies both Python's native-thread identifier and this module's
-    owner table.  Neither copy describes ownership in the child process.  A
-    new guard is required as well because the inherited ``RLock`` may have
-    been held by a vanished thread at the fork boundary.
-    """
-
-    global _CAMPAIGN_LOCK_REGISTRY_GUARD
-    global _CAMPAIGN_LOCK_OWNERS
-    global _CAMPAIGN_LOCK_REGISTRY_PID
-    _CAMPAIGN_LOCK_REGISTRY_GUARD = threading.RLock()
-    _CAMPAIGN_LOCK_OWNERS = {}
-    _CAMPAIGN_LOCK_REGISTRY_PID = os.getpid()
-
-
-if hasattr(os, "register_at_fork"):
-    os.register_at_fork(
-        after_in_child=_reset_campaign_lock_registry_after_fork
-    )
-
 
 class ContiguousRunnerError(RuntimeError):
     """A fail-closed scheduler, journal, or backend-contract error."""
-
-
-class ExactAuthorityGateError(ContiguousRunnerError):
-    """Fatal cycle-wide failure of a just-in-time authority gate.
-
-    Ordinary backend failures can be isolated to one lane.  A failed exact
-    gate instead means the authenticated campaign prefix or one of its bound
-    authorities changed.  Continuing another lane after that observation
-    would let later effects run under a state that the host has already found
-    untrustworthy, so this subtype must always escape the complete cycle.
-    """
 
 
 class JournalStorageExhausted(ContiguousRunnerError):
@@ -339,30 +277,6 @@ class BackendSubstratePreflightError(RuntimeError):
         self.substrate_identity_sha256 = substrate_identity_sha256
         self.failure_receipt_path = failure_receipt_path
         self.failure_receipt_sha256 = failure_receipt_sha256
-
-
-class BackendPreparationQuarantinedError(RuntimeError):
-    """One pre-launch preparation root is sealed and must be superseded."""
-
-    def __init__(
-        self,
-        *,
-        quarantine_receipt_path: str,
-        quarantine_receipt_sha256: str,
-    ) -> None:
-        if (
-            not _safe_path_string(quarantine_receipt_path)
-            or not Path(quarantine_receipt_path).is_absolute()
-            or not _is_sha256(quarantine_receipt_sha256)
-        ):
-            raise ContiguousRunnerError(
-                "preparation quarantine evidence is malformed"
-            )
-        super().__init__(
-            "pre-launch preparation evidence requires a fresh attempt root"
-        )
-        self.quarantine_receipt_path = quarantine_receipt_path
-        self.quarantine_receipt_sha256 = quarantine_receipt_sha256
 
 
 # Internal compatibility alias for adapters built against the pre-conformance
@@ -740,186 +654,6 @@ def _sha256_file_identity(
         os.close(descriptor)
 
 
-def _read_stable_bounded_regular_bytes(
-    path: Path,
-    *,
-    maximum: int,
-) -> tuple[bytes, str, os.stat_result]:
-    """Hash and return bytes from one pathname/descriptor transaction.
-
-    Security receipts must never authenticate inode A and then parse inode B.
-    Anchor the parent directory, open the basename relative to that descriptor,
-    read exactly the bounded size, and require the descriptor, directory entry,
-    parent pathname, and every ancestor pointer to remain identical throughout
-    the transaction.  The returned digest therefore authenticates the exact
-    bytes returned to the parser.
-    """
-
-    selected = Path(path)
-    if not selected.is_absolute() or maximum < 0:
-        raise ContiguousRunnerError(
-            f"stable host read requires an absolute bounded path: {selected}"
-        )
-    try:
-        pointer_before = _path_pointer_prefix(selected)
-    except (OSError, ContiguousRunnerError) as exc:
-        raise ContiguousRunnerError(
-            f"stable host receipt is unavailable or aliased: {selected}"
-        ) from exc
-    try:
-        parent_descriptor = os.open(
-            selected.parent,
-            os.O_RDONLY
-            | getattr(os, "O_DIRECTORY", 0)
-            | getattr(os, "O_NOFOLLOW", 0),
-        )
-    except OSError as exc:
-        raise ContiguousRunnerError(
-            f"stable host read parent is unavailable: {selected.parent}"
-        ) from exc
-    descriptor: int | None = None
-    try:
-        parent_before = os.fstat(parent_descriptor)
-        if not stat.S_ISDIR(parent_before.st_mode):
-            raise ContiguousRunnerError(
-                f"stable host read parent is not a directory: {selected.parent}"
-            )
-        try:
-            descriptor = os.open(
-                selected.name,
-                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
-                dir_fd=parent_descriptor,
-            )
-        except OSError as exc:
-            raise ContiguousRunnerError(
-                f"stable host receipt is unavailable: {selected}"
-            ) from exc
-        before = os.fstat(descriptor)
-        linked_before = os.stat(
-            selected.name,
-            dir_fd=parent_descriptor,
-            follow_symlinks=False,
-        )
-        stable_file_fields = (
-            "st_dev",
-            "st_ino",
-            "st_mode",
-            "st_nlink",
-            "st_uid",
-            "st_gid",
-            "st_size",
-            "st_mtime_ns",
-            "st_ctime_ns",
-        )
-        if (
-            not stat.S_ISREG(before.st_mode)
-            or before.st_nlink != 1
-            or before.st_size > maximum
-            or any(
-                getattr(before, name) != getattr(linked_before, name)
-                for name in stable_file_fields
-            )
-        ):
-            raise ContiguousRunnerError(
-                f"stable host receipt has unsafe identity or size: {selected}"
-            )
-        chunks: list[bytes] = []
-        remaining = before.st_size
-        while remaining:
-            block = os.read(descriptor, min(1024 * 1024, remaining))
-            if not block:
-                raise ContiguousRunnerError(
-                    f"stable host receipt changed while reading: {selected}"
-                )
-            chunks.append(block)
-            remaining -= len(block)
-        if os.read(descriptor, 1):
-            raise ContiguousRunnerError(
-                f"stable host receipt grew while reading: {selected}"
-            )
-        after = os.fstat(descriptor)
-        linked_after = os.stat(
-            selected.name,
-            dir_fd=parent_descriptor,
-            follow_symlinks=False,
-        )
-        parent_after = os.fstat(parent_descriptor)
-        parent_linked_after = selected.parent.stat(
-            follow_symlinks=False
-        )
-        stable_parent_fields = (
-            "st_dev",
-            "st_ino",
-            "st_mode",
-            "st_nlink",
-            "st_uid",
-            "st_gid",
-        )
-        if (
-            any(
-                getattr(before, name) != getattr(after, name)
-                or getattr(after, name) != getattr(linked_after, name)
-                for name in stable_file_fields
-            )
-            or any(
-                getattr(parent_before, name) != getattr(parent_after, name)
-                or getattr(parent_after, name)
-                != getattr(parent_linked_after, name)
-                for name in stable_parent_fields
-            )
-            or _path_pointer_prefix(selected) != pointer_before
-        ):
-            raise ContiguousRunnerError(
-                f"stable host receipt pointer or metadata changed: {selected}"
-            )
-        raw = b"".join(chunks)
-        return raw, hashlib.sha256(raw).hexdigest(), after
-    except OSError as exc:
-        raise ContiguousRunnerError(
-            f"stable host receipt changed during read: {selected}"
-        ) from exc
-    finally:
-        if descriptor is not None:
-            os.close(descriptor)
-        os.close(parent_descriptor)
-
-
-def _read_stable_bounded_json(
-    path: Path,
-    *,
-    maximum: int = MAX_AUXILIARY_RECEIPT_BYTES,
-) -> tuple[dict[str, Any], str, os.stat_result]:
-    raw, digest, metadata = _read_stable_bounded_regular_bytes(
-        path, maximum=maximum
-    )
-    try:
-        value = json.loads(raw)
-    except (UnicodeError, json.JSONDecodeError) as exc:
-        raise ContiguousRunnerError(f"invalid JSON: {path}") from exc
-    if not isinstance(value, dict):
-        raise ContiguousRunnerError(f"expected JSON object: {path}")
-    return value, digest, metadata
-
-
-def _read_stable_digest_bound_json(
-    path: Path,
-    expected_sha256: str,
-    *,
-    label: str,
-    maximum: int = MAX_AUXILIARY_RECEIPT_BYTES,
-) -> tuple[dict[str, Any], os.stat_result]:
-    """Parse only the exact descriptor bytes authenticated by a digest."""
-
-    if not _is_sha256(expected_sha256):
-        raise ContiguousRunnerError(f"{label} digest is malformed")
-    value, observed_sha256, metadata = _read_stable_bounded_json(
-        Path(path), maximum=maximum
-    )
-    if not hmac.compare_digest(observed_sha256, expected_sha256):
-        raise ContiguousRunnerError(f"{label} digest changed")
-    return value, metadata
-
-
 def _bounded_regular_bytes(path: Path, *, maximum: int) -> bytes:
     descriptor = _open_unaliased(path, os.O_RDONLY)
     try:
@@ -1127,19 +861,11 @@ def _path_pointer_prefix(
         raise ContiguousRunnerError(
             f"cached evidence path is not absolute: {selected}"
         )
-    # This helper is on every external-authority hot path.  Constructing a new
-    # ``Path`` for each ancestor made a full campaign audit spend most of its
-    # time reparsing the same absolute prefixes.  Preserve the exact sequence
-    # of no-follow stats while building those prefixes as plain path strings.
-    current = selected.anchor
+    current = Path(selected.anchor)
     result: list[tuple[object, ...]] = []
     for part in selected.parts[1:]:
-        current = (
-            current + part
-            if current.endswith(os.sep)
-            else current + os.sep + part
-        )
-        metadata = os.stat(current, follow_symlinks=False)
+        current = current / part
+        metadata = current.stat(follow_symlinks=False)
         if stat.S_ISLNK(metadata.st_mode):
             raise ContiguousRunnerError(
                 f"cached evidence path contains a symlink: {current}"
@@ -2075,9 +1801,7 @@ class DurableAttemptJournal:
                 paths.append(entry)
         return sorted(paths, key=lambda path: path.name)
 
-    def _read_authenticated(
-        self, *, trust_cycle_prefix: bool = False
-    ) -> list[dict[str, Any]]:
+    def _read_authenticated(self) -> list[dict[str, Any]]:
         """Return the private authenticated view used by the reducer.
 
         The event dictionaries alias the cache and therefore never cross the
@@ -2086,22 +1810,10 @@ class DurableAttemptJournal:
         """
 
         signature = self._directory_signature()
-        cycle_prefix_is_trusted = (
-            trust_cycle_prefix
-            and getattr(self, "_cycle_trusted_thread_id", None)
-            == threading.get_ident()
-        )
         if (
             self._cache is not None
             and signature == self._cache_directory_signature
         ):
-            if cycle_prefix_is_trusted:
-                self._validate_segment_chain(self._cache)
-                if self._directory_signature() != signature:
-                    raise ContiguousRunnerError(
-                        "journal directory changed during cycle-local read"
-                    )
-                return list(self._cache)
             cached_paths = tuple(
                 self.root / name for name in self._cache_names
             )
@@ -2132,20 +1844,19 @@ class DurableAttemptJournal:
                 raise ContiguousRunnerError(
                     "journal immutable prefix was truncated or replaced"
                 )
-            if not cycle_prefix_is_trusted:
-                try:
-                    prefix_signatures = tuple(
-                        self._file_signature(path)
-                        for path in paths[:prefix_length]
-                    )
-                except (FileNotFoundError, OSError) as exc:
-                    raise ContiguousRunnerError(
-                        "journal immutable prefix became unreadable"
-                    ) from exc
-                if prefix_signatures != self._cache_file_signatures:
-                    raise ContiguousRunnerError(
-                        "journal immutable prefix pointer or metadata changed"
-                    )
+            try:
+                prefix_signatures = tuple(
+                    self._file_signature(path)
+                    for path in paths[:prefix_length]
+                )
+            except (FileNotFoundError, OSError) as exc:
+                raise ContiguousRunnerError(
+                    "journal immutable prefix became unreadable"
+                ) from exc
+            if prefix_signatures != self._cache_file_signatures:
+                raise ContiguousRunnerError(
+                    "journal immutable prefix pointer or metadata changed"
+                )
         prefix_length = (
             len(self._cache_names) if self._cache is not None else 0
         )
@@ -2219,42 +1930,6 @@ class DurableAttemptJournal:
 
         return copy.deepcopy(self._read_authenticated())
 
-    def _reauthenticate_append_prefix(
-        self,
-        expected: Sequence[Mapping[str, Any]],
-    ) -> list[dict[str, Any]]:
-        """Reopen an exact append prefix and convert drift to a fatal gate."""
-
-        try:
-            observed = self._read_authenticated(
-                trust_cycle_prefix=False
-            )
-        except ExactAuthorityGateError:
-            raise
-        except ContiguousRunnerError as exc:
-            raise ExactAuthorityGateError(str(exc)) from exc
-        expected_identity = tuple(
-            (
-                item.get("sequence"),
-                item.get("event_id"),
-                item.get("digest"),
-            )
-            for item in expected
-        )
-        observed_identity = tuple(
-            (
-                item.get("sequence"),
-                item.get("event_id"),
-                item.get("digest"),
-            )
-            for item in observed
-        )
-        if observed_identity != expected_identity:
-            raise ExactAuthorityGateError(
-                "journal prefix changed during append transaction"
-            )
-        return observed
-
     def append(
         self,
         *,
@@ -2285,24 +1960,7 @@ class DurableAttemptJournal:
         handle = self._lock()
         pending: Path | None = None
         try:
-            # A journal append is itself an authority-bearing effect.  Reopen
-            # every immutable prefix event signature even when the caller is
-            # inside a validated cycle; cycle-local trust is reserved for pure
-            # reductions between effects.
-            try:
-                events = self._read_authenticated(
-                    trust_cycle_prefix=False
-                )
-            except ExactAuthorityGateError:
-                raise
-            except ContiguousRunnerError as exc:
-                raise ExactAuthorityGateError(str(exc)) from exc
-            initial_cache = (
-                list(self._cache) if self._cache is not None else None,
-                tuple(self._cache_names),
-                tuple(self._cache_file_signatures),
-                self._cache_directory_signature,
-            )
+            events = self._read_authenticated()
             for existing in events:
                 if existing["event_id"] != event_id:
                     continue
@@ -2381,10 +2039,8 @@ class DurableAttemptJournal:
             pending = (
                 event_directory / f".pending-{uuid.uuid4().hex}"
             )
-            published = False
             try:
                 _write_new_file(pending, event)
-                self._reauthenticate_append_prefix(events)
                 os.chmod(pending, 0o400, follow_symlinks=False)
                 pending_descriptor = _open_unaliased(
                     pending, os.O_RDONLY
@@ -2393,47 +2049,15 @@ class DurableAttemptJournal:
                     os.fsync(pending_descriptor)
                 finally:
                     os.close(pending_descriptor)
-                self._reauthenticate_append_prefix(events)
                 os.replace(pending, final)
                 pending = None
-                published = True
-                committed = self._reauthenticate_append_prefix(
-                    (*events, event)
-                )
                 _fsync_directory(event_directory)
-                committed = self._reauthenticate_append_prefix(
-                    (*events, event)
-                )
             except (OSError, ContiguousRunnerError) as exc:
                 if pending is not None:
                     try:
                         pending.unlink()
                     except OSError:
                         pass
-                if published:
-                    try:
-                        expected_raw = _canonical_json(event) + b"\n"
-                        final_raw = _bounded_regular_bytes(
-                            final,
-                            maximum=Scheduler.MAX_JOURNAL_EVENT_BYTES,
-                        )
-                        if final_raw != expected_raw:
-                            raise ContiguousRunnerError(
-                                "published journal event changed before "
-                                "rollback"
-                            )
-                        final.unlink()
-                        _fsync_directory(event_directory)
-                    except BaseException as cleanup_exc:
-                        raise ContiguousRunnerError(
-                            "journal append drift could not be rolled back"
-                        ) from cleanup_exc
-                (
-                    self._cache,
-                    self._cache_names,
-                    self._cache_file_signatures,
-                    self._cache_directory_signature,
-                ) = initial_cache
                 storage_code = _storage_error_code(exc)
                 if storage_code is not None:
                     try:
@@ -2454,10 +2078,16 @@ class DurableAttemptJournal:
                         storage_snapshot=storage,
                     ) from exc
                 raise
-            if committed[-1] != event:
-                raise ExactAuthorityGateError(
-                    "journal append committed a substituted event"
-                )
+            self._cache = [*events, event]
+            self._cache_names = (
+                *self._cache_names,
+                str(final.relative_to(self.root)),
+            )
+            self._cache_file_signatures = (
+                *self._cache_file_signatures,
+                self._file_signature(final),
+            )
+            self._cache_directory_signature = self._directory_signature()
             return copy.deepcopy(event)
         finally:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
@@ -2762,29 +2392,6 @@ class PromotionCommit:
 
 
 @dataclass(frozen=True)
-class SelectiveFrontierImport:
-    """One sealed, independently promoted frontier admitted for continuation."""
-
-    schema: Literal[1]
-    authority: Literal["contiguous_schema_v2_selected_version_v1"]
-    game: str
-    reached: int
-    authoritative_target: int
-    parent_checkpoint_sha256: str
-    checkpoint_path: str
-    checkpoint_sha256: str
-    source_path: str
-    source_tree_sha256: str
-    promotion_receipt_path: str
-    promotion_receipt_sha256: str
-    source_version_id: str
-    version_tree_sha256: str
-    selected_pointer_sha256: str
-    frontier_sha256: str
-    import_sha256: str
-
-
-@dataclass(frozen=True)
 class HostBlockerEvidence:
     """Host-only blocker authority bound to one exact attempt/frontier."""
 
@@ -2943,19 +2550,11 @@ class InputBundleReceipt:
 class _ReducerCheckpoint:
     """Validated journal-derived state at one exact hash-chain head.
 
-    The checkpoint is deliberately retained across successful supervision
-    cycles in one runner process so deterministic reduction can resume at its
-    exact sequence/digest coordinate and replay only the authenticated suffix.
-    A restart is cold, an exceptional cycle discards it, and every reuse first
-    requires the journal reader to authenticate the complete current chain and
-    match the recorded genesis and head.
-
-    This is semantic replay state, not effect or admission authority.  Full
-    external audits independently reopen current artifacts, operation-local
-    exact gates reauthenticate their inputs immediately before each external
-    effect, and all other pointer/receipt memos are cleared at cycle boundaries.
-    Deep copies prevent a caller's returned mutable view from poisoning the
-    retained checkpoint.
+    The checkpoint contains no authority beyond the immutable journal prefix:
+    every file that can still affect execution or promotion is revalidated
+    after suffix reduction on every ``state()`` call.  Closed-generation bytes
+    remain the full audit's concern, exactly as before.  Independent mutable
+    shells prevent a caller's returned view from poisoning this reducer cache.
     """
 
     head_sequence: int
@@ -2981,26 +2580,6 @@ class _ReducerCheckpoint:
     substrate_incident: dict[str, Any] | None
     storage_incident: dict[str, Any] | None
     storage_quiescence: dict[str, Any] | None
-
-
-@dataclass
-class _CycleValidationContext:
-    """Authority-free optimization state scoped to one held cycle lock."""
-
-    public_observation_registry_sha256: str
-    journal_prefix: dict[str, Any]
-    authoritative_inventory: dict[str, int]
-    cached_state: dict[str, Any] | None = None
-    cached_journal_head: tuple[int, str] | None = None
-
-
-@dataclass(frozen=True)
-class _CycleExecutionOwner:
-    """Exact host execution context allowed to consume cycle-local state."""
-
-    process_id: int
-    thread_id: int
-    task_id: int | None
 
 
 def _clone_reducer_lanes(
@@ -3594,10 +3173,6 @@ class BackendPreparation:
     bridge_policy_receipt_sha256: str
     arena_session_binding_receipt_path: str
     arena_session_binding_receipt_sha256: str
-    compatibility_closure_path: str
-    compatibility_closure_receipt_sha256: str
-    compatibility_turn_receipt_path: str
-    compatibility_turn_receipt_sha256: str
     arena_transport: Literal[
         "docker-attach-stdio+named-volume-unix"
     ]
@@ -4056,18 +3631,6 @@ class PromotionGate(Protocol):
         """Reconcile an ambiguous acknowledgement without republishing."""
         ...
 
-    def issue_selective_frontier_import(
-        self, game: str
-    ) -> SelectiveFrontierImport:
-        """Issue one import from the currently selected sealed version."""
-        ...
-
-    def verify_selective_frontier_import(
-        self, binding: SelectiveFrontierImport
-    ) -> SelectiveFrontierImport:
-        """Reopen one previously issued immutable import binding."""
-        ...
-
 
 def frontier_sha256(
     game: str, reached: int, parent_checkpoint_sha256: str
@@ -4083,174 +3646,6 @@ def frontier_sha256(
             }
         )
     ).hexdigest()
-
-
-def _selective_frontier_import_body(
-    binding: SelectiveFrontierImport,
-) -> dict[str, Any]:
-    return {
-        key: value
-        for key, value in asdict(binding).items()
-        if key != "import_sha256"
-    }
-
-
-def selective_frontier_import_sha256(
-    body: Mapping[str, Any],
-) -> str:
-    if "import_sha256" in body:
-        raise ContiguousRunnerError(
-            "selective frontier import digest body is not canonical"
-        )
-    return hashlib.sha256(
-        b"arc-agi3-selective-frontier-import-v1\0"
-        + _canonical_json(dict(body))
-    ).hexdigest()
-
-
-def build_selective_frontier_import(
-    *,
-    game: str,
-    reached: int,
-    authoritative_target: int,
-    parent_checkpoint_sha256: str,
-    checkpoint_path: str,
-    checkpoint_sha256: str,
-    source_path: str,
-    source_tree_sha256: str,
-    promotion_receipt_path: str,
-    promotion_receipt_sha256: str,
-    source_version_id: str,
-    version_tree_sha256: str,
-    selected_pointer_sha256: str,
-) -> SelectiveFrontierImport:
-    frontier = frontier_sha256(
-        game, reached, checkpoint_sha256
-    )
-    body: dict[str, Any] = {
-        "schema": SELECTIVE_FRONTIER_IMPORT_SCHEMA,
-        "authority": SELECTIVE_FRONTIER_IMPORT_AUTHORITY,
-        "game": game,
-        "reached": reached,
-        "authoritative_target": authoritative_target,
-        "parent_checkpoint_sha256": parent_checkpoint_sha256,
-        "checkpoint_path": checkpoint_path,
-        "checkpoint_sha256": checkpoint_sha256,
-        "source_path": source_path,
-        "source_tree_sha256": source_tree_sha256,
-        "promotion_receipt_path": promotion_receipt_path,
-        "promotion_receipt_sha256": promotion_receipt_sha256,
-        "source_version_id": source_version_id,
-        "version_tree_sha256": version_tree_sha256,
-        "selected_pointer_sha256": selected_pointer_sha256,
-        "frontier_sha256": frontier,
-    }
-    body["import_sha256"] = selective_frontier_import_sha256(body)
-    return selective_frontier_import_from_dict(body)
-
-
-def selective_frontier_import_to_dict(
-    binding: SelectiveFrontierImport,
-) -> dict[str, Any]:
-    canonical = selective_frontier_import_from_dict(asdict(binding))
-    return asdict(canonical)
-
-
-def selective_frontier_import_from_dict(
-    value: object,
-) -> SelectiveFrontierImport:
-    required = {
-        "schema",
-        "authority",
-        "game",
-        "reached",
-        "authoritative_target",
-        "parent_checkpoint_sha256",
-        "checkpoint_path",
-        "checkpoint_sha256",
-        "source_path",
-        "source_tree_sha256",
-        "promotion_receipt_path",
-        "promotion_receipt_sha256",
-        "source_version_id",
-        "version_tree_sha256",
-        "selected_pointer_sha256",
-        "frontier_sha256",
-        "import_sha256",
-    }
-    if not isinstance(value, Mapping) or set(value) != required:
-        raise ContiguousRunnerError(
-            "selective frontier import schema mismatch"
-        )
-    try:
-        binding = SelectiveFrontierImport(**dict(value))
-    except TypeError as exc:
-        raise ContiguousRunnerError(
-            "selective frontier import schema mismatch"
-        ) from exc
-    paths = tuple(
-        Path(item)
-        for item in (
-            binding.checkpoint_path,
-            binding.source_path,
-            binding.promotion_receipt_path,
-        )
-        if _safe_path_string(item)
-    )
-    if (
-        binding.schema != SELECTIVE_FRONTIER_IMPORT_SCHEMA
-        or binding.authority != SELECTIVE_FRONTIER_IMPORT_AUTHORITY
-        or not isinstance(binding.game, str)
-        or re.fullmatch(r"[a-z0-9]{4}", binding.game) is None
-        or not isinstance(binding.reached, int)
-        or isinstance(binding.reached, bool)
-        or not isinstance(binding.authoritative_target, int)
-        or isinstance(binding.authoritative_target, bool)
-        or not 1 <= binding.reached < binding.authoritative_target
-        or not _safe_identifier(binding.source_version_id)
-        or len(paths) != 3
-        or any(not path.is_absolute() for path in paths)
-        or any(str(path) != raw for path, raw in zip(paths, (
-            binding.checkpoint_path,
-            binding.source_path,
-            binding.promotion_receipt_path,
-        )))
-        or binding.checkpoint_path
-        != str(paths[0].parent / Contract.CHECKPOINT_NAME)
-        or binding.source_path
-        != str(paths[0].parent / Contract.WINNING_SOURCE_NAME)
-        or binding.promotion_receipt_path
-        != str(paths[0].parent / Contract.HOST_RECEIPT_NAME)
-        or paths[0].parent.name != f"{binding.game}_legs"
-        or paths[0].parent.parent.name != binding.source_version_id
-        or any(
-            not _is_sha256(item)
-            for item in (
-                binding.parent_checkpoint_sha256,
-                binding.checkpoint_sha256,
-                binding.source_tree_sha256,
-                binding.promotion_receipt_sha256,
-                binding.version_tree_sha256,
-                binding.selected_pointer_sha256,
-                binding.frontier_sha256,
-                binding.import_sha256,
-            )
-        )
-        or binding.frontier_sha256
-        != frontier_sha256(
-            binding.game,
-            binding.reached,
-            binding.checkpoint_sha256,
-        )
-        or binding.import_sha256
-        != selective_frontier_import_sha256(
-            _selective_frontier_import_body(binding)
-        )
-    ):
-        raise ContiguousRunnerError(
-            "selective frontier import binding is invalid"
-        )
-    return binding
 
 
 @dataclass(frozen=True)
@@ -5042,15 +4437,13 @@ def _validate_bound_receipt(
     if (
         path != expected_path
         or not path.is_absolute()
+        or path.is_symlink()
+        or _sha256_file(path) != digest
     ):
         raise ContiguousRunnerError(
             f"{expected_kind} receipt path/hash mismatch"
         )
-    value, observed_digest, _ = _read_stable_bounded_json(path)
-    if observed_digest != digest:
-        raise ContiguousRunnerError(
-            f"{expected_kind} receipt path/hash mismatch"
-        )
+    value = _read_json_file(path)
     required_binding = {
         "schema": 1,
         "kind": expected_kind,
@@ -5394,18 +4787,6 @@ def _backend_preparation_from_dict(value: object) -> BackendPreparation:
         or not _is_sha256(
             prepared.arena_session_binding_receipt_sha256
         )
-        or not _safe_path_string(
-            prepared.compatibility_closure_path
-        )
-        or not _is_sha256(
-            prepared.compatibility_closure_receipt_sha256
-        )
-        or not _safe_path_string(
-            prepared.compatibility_turn_receipt_path
-        )
-        or not _is_sha256(
-            prepared.compatibility_turn_receipt_sha256
-        )
         or prepared.arena_transport != ARENA_VOLUME_TRANSPORT
         or not isinstance(prepared.arena_volume_name, str)
         or re.fullmatch(
@@ -5529,8 +4910,6 @@ def _backend_preparation_from_dict(value: object) -> BackendPreparation:
                 prepared.launch_attestation_path,
                 prepared.bridge_policy_receipt_path,
                 prepared.arena_session_binding_receipt_path,
-                prepared.compatibility_closure_path,
-                prepared.compatibility_turn_receipt_path,
                 prepared.arena_relay_readiness_receipt_path,
                 prepared.arena_relay_preparation_receipt_path,
                 prepared.neutral_cwd_attestation_path,
@@ -5680,116 +5059,6 @@ def _backend_launch_from_dict(value: object) -> BackendLaunch:
     return launched
 
 
-def _validate_preparation_quarantine_receipt(
-    spec: AttemptSpec,
-    receipt_path: str,
-    receipt_sha256: str,
-) -> dict[str, Any]:
-    host_root = Path(spec.host_transcript_path).parent
-    receipt = _validate_bound_receipt(
-        receipt_path,
-        receipt_sha256,
-        expected_path=(
-            host_root / "compatibility_preparation_quarantine.json"
-        ),
-        expected_kind=(
-            "contiguous_compatibility_preparation_quarantine"
-        ),
-        spec=spec,
-    )
-    closure_root = host_root / "compatibility_arena_closure"
-
-    if closure_root.exists() or closure_root.is_symlink():
-        raise ContiguousRunnerError(
-            "staging quarantine unexpectedly gained a closure root"
-        )
-    try:
-        staging_observation = (
-            CompatibilityClosure.observe_quarantined_staging(
-                closure_root
-            )
-        )
-    except CompatibilityClosure.CompatibilityClosureError as exc:
-        raise ContiguousRunnerError(
-            "quarantined staging failed bounded independent observation"
-        ) from exc
-    if (
-        staging_observation.get("present") is not True
-        or staging_observation.get("authority")
-        != {
-            "quarantine_evidence_only": True,
-            "cleanup_authority": False,
-            "launch_authority": False,
-            "promotion_authority": False,
-        }
-    ):
-        raise ContiguousRunnerError(
-            "quarantined staging observation gained authority"
-        )
-    absent_paths = (
-        Path(spec.arena_socket_path),
-        Path(spec.arena_token_file_path),
-        Path(spec.bridge_socket_path),
-        Path(spec.bridge_token_file_path),
-        Path(spec.host_transcript_path),
-        Path(spec.app_server_transcript_path),
-        Path(spec.bridge_policy_receipt_path),
-        host_root / "launch_attestation.json",
-        host_root / "compatibility_turn_receipt.json",
-        host_root / "arena_session_binding_receipt.json",
-        host_root / "neutral_cwd_attestation.json",
-        host_root / "app_server_config_receipt.json",
-        host_root / "codex_binary_receipt.json",
-        host_root / "app_server_protocol_schema_receipt.json",
-        host_root / "arena_volume_readiness.json",
-        host_root / "arena_volume_preparation.json",
-        host_root / "arena_volume_teardown.json",
-    )
-    failure_type = receipt.get("failure_type")
-    if failure_type != "CompatibilityStagingAmbiguityError":
-        raise ContiguousRunnerError(
-            "preparation quarantine failure type is unsupported"
-        )
-    expected_extra = {
-        "failure_stage": "compatibility_closure_prepare",
-        "failure_type": failure_type,
-        "closure_root": str(closure_root),
-        "closure_root_present": False,
-        "staging_observation": staging_observation,
-        "staging_observation_sha256": (
-            staging_observation["observation_sha256"]
-        ),
-        "container_identity_query_empty": True,
-        "arena_relay_absent": True,
-        "rpc_endpoints_absent": True,
-        "proposer_container_started": False,
-        "proposer_turn_started": False,
-        "candidate_authority": False,
-        "wip_authority": False,
-        "cost_authority": False,
-        "promotion_authority": False,
-        "old_evidence_reuse_authority": False,
-        "fresh_attempt_generation_required": True,
-        "status": "QUARANTINED",
-    }
-    expected_base = {
-        "schema": RUNNER_SCHEMA,
-        "kind": "contiguous_compatibility_preparation_quarantine",
-        "campaign_id": spec.campaign_id,
-        "generation_id": spec.generation_id,
-        "attempt_id": spec.attempt_id,
-        "attempt_spec_sha256": proposer_attempt_binding_sha256(spec),
-    }
-    if (
-        receipt != {**expected_base, **expected_extra}
-        or any(path.exists() or path.is_symlink() for path in absent_paths)
-    ):
-        raise ContiguousRunnerError(
-            "preparation quarantine is incomplete, drifted, or authoritative"
-        )
-    return receipt
-
-
 def _validate_preparation_receipts(
     spec: AttemptSpec, prepared: BackendPreparation
 ) -> None:
@@ -5802,11 +5071,7 @@ def _validate_preparation_receipts(
         / "containment_canary_escrow"
         / f"{spec.generation_id}.json"
     )
-    _, escrow_sha256, escrow_metadata = (
-        _read_stable_bounded_regular_bytes(
-            escrow, maximum=MAX_AUXILIARY_RECEIPT_BYTES
-        )
-    )
+    escrow_sha256, escrow_metadata = _sha256_file_identity(escrow)
     escrow_identity_sha256 = hashlib.sha256(
         _canonical_json(
             {
@@ -5821,11 +5086,7 @@ def _validate_preparation_receipts(
             }
         )
     ).hexdigest()
-    (
-        attestation_value,
-        attestation_sha256,
-        attestation_metadata,
-    ) = _read_stable_bounded_json(attestation)
+    attestation_value = _read_json_file(attestation)
     expected_canary_anchor = {
         "escrow_path": prepared.controller_canary_escrow_path,
         "escrow_sha256": prepared.controller_canary_escrow_sha256,
@@ -5844,10 +5105,8 @@ def _validate_preparation_receipts(
     if (
         prepared.observed_image_digest != spec.image_digest
         or attestation != host_root / "launch_attestation.json"
-        or attestation_sha256 != prepared.launch_attestation_sha256
-        or attestation_metadata.st_uid != os.getuid()
-        or attestation_metadata.st_nlink != 1
-        or not stat.S_ISREG(attestation_metadata.st_mode)
+        or _sha256_file(attestation)
+        != prepared.launch_attestation_sha256
         or escrow != expected_escrow
         or escrow_metadata.st_uid != os.getuid()
         or escrow_metadata.st_nlink != 1
@@ -5883,16 +5142,14 @@ def _validate_preparation_receipts(
     relay_preparation_path = Path(
         prepared.arena_relay_preparation_receipt_path
     )
-    (
-        relay_readiness,
-        relay_readiness_sha256,
-        relay_readiness_metadata,
-    ) = _read_stable_bounded_json(relay_readiness_path)
-    (
-        relay_preparation,
-        relay_preparation_sha256,
-        relay_preparation_metadata,
-    ) = _read_stable_bounded_json(relay_preparation_path)
+    relay_readiness_sha256, relay_readiness_metadata = (
+        _sha256_file_identity(relay_readiness_path)
+    )
+    relay_preparation_sha256, relay_preparation_metadata = (
+        _sha256_file_identity(relay_preparation_path)
+    )
+    relay_readiness = _read_json_file(relay_readiness_path)
+    relay_preparation = _read_json_file(relay_preparation_path)
     expected_volume_name = _arena_volume_name(spec)
     relay_common = {
         "campaign_id": spec.campaign_id,
@@ -6098,187 +5355,6 @@ def _validate_preparation_receipts(
             "backend preparation did not bind one controller-selected "
             "probe-isolation mode"
         )
-    closure_root = Path(prepared.compatibility_closure_path)
-    turn_receipt_path = Path(
-        prepared.compatibility_turn_receipt_path
-    )
-    if (
-        closure_root
-        != host_root / "compatibility_arena_closure"
-        or turn_receipt_path
-        != host_root / "compatibility_turn_receipt.json"
-    ):
-        raise ContiguousRunnerError(
-            "compatibility closure paths left the exact attempt host root"
-        )
-    try:
-        closure_observation = CompatibilityClosure.validate_closure(
-            closure_root,
-            prepared.compatibility_closure_receipt_sha256,
-        )
-        closure_snapshot = (
-            CompatibilityClosure.canonical_closure_snapshot()
-        )
-    except CompatibilityClosure.CompatibilityClosureError as exc:
-        raise ContiguousRunnerError(
-            "compatibility closure failed independent runner validation"
-        ) from exc
-    turn_receipt = _validate_bound_receipt(
-        prepared.compatibility_turn_receipt_path,
-        prepared.compatibility_turn_receipt_sha256,
-        expected_path=turn_receipt_path,
-        expected_kind=(
-            "arc_agi3_contiguous_compatibility_turn_binding"
-        ),
-        spec=spec,
-    )
-    image = attestation_value.get("image")
-    arena_rpc = attestation_value.get("arena_rpc")
-    controls = closure_snapshot.get("components")
-    worker_controls = (
-        image.get("worker_control_sha256")
-        if isinstance(image, dict)
-        else None
-    )
-    recipe_sha256 = (
-        controls.get("container_recipe", {}).get("sha256")
-        if isinstance(controls, dict)
-        else None
-    )
-    requirements_sha256 = (
-        controls.get("solver_requirements", {}).get("sha256")
-        if isinstance(controls, dict)
-        else None
-    )
-    if (
-        not isinstance(image, dict)
-        or not isinstance(arena_rpc, dict)
-        or not isinstance(controls, dict)
-        or not isinstance(worker_controls, dict)
-        or closure_observation.get("status") != "PASS"
-        or closure_observation.get("launch_authorized") is not False
-        or worker_controls.get(
-            "org.gkm.arc-agi3.arena-rpc-client-sha256"
-        )
-        != closure_observation.get("client_sha256")
-        or worker_controls.get(
-            "org.gkm.arc-agi3.container-recipe-sha256"
-        )
-        != recipe_sha256
-        or worker_controls.get(
-            "org.gkm.arc-agi3.solver-requirements-sha256"
-        )
-        != requirements_sha256
-    ):
-        raise ContiguousRunnerError(
-            "compatibility closure does not match the attested image client"
-        )
-    expected_turn_receipt = {
-        "schema": 1,
-        "kind": "arc_agi3_contiguous_compatibility_turn_binding",
-        "campaign_id": spec.campaign_id,
-        "generation_id": spec.generation_id,
-        "attempt_id": spec.attempt_id,
-        "attempt_spec_sha256": proposer_attempt_binding_sha256(spec),
-        "game": spec.game,
-        "target_level": spec.target_level,
-        "frontier_sha256": spec.frontier_sha256,
-        "parent_checkpoint_sha256": spec.parent_checkpoint_sha256,
-        "closure": {
-            "root": str(closure_root),
-            "receipt_sha256": (
-                prepared.compatibility_closure_receipt_sha256
-            ),
-            "content_manifest_sha256": closure_observation[
-                "content_manifest_sha256"
-            ],
-            "client_sha256": closure_observation["client_sha256"],
-        },
-        "host_rpc": {
-            "session_binding_receipt_path": (
-                prepared.arena_session_binding_receipt_path
-            ),
-            "session_binding_receipt_sha256": (
-                prepared.arena_session_binding_receipt_sha256
-            ),
-            "binding_sha256": binding_event["binding_sha256"],
-            "session_id": binding_event["session_id"],
-            "host_socket_path": spec.arena_socket_path,
-            "host_socket_identity_sha256": (
-                prepared.arena_relay_socket_identity_sha256
-            ),
-            "container_socket": arena_rpc.get("socket"),
-            "token_file": arena_rpc.get("token_file"),
-            "token_bytes_retained": False,
-        },
-        "transport": {
-            "kind": ARENA_VOLUME_TRANSPORT,
-            "volume_name": prepared.arena_volume_name,
-            "volume_observation_sha256": (
-                prepared.arena_volume_observation_sha256
-            ),
-            "relay_container_id": prepared.arena_relay_container_id,
-            "relay_image_digest": prepared.arena_relay_image_digest,
-            "relay_image_observation_sha256": (
-                prepared.arena_relay_image_observation_sha256
-            ),
-            "relay_container_observation_sha256": (
-                prepared.arena_relay_container_observation_sha256
-            ),
-            "readiness_receipt_sha256": (
-                prepared.arena_relay_readiness_receipt_sha256
-            ),
-            "preparation_receipt_sha256": (
-                prepared.arena_relay_preparation_receipt_sha256
-            ),
-            "attach_argv_sha256": (
-                prepared.arena_relay_attach_argv_sha256
-            ),
-        },
-        "container": {
-            "container_id": attestation_value.get("container_id"),
-            "requested_image_reference": image.get(
-                "requested_reference"
-            ),
-            "image_manifest_digest": image.get("manifest_digest"),
-            "image_id": image.get("image_id"),
-            "image_observation_sha256": image.get(
-                "image_inspect_sha256"
-            ),
-            "worker_control_sha256": image.get(
-                "worker_control_sha256"
-            ),
-            "container_observation_sha256": attestation_value.get(
-                "container_inspect_sha256"
-            ),
-            "security_projection_sha256": attestation_value.get(
-                "security_projection_sha256"
-            ),
-            "create_argv_sha256": attestation_value.get(
-                "create_argv_sha256"
-            ),
-            "launch_attestation_sha256": (
-                prepared.launch_attestation_sha256
-            ),
-            "container_recipe_sha256": worker_controls[
-                "org.gkm.arc-agi3.container-recipe-sha256"
-            ],
-            "solver_requirements_sha256": worker_controls[
-                "org.gkm.arc-agi3.solver-requirements-sha256"
-            ],
-        },
-        "authority": {
-            "scheduler_authority": False,
-            "mutation_authority": False,
-            "promotion_authority": False,
-            "launch_authority": False,
-            "runner_reopen_required_before_launch": True,
-        },
-    }
-    if turn_receipt != expected_turn_receipt:
-        raise ContiguousRunnerError(
-            "compatibility turn receipt is stale, incomplete, or substituted"
-        )
     neutral = _validate_bound_receipt(
         prepared.neutral_cwd_attestation_path,
         prepared.neutral_cwd_attestation_sha256,
@@ -6323,16 +5399,12 @@ def _validate_preparation_receipts(
         "reasoning_effort": spec.effort,
         "environments": [],
         "selected_capability_roots": [],
-        "runtime_workspace_roots": [
-            EXPECTED_CONTROLLER_NEUTRAL_CWD
-        ],
+        "runtime_workspace_roots": ["/controller-neutral"],
         "native_proposer_workspace": {
-            "root": EXPECTED_CONTROLLER_NEUTRAL_CWD,
+            "root": "/controller-neutral",
             "storage": "private-tmpfs",
             "git_root_equals_workspace": True,
-            "git_ceiling_directories": (
-                EXPECTED_CONTROLLER_NEUTRAL_CWD
-            ),
+            "git_ceiling_directories": "/controller-neutral",
             "git_discovery_across_filesystem": False,
             "parent_repo_mounts": 0,
             "campaign_plan_mounts": 0,
@@ -6366,7 +5438,7 @@ def _validate_preparation_receipts(
             "type": "readOnly",
             "networkAccess": False,
         },
-        "state_root": EXPECTED_CONTROLLER_STATE_ROOT,
+        "state_root": "/controller-state",
         "state_host_staging_root": spec.app_server_state_dir,
         "state_mode": (
             "resume_staged_copy"
@@ -6578,15 +5650,16 @@ def _validate_launch_receipts(
     guardian_path = Path(
         launched.controller_guardian_start_receipt_path
     )
-    if guardian_path != host_root / "controller_guardian_start.json":
+    if (
+        guardian_path
+        != host_root / "controller_guardian_start.json"
+        or _sha256_file(guardian_path)
+        != launched.controller_guardian_start_receipt_sha256
+    ):
         raise ContiguousRunnerError(
             "controller guardian start receipt is substituted"
         )
-    guardian, _guardian_metadata = _read_stable_digest_bound_json(
-        guardian_path,
-        launched.controller_guardian_start_receipt_sha256,
-        label="controller guardian start receipt",
-    )
+    guardian = _read_json_file(guardian_path)
     if (
         guardian.get("schema") != 1
         or guardian.get("kind")
@@ -6611,7 +5684,7 @@ def _validate_launch_receipts(
         "process_start": launched.app_server_process_start,
         "process_group_id": launched.app_server_process_group_id,
         "state_root": spec.app_server_state_dir,
-        "neutral_cwd": EXPECTED_CONTROLLER_NEUTRAL_CWD,
+        "neutral_cwd": "/controller-neutral",
         "neutral_host_staging_cwd": spec.neutral_host_cwd_path,
         "thread_id": launched.codex_thread_id,
         "turn_id": launched.codex_turn_id,
@@ -7166,7 +6239,8 @@ def _validate_arena_volume_teardown_receipt(
     """
 
     path = Path(receipt_path)
-    value, digest, metadata = _read_stable_bounded_json(path)
+    digest, metadata = _sha256_file_identity(path)
+    value = _read_json_file(path)
     attachment = value.get("attachment_receipt")
     attachment_sha256 = (
         hashlib.sha256(_canonical_json(attachment)).hexdigest()
@@ -7426,7 +6500,7 @@ def _validate_terminal_canary_reveal(
         / f"{spec.generation_id}.json"
     )
     path = Path(proof.canary_reveal_path)
-    value, raw_sha256, metadata = _read_stable_bounded_json(path)
+    raw_sha256, metadata = _sha256_file_identity(path)
     if (
         path != expected_path
         or raw_sha256 != proof.canary_reveal_sha256
@@ -7437,6 +6511,7 @@ def _validate_terminal_canary_reveal(
         raise ContiguousRunnerError(
             "terminal canary reveal path/identity is substituted"
         )
+    value = _read_json_file(path)
     fields = {
         "schema",
         "kind",
@@ -7536,34 +6611,18 @@ def _validate_terminal_canary_reveal(
         / "retained_canary_scan_receipt.json"
     )
     if (
-        not _is_sha256(
-            value.get("controller_state_scan_receipt_sha256")
-        )
-        or not _is_sha256(
-            value.get("retained_canary_scan_receipt_sha256")
-        )
+        _sha256_file(state_scan_path)
+        != value.get("controller_state_scan_receipt_sha256")
+        or _sha256_file(retained_scan_path)
+        != value.get("retained_canary_scan_receipt_sha256")
     ):
         raise ContiguousRunnerError(
-            "terminal canary reveal scan receipt digests are malformed"
+            "terminal canary reveal scan receipts changed"
         )
-    state_scan_receipt, _state_scan_metadata = (
-        _read_stable_digest_bound_json(
-            state_scan_path,
-            value["controller_state_scan_receipt_sha256"],
-            label="terminal controller-state scan receipt",
-        )
-    )
-    retained_scan_receipt, _retained_scan_metadata = (
-        _read_stable_digest_bound_json(
-            retained_scan_path,
-            value["retained_canary_scan_receipt_sha256"],
-            label="terminal retained-canary scan receipt",
-        )
-    )
-    state_scan = state_scan_receipt.get(
+    state_scan = _read_json_file(state_scan_path).get(
         "controller_state_scan"
     )
-    retained_scan = retained_scan_receipt.get(
+    retained_scan = _read_json_file(retained_scan_path).get(
         "retained_canary_scan"
     )
     if (
@@ -7671,8 +6730,8 @@ def _validate_terminal_canary_cleanup(
             "formal canary planting lacks terminal cleanup proof"
         )
     receipt_path = Path(proof.canary_cleanup_receipt_path)
-    receipt, receipt_sha256, receipt_metadata = (
-        _read_stable_bounded_json(receipt_path)
+    receipt_sha256, receipt_metadata = _sha256_file_identity(
+        receipt_path
     )
     if (
         receipt_path != expected_receipt_path
@@ -7685,6 +6744,7 @@ def _validate_terminal_canary_cleanup(
         raise ContiguousRunnerError(
             "terminal canary cleanup receipt identity is substituted"
         )
+    receipt = _read_json_file(receipt_path)
     expected_absence = [
         {
             "category": row["category"],
@@ -7736,9 +6796,10 @@ def _validate_terminal_canary_cleanup(
         raise ContiguousRunnerError(
             "terminal canary cleanup receipt lineage differs"
         )
-    intent, intent_sha256, intent_metadata = (
-        _read_stable_bounded_json(expected_intent_path)
+    intent_sha256, intent_metadata = _sha256_file_identity(
+        expected_intent_path
     )
+    intent = _read_json_file(expected_intent_path)
     expected_intent_fields = {
         "schema",
         "kind",
@@ -7922,9 +6983,6 @@ class ContiguousCampaignRunner:
         auxiliary_backend: AuxiliaryBackend | None = None,
         auxiliary_launch_configuration:
             Scheduler.AuxiliaryLaunchConfiguration | None = None,
-        selective_continuation_game: str | None = None,
-        selective_frontier_import: SelectiveFrontierImport | None = None,
-        selective_frontier_import_sha256: str | None = None,
         clock: Callable[[], float] = time.time,
         id_factory: Callable[[], str] = lambda: str(uuid.uuid4()),
     ):
@@ -7953,71 +7011,6 @@ class ContiguousCampaignRunner:
         if not _safe_identifier(cost_window_id):
             raise ContiguousRunnerError(
                 "cost_window_id must be an explicit safe identifier"
-            )
-        if (
-            selective_continuation_game is not None
-            and (
-                not isinstance(selective_continuation_game, str)
-                or re.fullmatch(
-                    r"[a-z0-9]{4}", selective_continuation_game
-                )
-                is None
-            )
-        ):
-            raise ContiguousRunnerError(
-                "selective continuation game is malformed"
-            )
-        if (
-            selective_frontier_import is not None
-            and selective_continuation_game is None
-        ):
-            raise ContiguousRunnerError(
-                "selective frontier import requires its exact game"
-            )
-        if (
-            selective_frontier_import_sha256 is not None
-            and (
-                selective_continuation_game is None
-                or not _is_sha256(
-                    selective_frontier_import_sha256
-                )
-            )
-        ):
-            raise ContiguousRunnerError(
-                "selective frontier import digest is malformed"
-            )
-        expected_selective_import = (
-            None
-            if selective_frontier_import is None
-            else selective_frontier_import_from_dict(
-                asdict(selective_frontier_import)
-            )
-        )
-        if (
-            expected_selective_import is not None
-            and expected_selective_import.game
-            != selective_continuation_game
-        ):
-            raise ContiguousRunnerError(
-                "selective frontier import targets another game"
-            )
-        if (
-            expected_selective_import is not None
-            and selective_frontier_import_sha256 is not None
-            and expected_selective_import.import_sha256
-            != selective_frontier_import_sha256
-        ):
-            raise ContiguousRunnerError(
-                "selective frontier import differs from authorized digest"
-            )
-        if (
-            selective_continuation_game is not None
-            and operator_configuration_sha256 is not None
-            and selective_frontier_import_sha256 is None
-        ):
-            raise ContiguousRunnerError(
-                "production selective runner lacks operator-authorized "
-                "frontier digest"
             )
         auxiliary_configuration = (
             Scheduler.disabled_auxiliary_launch_configuration()
@@ -8169,13 +7162,6 @@ class ContiguousCampaignRunner:
         self.auxiliary_launch_configuration = auxiliary_configuration
         self._trusted_auxiliary_event_digests: set[str] = set()
         self.promotion_gate = promotion_gate
-        self.selective_continuation_game = selective_continuation_game
-        self.expected_selective_frontier_import = (
-            expected_selective_import
-        )
-        self.selective_frontier_import_sha256 = (
-            selective_frontier_import_sha256
-        )
         self.input_builder = input_builder
         self.backend_configuration = backend_configuration
         # Live-only containment inputs.  They are never serialized into the
@@ -8187,7 +7173,16 @@ class ContiguousCampaignRunner:
         self.clock = clock
         self.id_factory = id_factory
         self.journal = DurableAttemptJournal(self.root / "attempt_journal")
-        self._initialize_validation_state()
+        self._reducer_checkpoint: _ReducerCheckpoint | None = None
+        self._verified_lane_checkpoints: dict[
+            tuple[object, ...], None
+        ] = {}
+        self._verified_lane_sources: dict[
+            tuple[object, ...], None
+        ] = {}
+        self._verified_attempt_inputs: dict[
+            tuple[object, ...], None
+        ] = {}
         self.generations = self.root / "generations"
         self.auxiliary = self.root / "auxiliary"
         self.zero_checkpoints = self.root / "zero_checkpoints"
@@ -8222,11 +7217,6 @@ class ContiguousCampaignRunner:
                 operator_configuration_sha256
             ),
             auxiliary_launch_configuration=auxiliary_configuration,
-            selective_continuation_game=selective_continuation_game,
-            selective_frontier_import=expected_selective_import,
-            selective_frontier_import_sha256=(
-                selective_frontier_import_sha256
-            ),
         )
         # A complete replay is the admission check.  No external action occurs in
         # construction, so callers explicitly choose when to call cycle().
@@ -8243,9 +7233,6 @@ class ContiguousCampaignRunner:
         operator_configuration_sha256: str | None,
         auxiliary_launch_configuration:
             Scheduler.AuxiliaryLaunchConfiguration,
-        selective_continuation_game: str | None,
-        selective_frontier_import: SelectiveFrontierImport | None,
-        selective_frontier_import_sha256: str | None,
     ) -> None:
         descriptor = _open_unaliased(
             self.root / ".init.lock", os.O_RDWR | os.O_CREAT
@@ -8265,13 +7252,6 @@ class ContiguousCampaignRunner:
                 auxiliary_launch_configuration=(
                     auxiliary_launch_configuration
                 ),
-                selective_continuation_game=(
-                    selective_continuation_game
-                ),
-                selective_frontier_import=selective_frontier_import,
-                selective_frontier_import_sha256=(
-                    selective_frontier_import_sha256
-                ),
             )
         finally:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
@@ -8288,82 +7268,10 @@ class ContiguousCampaignRunner:
         operator_configuration_sha256: str | None,
         auxiliary_launch_configuration:
             Scheduler.AuxiliaryLaunchConfiguration,
-        selective_continuation_game: str | None,
-        selective_frontier_import: SelectiveFrontierImport | None,
-        selective_frontier_import_sha256: str | None,
     ) -> None:
         events = self.journal._read_authenticated()
         if not events:
             campaign_id = self._new_identifier("campaign")
-            selective_import: SelectiveFrontierImport | None = None
-            if selective_continuation_game is not None:
-                if selective_continuation_game not in inventory:
-                    raise ContiguousRunnerError(
-                        "selective continuation game is not authoritative"
-                    )
-                issue = getattr(
-                    self.promotion_gate,
-                    "issue_selective_frontier_import",
-                    None,
-                )
-                verify = getattr(
-                    self.promotion_gate,
-                    "verify_selective_frontier_import",
-                    None,
-                )
-                if not callable(verify) or (
-                    selective_frontier_import is None
-                    and not callable(issue)
-                ):
-                    raise ContiguousRunnerError(
-                        "promotion gate lacks selective import authority"
-                    )
-                try:
-                    if selective_frontier_import is not None:
-                        selective_import = (
-                            selective_frontier_import_from_dict(
-                                asdict(selective_frontier_import)
-                            )
-                        )
-                    else:
-                        issued = issue(selective_continuation_game)
-                        if not isinstance(
-                            issued, SelectiveFrontierImport
-                        ):
-                            raise ContiguousRunnerError(
-                                "promotion gate issued an untyped frontier "
-                                "import"
-                            )
-                        selective_import = (
-                            selective_frontier_import_from_dict(
-                                asdict(issued)
-                            )
-                        )
-                    verified = verify(selective_import)
-                except ContiguousRunnerError:
-                    raise
-                except Exception as exc:
-                    raise ContiguousRunnerError(
-                        "promotion gate rejected selective frontier import"
-                    ) from exc
-                if verified != selective_import:
-                    raise ContiguousRunnerError(
-                        "promotion gate changed selective frontier import"
-                    )
-                if (
-                    selective_frontier_import_sha256 is not None
-                    and selective_import.import_sha256
-                    != selective_frontier_import_sha256
-                ):
-                    raise ContiguousRunnerError(
-                        "issued selective frontier differs from authorized "
-                        "digest"
-                    )
-                self._validate_selective_frontier_import_files(
-                    selective_import,
-                    inventory=inventory,
-                    verify_gate=False,
-                )
             zero = {
                 game: self._create_zero_checkpoint(game)
                 for game in sorted(inventory)
@@ -8379,66 +7287,38 @@ class ContiguousCampaignRunner:
                 raise ContiguousRunnerError(
                     "L0 source scaffold differs between game lanes"
                 )
-            genesis_payload = {
-                "schema": RUNNER_SCHEMA,
-                "campaign_id": campaign_id,
-                "inventory": inventory,
-                "inventory_sha256":
-                    Contract.authoritative_inventory_sha256(inventory),
-                "max_lanes": max_lanes,
-                "limit": float(limit) if limit is not None else None,
-                "limit_units": Scheduler.limit_to_units(limit),
-                "cost_window_id": cost_window_id,
-                "scheduler_policy_sha256":
-                    SCHEDULER_POLICY_SHA256,
-                "backend_configuration":
-                    _backend_configuration_to_dict(
-                        backend_configuration
-                    ),
-                "operator_configuration_sha256":
-                    operator_configuration_sha256,
-                "auxiliary_launch_configuration":
-                    Scheduler.auxiliary_launch_configuration_to_dict(
-                        auxiliary_launch_configuration
-                    ),
-                "zero_checkpoints": zero,
-                "zero_sources": zero_sources,
-                "l0_source_tree_sha256":
-                    next(iter(zero_source_hashes)),
-            }
-            if selective_import is not None:
-                genesis_payload.update({
-                    "campaign_mode": "selective_continuation",
-                    "selective_continuation_game":
-                        selective_import.game,
-                    "selective_frontier_import_sha256":
-                        selective_import.import_sha256,
-                    "operator_authorized_selective_frontier_import_sha256":
-                        (
-                            selective_frontier_import_sha256
-                            if selective_frontier_import_sha256 is not None
-                            else selective_import.import_sha256
-                        ),
-                    "selective_frontier_import":
-                        selective_frontier_import_to_dict(
-                            selective_import
-                        ),
-                })
             self.journal.append(
                 event_id="campaign:genesis",
                 kind="GENESIS",
-                payload=genesis_payload,
+                payload={
+                    "schema": RUNNER_SCHEMA,
+                    "campaign_id": campaign_id,
+                    "inventory": inventory,
+                    "inventory_sha256":
+                        Contract.authoritative_inventory_sha256(inventory),
+                    "max_lanes": max_lanes,
+                    "limit": float(limit) if limit is not None else None,
+                    "limit_units": Scheduler.limit_to_units(limit),
+                    "cost_window_id": cost_window_id,
+                    "scheduler_policy_sha256":
+                        SCHEDULER_POLICY_SHA256,
+                    "backend_configuration":
+                        _backend_configuration_to_dict(
+                            backend_configuration
+                        ),
+                    "operator_configuration_sha256":
+                        operator_configuration_sha256,
+                    "auxiliary_launch_configuration":
+                        Scheduler.auxiliary_launch_configuration_to_dict(
+                            auxiliary_launch_configuration
+                        ),
+                    "zero_checkpoints": zero,
+                    "zero_sources": zero_sources,
+                    "l0_source_tree_sha256":
+                        next(iter(zero_source_hashes)),
+                },
                 recorded_at=self.clock(),
             )
-            if selective_import is not None:
-                self.journal.append(
-                    event_id="campaign:frontier-import",
-                    kind="FRONTIER_IMPORTED",
-                    payload=selective_frontier_import_to_dict(
-                        selective_import
-                    ),
-                    recorded_at=self.clock(),
-                )
         else:
             genesis = events[0]
             if genesis["kind"] != "GENESIS":
@@ -8482,96 +7362,6 @@ class ContiguousCampaignRunner:
             ):
                 raise ContiguousRunnerError(
                     "runner configuration disagrees with durable genesis"
-                )
-            raw_selective_import = payload.get(
-                "selective_frontier_import"
-            )
-            if selective_continuation_game is None:
-                if (
-                    raw_selective_import is not None
-                    or "selective_frontier_import" in payload
-                    or payload.get(
-                        "operator_authorized_selective_frontier_import_sha256"
-                    )
-                    is not None
-                    or any(
-                        event.get("kind") == "FRONTIER_IMPORTED"
-                        for event in events[1:]
-                    )
-                ):
-                    raise ContiguousRunnerError(
-                        "full runner cannot open a selective campaign"
-                    )
-                return
-            if raw_selective_import is None:
-                raise ContiguousRunnerError(
-                    "selective runner cannot open a full campaign"
-                )
-            selective_import = selective_frontier_import_from_dict(
-                raw_selective_import
-            )
-            if (
-                selective_import.game != selective_continuation_game
-                or payload.get("campaign_mode")
-                != "selective_continuation"
-                or payload.get("selective_continuation_game")
-                != selective_continuation_game
-                or payload.get("selective_frontier_import_sha256")
-                != selective_import.import_sha256
-                or payload.get(
-                    "operator_authorized_selective_frontier_import_sha256"
-                )
-                != selective_import.import_sha256
-                or (
-                    selective_frontier_import_sha256 is not None
-                    and payload.get(
-                        "operator_authorized_selective_frontier_import_sha256"
-                    )
-                    != selective_frontier_import_sha256
-                )
-            ):
-                raise ContiguousRunnerError(
-                    "selective runner configuration disagrees with genesis"
-                )
-            if (
-                selective_frontier_import is not None
-                and selective_frontier_import != selective_import
-            ):
-                raise ContiguousRunnerError(
-                    "selective launch authority disagrees with genesis"
-                )
-            self._validate_selective_frontier_import_files(
-                selective_import,
-                inventory=inventory,
-                verify_gate=True,
-            )
-            import_events = [
-                event
-                for event in events[1:]
-                if event.get("kind") == "FRONTIER_IMPORTED"
-            ]
-            if not import_events:
-                if len(events) != 1:
-                    raise ContiguousRunnerError(
-                        "selective import is not the first post-genesis event"
-                    )
-                self.journal.append(
-                    event_id="campaign:frontier-import",
-                    kind="FRONTIER_IMPORTED",
-                    payload=selective_frontier_import_to_dict(
-                        selective_import
-                    ),
-                    recorded_at=self.clock(),
-                )
-            elif (
-                len(import_events) != 1
-                or events[1] is not import_events[0]
-                or import_events[0].get("sequence") != 2
-                or import_events[0].get("payload")
-                != selective_frontier_import_to_dict(selective_import)
-            ):
-                raise ContiguousRunnerError(
-                    "selective frontier import event is not exact"
                 )
 
     def _new_identifier(self, prefix: str) -> str:
@@ -8703,116 +7493,6 @@ class ContiguousCampaignRunner:
             )
         return {"path": str(path), "sha256": tree_sha256}
 
-    def _validate_selective_frontier_import_files(
-        self,
-        binding: SelectiveFrontierImport,
-        *,
-        inventory: Mapping[str, int],
-        verify_gate: bool,
-    ) -> None:
-        canonical = selective_frontier_import_from_dict(
-            asdict(binding)
-        )
-        if (
-            canonical.game not in inventory
-            or inventory[canonical.game]
-            != canonical.authoritative_target
-        ):
-            raise ContiguousRunnerError(
-                "selective import differs from authoritative inventory"
-            )
-        checkpoint = Path(canonical.checkpoint_path)
-        source = Path(canonical.source_path)
-        receipt = Path(canonical.promotion_receipt_path)
-        version = checkpoint.parent.parent
-        try:
-            resolved = tuple(
-                path.resolve(strict=True)
-                for path in (checkpoint, source, receipt, version)
-            )
-        except OSError as exc:
-            raise ContiguousRunnerError(
-                "selective import artifact is unavailable"
-            ) from exc
-        if resolved != (checkpoint, source, receipt, version):
-            raise ContiguousRunnerError(
-                "selective import artifact path is aliased"
-            )
-        try:
-            version.relative_to(self.root)
-        except ValueError:
-            pass
-        else:
-            raise ContiguousRunnerError(
-                "selective import version is inside the mutable campaign"
-            )
-        try:
-            self.root.relative_to(version)
-        except ValueError:
-            pass
-        else:
-            raise ContiguousRunnerError(
-                "mutable campaign is inside the selective import version"
-            )
-        try:
-            Contract._validate_regular_tree(
-                version, label="selective frontier import version"
-            )
-            if Contract._tree_hash(version) != canonical.version_tree_sha256:
-                raise ContiguousRunnerError(
-                    "selective import version changed"
-                )
-            if _sha256_file(checkpoint) != canonical.checkpoint_sha256:
-                raise ContiguousRunnerError(
-                    "selective import checkpoint changed"
-                )
-            if _sha256_file(receipt) != canonical.promotion_receipt_sha256:
-                raise ContiguousRunnerError(
-                    "selective import promotion receipt changed"
-                )
-            if (
-                Contract.validate_winning_source_tree(source)
-                != canonical.source_tree_sha256
-            ):
-                raise ContiguousRunnerError(
-                    "selective import winning source changed"
-                )
-            parsed = Contract.load_trusted_checkpoint(
-                checkpoint,
-                expected_game=canonical.game,
-                authoritative_target=canonical.authoritative_target,
-            )
-        except ContiguousRunnerError:
-            raise
-        except Exception as exc:
-            raise ContiguousRunnerError(
-                "selective import artifact validation failed"
-            ) from exc
-        if parsed.reached != canonical.reached or not parsed.validated:
-            raise ContiguousRunnerError(
-                "selective import is not a validated exact frontier"
-            )
-        if verify_gate:
-            verify = getattr(
-                getattr(self, "promotion_gate", None),
-                "verify_selective_frontier_import",
-                None,
-            )
-            if not callable(verify):
-                raise ContiguousRunnerError(
-                    "live runner lacks selective import verification"
-                )
-            try:
-                reopened = verify(canonical)
-            except Exception as exc:
-                raise ContiguousRunnerError(
-                    "promotion gate rejected selective frontier import"
-                ) from exc
-            if reopened != canonical:
-                raise ContiguousRunnerError(
-                    "promotion gate changed selective frontier import"
-                )
-
     @staticmethod
     def _blank_lane(
         target: int,
@@ -8872,9 +7552,6 @@ class ContiguousCampaignRunner:
         sidecar_requests: tuple[
             Scheduler.SidecarRequestEvidence, ...
         ] = (),
-        selection_evidence_cache: (
-            dict[tuple[object, ...], Any] | None
-        ) = None,
     ) -> Scheduler.CampaignSnapshot:
         try:
             frontiers: list[Scheduler.Frontier] = []
@@ -8887,72 +7564,20 @@ class ContiguousCampaignRunner:
                     else None
                 )
                 wip = cls._scheduler_wip(lane["wip"])
-                parent_source_pointer = _regular_tree_pointer(
-                    Path(str(lane["source_path"]))
-                )
-                candidate_source_pointer = (
-                    None
-                    if wip is None
-                    else _regular_tree_pointer(
-                        Path(str(wip.solver_source_path))
-                    )
-                )
-                evidence_key = (
-                    lane["source_path"],
-                    lane["source_tree_sha256"],
-                    parent_source_pointer,
-                    (
+                evidence = Scheduler.selection_evidence(
+                    parent_source_path=lane["source_path"],
+                    parent_source_tree_sha256=(
+                        lane["source_tree_sha256"]
+                    ),
+                    candidate_source_path=(
                         wip.solver_source_path
                         if wip is not None else None
                     ),
-                    (
+                    candidate_source_tree_sha256=(
                         wip.solver_source_tree_sha256
                         if wip is not None else None
                     ),
-                    candidate_source_pointer,
                 )
-                cached_evidence = (
-                    selection_evidence_cache.get(evidence_key)
-                    if selection_evidence_cache is not None
-                    else None
-                )
-                if cached_evidence is None:
-                    evidence = Scheduler.selection_evidence(
-                        parent_source_path=lane["source_path"],
-                        parent_source_tree_sha256=(
-                            lane["source_tree_sha256"]
-                        ),
-                        candidate_source_path=evidence_key[3],
-                        candidate_source_tree_sha256=evidence_key[4],
-                    )
-                    if selection_evidence_cache is not None:
-                        selection_evidence_cache[evidence_key] = (
-                            copy.deepcopy(evidence)
-                        )
-                else:
-                    # Pointers are sampled into the key on every lookup and
-                    # then sampled once more before consumption.  A source
-                    # rewrite therefore cannot reuse a same-path evidence cell,
-                    # and a frozen result mutated with object.__setattr__ never
-                    # aliases the reducer-local cache.
-                    if (
-                        _regular_tree_pointer(
-                            Path(str(lane["source_path"]))
-                        )
-                        != parent_source_pointer
-                        or (
-                            wip is not None
-                            and _regular_tree_pointer(
-                                Path(str(wip.solver_source_path))
-                            )
-                            != candidate_source_pointer
-                        )
-                    ):
-                        raise ContiguousRunnerError(
-                            "scheduler source pointer changed during evidence "
-                            "selection"
-                        )
-                    evidence = copy.deepcopy(cached_evidence)
                 public_receipts = tuple(
                     sorted(
                         set(
@@ -9128,776 +7753,8 @@ class ContiguousCampaignRunner:
             )
         self._remember_verified_pointer(cache, key)
 
-    def _validate_generation_tree(
-        self, attempts: Mapping[str, Mapping[str, Any]]
-    ) -> None:
-        expected = {
-            attempt["reservation"].generation_id
-            for attempt in attempts.values()
-        }
-        actual: set[str] = set()
-        for path in self.generations.iterdir():
-            if (
-                path.is_symlink()
-                or not path.is_dir()
-                or not _is_uuid4(path.name)
-            ):
-                raise ContiguousRunnerError(
-                    f"unexpected generation entry: {path}"
-                )
-            actual.add(path.name)
-        if not actual <= expected:
-            raise ContiguousRunnerError(
-                "generation tree contains an unjournaled identity"
-            )
-
-    def _validate_lane_authority(
-        self,
-        *,
-        game: str,
-        lane: Mapping[str, Any],
-        uncached: bool = False,
-    ) -> None:
-        if not 0 <= lane["reached"] <= lane["target"]:
-            raise ContiguousRunnerError(
-                f"lane exceeds authoritative target: {game}"
-            )
-        if uncached:
-            self._verified_lane_checkpoints = {}
-            self._verified_lane_sources = {}
-        self._validate_lane_checkpoint_cached(game=game, lane=lane)
-        self._validate_lane_source_cached(game=game, lane=lane)
-
-    def _validate_attempt_external_authority(
-        self,
-        attempt: Mapping[str, Any],
-        *,
-        uncached: bool = False,
-    ) -> None:
-        """Reopen all external evidence that can affect one attempt."""
-
-        if uncached:
-            self._verified_attempt_inputs = {}
-            self.__dict__.pop(
-                "_verified_quiescent_collections", None
-            )
-        if attempt["phase"] == "CLOSED":
-            settled = attempt.get("settled_result")
-            if (
-                isinstance(settled, AttemptResult)
-                and settled.kind == "blocker"
-                and self._sanitize_result(
-                    attempt["spec"], settled
-                ) != settled
-            ):
-                raise ContiguousRunnerError(
-                    "closed blocker authority changed after settlement"
-                )
-            if attempt.get("protocol_invalid") is not None:
-                spec = attempt["spec"]
-                protocol_invalid = attempt["protocol_invalid"]
-                receipt = _validate_bound_receipt(
-                    protocol_invalid["path"],
-                    protocol_invalid["sha256"],
-                    expected_path=Path(
-                        spec.host_transcript_path
-                    ).parent
-                    / (
-                        "arena_public_action_protocol_invalid_"
-                        "receipt.json"
-                    ),
-                    expected_kind=(
-                        "contiguous_arena_public_action_protocol_"
-                        "invalid"
-                    ),
-                    spec=spec,
-                )
-                if (
-                    receipt.get("status") != "PROTOCOL_INVALID"
-                    or not isinstance(settled, AttemptResult)
-                    or receipt.get("cost_used") != settled.cost_used
-                ):
-                    raise ContiguousRunnerError(
-                        "closed protocol-invalid evidence changed"
-                    )
-                _validate_protocol_invalid_terminal_evidence(
-                    spec=spec,
-                    receipt=receipt,
-                    evidence=protocol_invalid["terminal_evidence"],
-                )
-            preparation_quarantine = attempt.get(
-                "preparation_quarantine"
-            )
-            if preparation_quarantine is not None:
-                _validate_preparation_quarantine_receipt(
-                    attempt["spec"],
-                    preparation_quarantine["path"],
-                    preparation_quarantine["sha256"],
-                )
-            return
-        if attempt["phase"] == "RESERVED":
-            return
-        spec = attempt["spec"]
-        self._validate_prepared_input(
-            spec,
-            require_initial_workspace=attempt["phase"]
-            in {"PREPARED", "BACKEND_PREPARED"},
-        )
-        if attempt["prepared"] is not None:
-            _validate_preparation_receipts(
-                spec, attempt["prepared"]
-            )
-        if attempt["launched"] is not None:
-            _validate_launch_receipts(
-                spec, attempt["prepared"], attempt["launched"]
-            )
-        if attempt["collection"] is not None:
-            self._validate_collection(
-                spec,
-                attempt["prepared"],
-                attempt["launched"],
-                attempt["collection"],
-                allow_arena_teardown_receipt=(
-                    attempt["teardown"] is not None
-                ),
-                teardown=attempt["teardown"],
-            )
-        if attempt.get("protocol_invalid") is not None:
-            protocol_invalid = attempt["protocol_invalid"]
-            receipt = _validate_bound_receipt(
-                protocol_invalid["path"],
-                protocol_invalid["sha256"],
-                expected_path=Path(
-                    spec.host_transcript_path
-                ).parent
-                / "arena_public_action_protocol_invalid_receipt.json",
-                expected_kind=(
-                    "contiguous_arena_public_action_protocol_invalid"
-                ),
-                spec=spec,
-            )
-            if (
-                receipt.get("status") != "PROTOCOL_INVALID"
-                or receipt.get("cost_used")
-                != attempt["outcome"].cost_used
-            ):
-                raise ContiguousRunnerError(
-                    "live protocol-invalid authority changed"
-                )
-            _validate_protocol_invalid_terminal_evidence(
-                spec=spec,
-                receipt=receipt,
-                evidence=protocol_invalid["terminal_evidence"],
-            )
-
-    def _validation_cache_snapshot(self) -> tuple[object, ...]:
-        self._initialize_validation_state()
-        return (
-            self._reducer_checkpoint,
-            self._trusted_auxiliary_event_digests,
-            self._verified_lane_checkpoints,
-            self._verified_lane_sources,
-            self._verified_attempt_inputs,
-            getattr(self, "_verified_quiescent_collections", None),
-        )
-
-    def _restore_validation_cache_snapshot(
-        self, snapshot: tuple[object, ...]
-    ) -> None:
-        self._initialize_validation_state()
-        (
-            self._reducer_checkpoint,
-            self._trusted_auxiliary_event_digests,
-            self._verified_lane_checkpoints,
-            self._verified_lane_sources,
-            self._verified_attempt_inputs,
-            quiescent,
-        ) = snapshot
-        if quiescent is None:
-            self.__dict__.pop(
-                "_verified_quiescent_collections", None
-            )
-        else:
-            self._verified_quiescent_collections = quiescent
-
-    def _discard_validation_caches(
-        self, *, retain_reducer: bool = False
-    ) -> None:
-        """Drop every authority memo that must not cross a cycle boundary."""
-
-        self._initialize_validation_state()
-        if not retain_reducer:
-            self._reducer_checkpoint = None
-        self._trusted_auxiliary_event_digests = set()
-        self._verified_lane_checkpoints = {}
-        self._verified_lane_sources = {}
-        self._verified_attempt_inputs = {}
-        self.__dict__.pop("_verified_quiescent_collections", None)
-
-    @staticmethod
-    def _current_execution_owner() -> _CycleExecutionOwner:
-        """Identify both the current native thread and asynchronous task."""
-
-        try:
-            task = asyncio.current_task()
-        except RuntimeError:
-            task = None
-        return _CycleExecutionOwner(
-            process_id=os.getpid(),
-            thread_id=threading.get_ident(),
-            task_id=None if task is None else id(task),
-        )
-
-    def _acquire_campaign_cycle_lock(self) -> tuple[Any, str]:
-        """Acquire the process lock without permitting same-thread recursion."""
-
-        self._initialize_validation_state()
-        owner = self._current_execution_owner()
-        current_owner = self._cycle_execution_owner
-        if (
-            self._cycle_lock_held
-            and (
-                current_owner is None
-                or current_owner.thread_id == owner.thread_id
-            )
-        ) or (
-            self._cycle_validation_context is not None
-            and (
-                current_owner is None
-                or current_owner.thread_id == owner.thread_id
-            )
-        ):
-            raise ContiguousRunnerError(
-                "reentrant supervision cycle is forbidden"
-            )
-        lock_path = self.root / ".cycle.lock"
-        registry_key = os.path.abspath(os.fspath(lock_path))
-        if _CAMPAIGN_LOCK_REGISTRY_PID != os.getpid():
-            _reset_campaign_lock_registry_after_fork()
-        with _CAMPAIGN_LOCK_REGISTRY_GUARD:
-            registered = _CAMPAIGN_LOCK_OWNERS.get(registry_key)
-            if (
-                registered is not None
-                and registered[0] == owner.process_id
-                and registered[2].thread_id == owner.thread_id
-            ):
-                raise ContiguousRunnerError(
-                    "same-thread campaign lock recursion is forbidden"
-                )
-        descriptor = _open_unaliased(
-            lock_path, os.O_RDWR | os.O_CREAT
-        )
-        handle = os.fdopen(descriptor, "r+", encoding="utf-8")
-        try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-        except BaseException:
-            handle.close()
-            raise
-        # A foreign thread using this same instance is allowed to wait.  Once
-        # it acquires the kernel lock, the prior owner must have completed its
-        # lifecycle teardown; retain this post-acquisition invariant check.
-        if (
-            self._cycle_lock_held
-            or self._cycle_validation_context is not None
-        ):
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-            handle.close()
-            raise ContiguousRunnerError(
-                "campaign lock acquired before prior lifecycle teardown"
-            )
-        token = uuid.uuid4().hex
-        with _CAMPAIGN_LOCK_REGISTRY_GUARD:
-            _CAMPAIGN_LOCK_OWNERS[registry_key] = (
-                owner.process_id,
-                token,
-                owner,
-            )
-        return handle, token
-
-    def _release_campaign_cycle_lock(
-        self, handle: Any, token: str
-    ) -> None:
-        """Release one acquired lock without deleting a successor's token."""
-
-        registry_key = os.path.abspath(
-            os.fspath(self.root / ".cycle.lock")
-        )
-        try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-        finally:
-            handle.close()
-            with _CAMPAIGN_LOCK_REGISTRY_GUARD:
-                registered = _CAMPAIGN_LOCK_OWNERS.get(registry_key)
-                if (
-                    registered is not None
-                    and registered[0] == os.getpid()
-                    and registered[1] == token
-                ):
-                    _CAMPAIGN_LOCK_OWNERS.pop(registry_key, None)
-
-    def _initialize_validation_state(self) -> None:
-        """Install all ephemeral validation fields for every construction path.
-
-        Production construction, read-only ``object.__new__`` audits, and
-        deliberately synthetic test runners all enter the same initializer.
-        Existing values are retained so this method is safe as a lazy guard.
-        """
-
-        current_process_id = os.getpid()
-        prior_process_id = self.__dict__.get(
-            "_validation_process_id"
-        )
-        if (
-            prior_process_id is not None
-            and prior_process_id != current_process_id
-        ):
-            # A child must not inherit the parent's held-cycle flags, reducer
-            # authority, or journal prefix-trust marker.  The kernel flock is
-            # still inherited only by the parent's open file description and
-            # therefore remains the serialization authority.
-            self._cycle_validation_context = None
-            self._cycle_lock_held = False
-            self._cycle_execution_owner = None
-            self._reducer_checkpoint = None
-            self._trusted_auxiliary_event_digests = set()
-            self._verified_lane_checkpoints = {}
-            self._verified_lane_sources = {}
-            self._verified_attempt_inputs = {}
-            self.__dict__.pop(
-                "_verified_quiescent_collections", None
-            )
-            if isinstance(
-                getattr(self, "journal", None),
-                DurableAttemptJournal,
-            ):
-                self.journal._cycle_trusted_thread_id = None
-        self._validation_process_id = current_process_id
-        values: tuple[tuple[str, object], ...] = (
-            ("_cycle_validation_context", None),
-            ("_cycle_lock_held", False),
-            ("_cycle_execution_owner", None),
-            ("_reducer_checkpoint", None),
-            ("_trusted_auxiliary_event_digests", set()),
-            ("_verified_lane_checkpoints", {}),
-            ("_verified_lane_sources", {}),
-            ("_verified_attempt_inputs", {}),
-        )
-        for name, default in values:
-            if name not in self.__dict__:
-                setattr(self, name, default)
-
-    def _assert_cycle_execution_owner(self) -> None:
-        """Reject cross-thread/task access to shared cycle-local memos."""
-
-        self._initialize_validation_state()
-        owner = self._cycle_execution_owner
-        if (
-            not self._cycle_lock_held
-            or owner is None
-            or owner != self._current_execution_owner()
-        ):
-            raise ContiguousRunnerError(
-                "cycle-local validation state has a foreign execution owner"
-            )
-
     def state(self) -> dict[str, Any]:
-        """Return a fresh full audit, including during reentrant callbacks."""
-
-        self._initialize_validation_state()
-        if self._cycle_lock_held:
-            self._assert_cycle_execution_owner()
-        saved = (
-            self._validation_cache_snapshot()
-            if self._cycle_validation_context is not None
-            else None
-        )
-        self._discard_validation_caches()
-        try:
-            return self._execute_state_reduction(
-                full_external_audit=True
-            )
-        finally:
-            self._discard_validation_caches()
-            if saved is not None:
-                self._restore_validation_cache_snapshot(saved)
-
-    def _cycle_boundary_state(self) -> dict[str, Any]:
-        """Run a full audit while retaining only this cycle's reducer seed."""
-
-        self._assert_cycle_execution_owner()
-        if type(self).state is not ContiguousCampaignRunner.state:
-            return self.state()
-        # The immutable journal prefix is fully signature-authenticated below,
-        # so its deep-copied semantic reducer checkpoint may safely seed only
-        # the suffix.  All external pointers/receipts remain deliberately cold.
-        self._discard_validation_caches(retain_reducer=True)
-        return self._execute_state_reduction(
-            full_external_audit=True
-        )
-
-    def _cycle_state(
-        self, *, authenticate: bool = False
-    ) -> dict[str, Any]:
-        """Reduce a journal suffix only inside the current locked cycle."""
-
-        self._initialize_validation_state()
-        if type(self).state is not ContiguousCampaignRunner.state:
-            return self.state()
-        context = getattr(self, "_cycle_validation_context", None)
-        lock_held = getattr(self, "_cycle_lock_held", False)
-        if context is None:
-            if lock_held:
-                raise ContiguousRunnerError(
-                    "held cycle lacks its validation context"
-                )
-            return self.state()
-        if not lock_held:
-            raise ContiguousRunnerError(
-                "cycle-local reducer used outside the held cycle lock"
-            )
-        self._assert_cycle_execution_owner()
-        cached_head = (
-            None
-            if not self.journal._cache
-            else (
-                int(self.journal._cache[-1]["sequence"]),
-                str(self.journal._cache[-1]["digest"]),
-            )
-        )
-        if (
-            not authenticate
-            and context.cached_state is not None
-            and context.cached_journal_head == cached_head
-        ):
-            return context.cached_state
-        reduced = self._execute_state_reduction(
-            full_external_audit=False
-        )
-        authenticated = self.journal._cache
-        context.cached_state = reduced
-        context.cached_journal_head = (
-            None
-            if not authenticated
-            else (
-                int(authenticated[-1]["sequence"]),
-                str(authenticated[-1]["digest"]),
-            )
-        )
-        return reduced
-
-    def _cycle_state_with_full_journal_prefix(self) -> dict[str, Any]:
-        """Reauthenticate the complete journal before an authority transfer."""
-
-        journal = self.journal
-        if not isinstance(journal, DurableAttemptJournal):
-            return self._cycle_state(authenticate=True)
-        trusted_thread = getattr(
-            journal, "_cycle_trusted_thread_id", None
-        )
-        journal._cycle_trusted_thread_id = None
-        try:
-            return self._cycle_state(authenticate=True)
-        finally:
-            journal._cycle_trusted_thread_id = trusted_thread
-
-    def _execute_state_reduction(
-        self, *, full_external_audit: bool
-    ) -> dict[str, Any]:
-        """Bound source-evidence memoization to one reducer invocation."""
-
-        selection_token = (
-            Scheduler.begin_selection_evidence_validation_scope()
-        )
-        snapshot_token = (
-            Scheduler.begin_snapshot_validation_scope()
-        )
-        context = getattr(self, "_cycle_validation_context", None)
-        inventory_token = Scheduler.begin_inventory_validation_scope(
-            None
-            if full_external_audit or context is None
-            else context.authoritative_inventory
-        )
-        try:
-            return self._state_reduced(
-                full_external_audit=full_external_audit
-            )
-        finally:
-            Scheduler.end_snapshot_validation_scope(snapshot_token)
-            Scheduler.end_inventory_validation_scope(
-                inventory_token
-            )
-            Scheduler.end_selection_evidence_validation_scope(
-                selection_token
-            )
-
-    def _start_locked_validation_pass(self) -> dict[str, Any]:
-        """Create one fresh cycle-local reducer from a full entry audit."""
-
-        self._initialize_validation_state()
-        self._assert_cycle_execution_owner()
-        if (
-            not self._cycle_lock_held
-            or self._cycle_validation_context is not None
-        ):
-            raise ContiguousRunnerError(
-                "locked validation pass has an invalid lifecycle"
-            )
-        entry = self._cycle_boundary_state()
-        self._cycle_validation_context = _CycleValidationContext(
-            public_observation_registry_sha256=entry.get(
-                "public_observation_registry_sha256", "0" * 64
-            ),
-            journal_prefix=copy.deepcopy(
-                entry.get("journal_prefix", {})
-            ),
-            authoritative_inventory=dict(entry["inventory"]),
-        )
-        if isinstance(self.journal, DurableAttemptJournal):
-            self.journal._cycle_trusted_thread_id = (
-                threading.get_ident()
-            )
-        return entry
-
-    def _finish_locked_validation_pass(self) -> dict[str, Any]:
-        """Destroy the local context and perform the full return audit."""
-
-        self._initialize_validation_state()
-        self._assert_cycle_execution_owner()
-        if (
-            not self._cycle_lock_held
-            or self._cycle_validation_context is None
-        ):
-            raise ContiguousRunnerError(
-                "locked validation pass cannot finish from this state"
-            )
-        # The return audit may reuse the entry pass's semantic reducer only at
-        # its exact authenticated journal head.  Authority-bearing exact-file
-        # pointers and receipt memos, auxiliary event digests, and quiescent
-        # collection memos are deliberately cold after an external effect.
-        self._cycle_validation_context = None
-        if isinstance(self.journal, DurableAttemptJournal):
-            self.journal._cycle_trusted_thread_id = None
-        self._discard_validation_caches(retain_reducer=True)
-        if type(self).state is not ContiguousCampaignRunner.state:
-            return self.state()
-        return self._execute_state_reduction(
-            full_external_audit=True
-        )
-
-    def _exact_cycle_attempt(
-        self,
-        attempt_id: str,
-        allowed_phases: str | set[str],
-    ) -> dict[str, Any]:
-        """Run one fatal, cycle-wide primary authority gate."""
-
-        try:
-            return self._exact_cycle_attempt_checked(
-                attempt_id, allowed_phases
-            )
-        except ExactAuthorityGateError:
-            raise
-        except ContiguousRunnerError as exc:
-            raise ExactAuthorityGateError(str(exc)) from exc
-
-    def _exact_cycle_attempt_checked(
-        self,
-        attempt_id: str,
-        allowed_phases: str | set[str],
-    ) -> dict[str, Any]:
-        """Reselect and uncached-validate one effect's exact authority."""
-
-        phases = (
-            {allowed_phases}
-            if isinstance(allowed_phases, str)
-            else set(allowed_phases)
-        )
-        # Every primary effect, not only promotion, starts from a complete
-        # anchored signature pass over the immutable journal prefix.
-        state = self._cycle_state_with_full_journal_prefix()
-        attempt = state["attempts"].get(attempt_id)
-        if attempt is None or attempt["phase"] not in phases:
-            raise ContiguousRunnerError(
-                "external effect targets a stale attempt phase: "
-                f"{attempt_id}"
-            )
-        if attempt["phase"] == "RESERVED":
-            reservation = attempt["reservation"]
-            lane = state["lanes"].get(reservation.game)
-            if lane is None:
-                raise ContiguousRunnerError(
-                    "reserved attempt lost its lane"
-                )
-            self._validate_lane_authority(
-                game=reservation.game,
-                lane=lane,
-                uncached=True,
-            )
-            if (
-                reservation.parent_checkpoint_path
-                != lane["checkpoint_path"]
-                or reservation.parent_checkpoint_sha256
-                != lane["checkpoint_sha256"]
-                or reservation.parent_source_path
-                != lane["source_path"]
-                or reservation.parent_source_tree_sha256
-                != lane["source_tree_sha256"]
-            ):
-                raise ContiguousRunnerError(
-                    "reserved attempt no longer binds the lane frontier"
-                )
-            if reservation.wip is not None:
-                wip = reservation.wip
-                try:
-                    Contract._validate_regular_tree(
-                        Path(wip.wip_root_path),
-                        label="selected reserved WIP",
-                    )
-                    ProductionInputBundleBuilder._validate_parent_source(
-                        Path(wip.solver_source_path),
-                        expected_tree_sha256=(
-                            wip.solver_source_tree_sha256
-                        ),
-                        label="selected reserved WIP solver source",
-                    )
-                except Exception as exc:
-                    raise ContiguousRunnerError(
-                        "reserved WIP is unsafe"
-                    ) from exc
-                if (
-                    Contract._tree_hash(Path(wip.wip_root_path))
-                    != wip.wip_tree_sha256
-                ):
-                    raise ContiguousRunnerError(
-                        "reserved WIP changed before input construction"
-                    )
-            return attempt
-        spec = attempt["spec"]
-        lane = state["lanes"].get(spec.game)
-        if lane is None:
-            raise ContiguousRunnerError(
-                "attempt lost its lane"
-            )
-        self._validate_lane_authority(
-            game=spec.game, lane=lane, uncached=True
-        )
-        if (
-            spec.parent_checkpoint_path != lane["checkpoint_path"]
-            or spec.parent_checkpoint_sha256
-            != lane["checkpoint_sha256"]
-            or spec.parent_source_path != lane["source_path"]
-            or spec.parent_source_tree_sha256
-            != lane["source_tree_sha256"]
-        ):
-            raise ContiguousRunnerError(
-                "attempt no longer binds the current lane frontier"
-            )
-        self._validate_attempt_external_authority(
-            attempt, uncached=True
-        )
-        return attempt
-
-    def _exact_cycle_auxiliary(
-        self,
-        assignment_id: str,
-        allowed_phases: str | set[str],
-        *,
-        include_teardown: bool = False,
-    ) -> dict[str, Any]:
-        """Run one fatal, cycle-wide auxiliary authority gate."""
-
-        try:
-            return self._exact_cycle_auxiliary_checked(
-                assignment_id,
-                allowed_phases,
-                include_teardown=include_teardown,
-            )
-        except ExactAuthorityGateError:
-            raise
-        except ContiguousRunnerError as exc:
-            raise ExactAuthorityGateError(str(exc)) from exc
-
-    def _exact_cycle_auxiliary_checked(
-        self,
-        assignment_id: str,
-        allowed_phases: str | set[str],
-        *,
-        include_teardown: bool = False,
-    ) -> dict[str, Any]:
-        """Reselect and validate one auxiliary effect's prerequisites."""
-
-        phases = (
-            {allowed_phases}
-            if isinstance(allowed_phases, str)
-            else set(allowed_phases)
-        )
-        state = self._cycle_state_with_full_journal_prefix()
-        assignment = state["auxiliary_assignments"].get(
-            assignment_id
-        )
-        if (
-            assignment is None
-            or assignment["state"].phase not in phases
-        ):
-            raise ContiguousRunnerError(
-                "external effect targets a stale auxiliary phase: "
-                f"{assignment_id}"
-            )
-        self._rebind_auxiliary_prerequisites(
-            assignment, include_teardown=include_teardown
-        )
-        return assignment
-
-    def _exact_substrate_attempt(
-        self, attempt_id: str
-    ) -> dict[str, Any]:
-        """Run one fatal, cycle-wide substrate authority gate."""
-
-        try:
-            return self._exact_substrate_attempt_checked(attempt_id)
-        except ExactAuthorityGateError:
-            raise
-        except ContiguousRunnerError as exc:
-            raise ExactAuthorityGateError(str(exc)) from exc
-
-    def _exact_substrate_attempt_checked(
-        self, attempt_id: str
-    ) -> dict[str, Any]:
-        """Reopen a closed substrate failure before a health probe."""
-
-        if getattr(self, "_cycle_validation_context", None) is not None:
-            # Substrate probes are rare.  Replay the semantic journal from
-            # genesis so the failure and authorization receipts are reopened
-            # rather than relying on a cycle-local reducer prefix.
-            self._reducer_checkpoint = None
-        state = self._cycle_state_with_full_journal_prefix()
-        attempt = state["attempts"].get(attempt_id)
-        if (
-            attempt is None
-            or attempt["phase"] != "CLOSED"
-            or attempt.get("substrate_failure") is None
-        ):
-            raise ContiguousRunnerError(
-                "substrate probe lost its exact failed attempt"
-            )
-        spec = attempt["spec"]
-        lane = state["lanes"][spec.game]
-        self._validate_lane_authority(
-            game=spec.game, lane=lane, uncached=True
-        )
-        self._verified_attempt_inputs = {}
-        self._validate_prepared_input(
-            spec, require_initial_workspace=True
-        )
-        _validate_preparation_receipts(spec, attempt["prepared"])
-        return attempt
-
-    def _state_reduced(
-        self, *, full_external_audit: bool
-    ) -> dict[str, Any]:
-        events = self.journal._read_authenticated(
-            trust_cycle_prefix=not full_external_audit
-        )
+        events = self.journal._read_authenticated()
         if not events or events[0]["kind"] != "GENESIS":
             raise ContiguousRunnerError("missing durable genesis")
         auxiliary_events = tuple(
@@ -9933,12 +7790,7 @@ class ContiguousCampaignRunner:
             )
         genesis = events[0]["payload"]
         inventory = genesis.get("inventory")
-        try:
-            inventory = Scheduler.validate_inventory(inventory)
-        except Scheduler.SchedulerError as exc:
-            raise ContiguousRunnerError(
-                "campaign inventory is not authoritative"
-            ) from exc
+        Contract.validate_inventory(inventory)
         zero = genesis.get("zero_checkpoints")
         if not isinstance(zero, dict) or set(zero) != set(inventory):
             raise ContiguousRunnerError("zero-checkpoint map mismatch")
@@ -9954,81 +7806,6 @@ class ContiguousCampaignRunner:
             )
             for game in sorted(inventory)
         }
-        raw_selective_import = genesis.get(
-            "selective_frontier_import"
-        )
-        selective_import: SelectiveFrontierImport | None = None
-        reducer_start = 1
-        import_events = [
-            event
-            for event in events[1:]
-            if event.get("kind") == "FRONTIER_IMPORTED"
-        ]
-        if raw_selective_import is None:
-            if (
-                "selective_frontier_import" in genesis
-                or genesis.get("campaign_mode") is not None
-                or genesis.get("selective_continuation_game") is not None
-                or genesis.get("selective_frontier_import_sha256")
-                is not None
-                or genesis.get(
-                    "operator_authorized_selective_frontier_import_sha256"
-                )
-                is not None
-                or import_events
-            ):
-                raise ContiguousRunnerError(
-                    "full campaign has selective continuation metadata"
-                )
-        else:
-            selective_import = selective_frontier_import_from_dict(
-                raw_selective_import
-            )
-            expected_payload = selective_frontier_import_to_dict(
-                selective_import
-            )
-            if (
-                genesis.get("campaign_mode")
-                != "selective_continuation"
-                or genesis.get("selective_continuation_game")
-                != selective_import.game
-                or genesis.get("selective_frontier_import_sha256")
-                != selective_import.import_sha256
-                or genesis.get(
-                    "operator_authorized_selective_frontier_import_sha256"
-                )
-                != selective_import.import_sha256
-                or len(import_events) != 1
-                or len(events) < 2
-                or events[1] is not import_events[0]
-                or events[1].get("sequence") != 2
-                or events[1].get("payload") != expected_payload
-            ):
-                raise ContiguousRunnerError(
-                    "selective frontier import transition is not exact"
-                )
-            if full_external_audit:
-                self._validate_selective_frontier_import_files(
-                    selective_import,
-                    inventory=inventory,
-                    verify_gate=hasattr(self, "promotion_gate"),
-                )
-            for game, lane in lanes.items():
-                if game == selective_import.game:
-                    lane.update(
-                        reached=selective_import.reached,
-                        checkpoint_path=selective_import.checkpoint_path,
-                        checkpoint_sha256=(
-                            selective_import.checkpoint_sha256
-                        ),
-                        source_path=selective_import.source_path,
-                        source_tree_sha256=(
-                            selective_import.source_tree_sha256
-                        ),
-                    )
-                else:
-                    lane["blocked"] = SELECTIVE_SCOPE_BLOCKED_REASON
-            reducer_start = 2
         attempts: dict[str, dict[str, Any]] = {}
         if (
             not _safe_identifier(genesis.get("cost_window_id"))
@@ -10090,13 +7867,8 @@ class ContiguousCampaignRunner:
         substrate_incident: dict[str, Any] | None = None
         storage_incident: dict[str, Any] | None = None
         storage_quiescence: dict[str, Any] | None = None
-        # Pure source evidence may recur at many historical decision points.
-        # Reuse it only within this one authenticated reduction; the mapping
-        # never crosses a public/full audit or supervision cycle.
-        selection_evidence_cache: dict[
-            tuple[object, ...], Any
-        ] = {}
 
+        reducer_start = 1
         cached_reducer = getattr(self, "_reducer_checkpoint", None)
         if (
             isinstance(cached_reducer, _ReducerCheckpoint)
@@ -10166,12 +7938,7 @@ class ContiguousCampaignRunner:
             )
             reducer_start = cached_reducer.head_sequence
 
-        replay_observer = getattr(
-            self, "_semantic_replay_observer", None
-        )
         for event in events[reducer_start:]:
-            if callable(replay_observer):
-                replay_observer(event)
             kind = event["kind"]
             payload = event["payload"]
             if (
@@ -11120,9 +8887,6 @@ class ContiguousCampaignRunner:
                             for item in sidecar_requests.values()
                             if not item["invalidated"]
                         ),
-                        selection_evidence_cache=(
-                            selection_evidence_cache
-                        ),
                     )
                     Scheduler.verify_decision(snapshot, decision)
                 except Scheduler.SchedulerError as exc:
@@ -11186,9 +8950,6 @@ class ContiguousCampaignRunner:
                         auxiliary_assignments=tuple(
                             item["state"]
                             for item in auxiliary_assignments.values()
-                        ),
-                        selection_evidence_cache=(
-                            selection_evidence_cache
                         ),
                         sidecar_requests=tuple(
                             item["request"]
@@ -11923,7 +9684,6 @@ class ContiguousCampaignRunner:
                     "public_observation_transition": None,
                     "protocol_invalid": None,
                     "substrate_failure": None,
-                    "preparation_quarantine": None,
                     "outcome": None,
                     "settled_result": None,
                     "teardown": None,
@@ -12060,85 +9820,6 @@ class ContiguousCampaignRunner:
                 attempt["operation_retry_not_before"][
                     payload["operation"]
                 ] = payload["retry_not_before"]
-            elif kind == "ATTEMPT_PREPARATION_QUARANTINED":
-                attempt = self._attempt(
-                    attempts, attempt_id, "PREPARED"
-                )
-                required = {
-                    "attempt_id",
-                    "quarantine_receipt_path",
-                    "quarantine_receipt_sha256",
-                    "result",
-                    "authenticated_cost_units",
-                    "budget_reservation_id",
-                    "scheduler_decision_id",
-                }
-                if (
-                    set(payload) != required
-                    or payload["authenticated_cost_units"] != 0
-                    or payload["budget_reservation_id"]
-                    != attempt["budget_reservation_id"]
-                    or payload["scheduler_decision_id"]
-                    != attempt["scheduler_decision_id"]
-                    or not isinstance(payload["result"], dict)
-                ):
-                    raise ContiguousRunnerError(
-                        "preparation quarantine event schema/order mismatch"
-                    )
-                result = self._result_from_payload({
-                    "attempt_id": attempt_id,
-                    **payload["result"],
-                })
-                if result != AttemptResult(
-                    kind="infrastructure",
-                    cost_used=0.0,
-                    reason="compatibility_preparation_quarantined",
-                ):
-                    raise ContiguousRunnerError(
-                        "preparation quarantine gained result authority"
-                    )
-                _validate_preparation_quarantine_receipt(
-                    attempt["spec"],
-                    payload["quarantine_receipt_path"],
-                    payload["quarantine_receipt_sha256"],
-                )
-                try:
-                    budget = Scheduler.settle_budget(
-                        budget,
-                        reservation_id=attempt[
-                            "budget_reservation_id"
-                        ],
-                        attempt_id=attempt_id,
-                        charged_units=0,
-                    )
-                except Scheduler.SchedulerError as exc:
-                    raise ContiguousRunnerError(
-                        "preparation quarantine settlement is invalid"
-                    ) from exc
-                lane = lanes[attempt["spec"].game]
-                if (
-                    lane["active"] != attempt_id
-                    or lane["no_progress"]
-                    != attempt["scheduler_decision"].choice.no_progress
-                ):
-                    raise ContiguousRunnerError(
-                        "preparation quarantine does not close its exact "
-                        "reserved frontier"
-                    )
-                lane["active"] = None
-                attempt.update(
-                    phase="CLOSED",
-                    settled_result=result,
-                    outcome="compatibility_preparation_quarantined",
-                    preparation_quarantine={
-                        "path": payload[
-                            "quarantine_receipt_path"
-                        ],
-                        "sha256": payload[
-                            "quarantine_receipt_sha256"
-                        ],
-                    },
-                )
             elif kind == "BACKEND_PREPARED":
                 attempt = self._attempt(attempts, attempt_id, "PREPARED")
                 if set(payload) != {"attempt_id", "prepared"}:
@@ -12155,11 +9836,9 @@ class ContiguousCampaignRunner:
                     raise ContiguousRunnerError(
                         "backend observed the wrong image digest"
                     )
-                # Receipt bytes are validated before this host event is
-                # appended, by the exact gate before the next backend effect,
-                # and once in the full audit tail below.  Semantic journal
-                # replay must not repeat the expensive compatibility-closure
-                # scan for the same event before every phase transition.
+                _validate_preparation_receipts(
+                    attempt["spec"], prepared
+                )
                 attempt.update(
                     phase="BACKEND_PREPARED", prepared=prepared
                 )
@@ -13698,10 +11377,11 @@ class ContiguousCampaignRunner:
                         "invalid ATTEMPT_LAUNCHED payload"
                     )
                 launched = _backend_launch_from_dict(payload["launched"])
-                # External launch receipts share the same three gates as
-                # preparation: pre-append host validation, the exact next-
-                # effect rebind, and the full external-audit tail.  This
-                # branch reduces authenticated event semantics only.
+                _validate_launch_receipts(
+                    attempt["spec"],
+                    attempt["prepared"],
+                    launched,
+                )
                 attempt.update(
                     phase="RUNNING",
                     launched=launched,
@@ -14076,7 +11756,7 @@ class ContiguousCampaignRunner:
                     ) != result
                 ):
                     raise ContiguousRunnerError(
-                        "closed blocker authority changed after settlement"
+                        "attempt blocker lacks current host authentication"
                     )
                 attempt["settled_result"] = result
                 try:
@@ -14336,36 +12016,156 @@ class ContiguousCampaignRunner:
             else:
                 raise ContiguousRunnerError(f"unknown journal event: {kind}")
 
-        if full_external_audit:
-            self._validate_generation_tree(attempts)
-            for attempt in attempts.values():
-                self._validate_attempt_external_authority(attempt)
-            for game, lane in lanes.items():
-                self._validate_lane_authority(game=game, lane=lane)
-            public_observation_registry_sha256 = (
-                self._validate_public_observation_registry(attempts)
-            )
-            try:
-                journal_prefix = Scheduler.journal_prefix_status(
-                    self.root
-                )
-            except Scheduler.SchedulerError as exc:
+        expected_generations = {
+            attempt["reservation"].generation_id
+            for attempt in attempts.values()
+        }
+        actual_generations: set[str] = set()
+        for path in self.generations.iterdir():
+            if (
+                path.is_symlink()
+                or not path.is_dir()
+                or not _is_uuid4(path.name)
+            ):
                 raise ContiguousRunnerError(
-                    "journal prefix exceeds scheduler evidence bounds"
-                ) from exc
-        else:
-            context = self._cycle_validation_context
-            if context is None or not self._cycle_lock_held:
-                raise ContiguousRunnerError(
-                    "reduced state lacks its held cycle context"
+                    f"unexpected generation entry: {path}"
                 )
-            public_observation_registry_sha256 = (
-                context.public_observation_registry_sha256
+            actual_generations.add(path.name)
+        if not actual_generations <= expected_generations:
+            raise ContiguousRunnerError(
+                "generation tree contains an unjournaled identity"
             )
-            journal_prefix = copy.deepcopy(context.journal_prefix)
+
+        # Only files that can still influence execution/promotion are rehashed
+        # on every scheduler pass.  A closed blocker is the sole exception:
+        # its external receipt remains live lane-stopping authority and must be
+        # reopened and host-authenticated on every pass, including cached
+        # reducer recovery.
+        for attempt in attempts.values():
+            if attempt["phase"] == "CLOSED":
+                settled = attempt.get("settled_result")
+                if (
+                    isinstance(settled, AttemptResult)
+                    and settled.kind == "blocker"
+                    and self._sanitize_result(
+                        attempt["spec"], settled
+                    ) != settled
+                ):
+                    raise ContiguousRunnerError(
+                        "closed blocker authority changed after settlement"
+                    )
+                if attempt.get("protocol_invalid") is not None:
+                    spec = attempt["spec"]
+                    protocol_invalid = attempt["protocol_invalid"]
+                    receipt = _validate_bound_receipt(
+                        protocol_invalid["path"],
+                        protocol_invalid["sha256"],
+                        expected_path=Path(
+                            spec.host_transcript_path
+                        ).parent
+                        / (
+                            "arena_public_action_protocol_invalid_"
+                            "receipt.json"
+                        ),
+                        expected_kind=(
+                            "contiguous_arena_public_action_protocol_"
+                            "invalid"
+                        ),
+                        spec=spec,
+                    )
+                    if (
+                        receipt.get("status")
+                        != "PROTOCOL_INVALID"
+                        or receipt.get("cost_used")
+                        != settled.cost_used
+                    ):
+                        raise ContiguousRunnerError(
+                            "closed protocol-invalid evidence changed"
+                        )
+                    _validate_protocol_invalid_terminal_evidence(
+                        spec=spec,
+                        receipt=receipt,
+                        evidence=protocol_invalid[
+                            "terminal_evidence"
+                        ],
+                    )
+                continue
+            if attempt["phase"] == "RESERVED":
+                continue
+            spec = attempt["spec"]
+            self._validate_prepared_input(
+                spec,
+                require_initial_workspace=attempt["phase"]
+                in {"PREPARED", "BACKEND_PREPARED"},
+            )
+            if attempt["prepared"] is not None:
+                prepared = attempt["prepared"]
+                _validate_preparation_receipts(spec, prepared)
+            if attempt["launched"] is not None:
+                _validate_launch_receipts(
+                    spec, attempt["prepared"], attempt["launched"]
+                )
+            if attempt["collection"] is not None:
+                self._validate_collection(
+                    spec,
+                    attempt["prepared"],
+                    attempt["launched"],
+                    attempt["collection"],
+                    allow_arena_teardown_receipt=(
+                        attempt["teardown"] is not None
+                    ),
+                )
+            if attempt.get("protocol_invalid") is not None:
+                protocol_invalid = attempt["protocol_invalid"]
+                receipt = _validate_bound_receipt(
+                    protocol_invalid["path"],
+                    protocol_invalid["sha256"],
+                    expected_path=Path(
+                        spec.host_transcript_path
+                    ).parent
+                    / "arena_public_action_protocol_invalid_receipt.json",
+                    expected_kind=(
+                        "contiguous_arena_public_action_protocol_invalid"
+                    ),
+                    spec=spec,
+                )
+                if (
+                    receipt.get("status") != "PROTOCOL_INVALID"
+                    or receipt.get("cost_used")
+                    != attempt["outcome"].cost_used
+                ):
+                    raise ContiguousRunnerError(
+                        "live protocol-invalid authority changed"
+                    )
+                _validate_protocol_invalid_terminal_evidence(
+                    spec=spec,
+                    receipt=receipt,
+                    evidence=protocol_invalid[
+                        "terminal_evidence"
+                    ],
+                )
+
+        for game, lane in lanes.items():
+            if not 0 <= lane["reached"] <= lane["target"]:
+                raise ContiguousRunnerError(
+                    f"lane exceeds authoritative target: {game}"
+                )
+            self._validate_lane_checkpoint_cached(
+                game=game, lane=lane
+            )
+            self._validate_lane_source_cached(game=game, lane=lane)
+        public_observation_registry_sha256 = (
+            self._validate_public_observation_registry(attempts)
+        )
         solved = sum(lane["reached"] for lane in lanes.values())
         if solved > Contract.EXPECTED_LEVELS:
             raise ContiguousRunnerError("campaign solved count exceeds inventory")
+        try:
+            journal_prefix = Scheduler.journal_prefix_status(self.root)
+        except Scheduler.SchedulerError as exc:
+            raise ContiguousRunnerError(
+                "journal prefix exceeds scheduler evidence bounds"
+            ) from exc
         # Publish the reducer checkpoint only after every current executable
         # artifact and journal-prefix bound has passed.  It is an optimization
         # of deterministic replay, never an alternate admission path.
@@ -14405,7 +12205,7 @@ class ContiguousCampaignRunner:
             storage_incident=copy.deepcopy(storage_incident),
             storage_quiescence=copy.deepcopy(storage_quiescence),
         )
-        state = {
+        return {
             "schema": RUNNER_SCHEMA,
             "campaign_id": genesis["campaign_id"],
             "inventory": inventory,
@@ -14425,13 +12225,8 @@ class ContiguousCampaignRunner:
                 Scheduler.auxiliary_launch_configuration_to_dict(
                     auxiliary_configuration
                 ),
-            "auxiliary_dispatch_configured": bool(
-                auxiliary_configuration.automatic_dispatch_enabled
-            ),
-            # Deprecated schema-1 compatibility field.  It is intentionally
-            # constant false and cannot mirror configuration or confer launch
-            # authority.
-            "auxiliary_launch_ready": False,
+            "auxiliary_launch_ready":
+                CONTIGUOUS_AUXILIARY_LAUNCH_READY,
             "pending_scheduler_decision": (
                 json.loads(_canonical_json(
                     Scheduler.decision_to_dict(pending_decision)
@@ -14479,27 +12274,6 @@ class ContiguousCampaignRunner:
                 for attempt in attempts.values()
             ),
         }
-        if selective_import is not None:
-            selected_lane = lanes[selective_import.game]
-            state.update({
-                "campaign_mode": "selective_continuation",
-                "selective_continuation_game": selective_import.game,
-                "selective_frontier_import":
-                    selective_frontier_import_to_dict(
-                        selective_import
-                    ),
-                "operator_authorized_selective_frontier_import_sha256":
-                    genesis[
-                        "operator_authorized_selective_frontier_import_sha256"
-                    ],
-                "selective_scope_solved_levels":
-                    selected_lane["reached"] - selective_import.reached,
-                "selective_scope_total_levels":
-                    selected_lane["target"] - selective_import.reached,
-                "selective_complete":
-                    selected_lane["reached"] == selected_lane["target"],
-            })
-        return state
 
     @staticmethod
     def _attempt(
@@ -14649,13 +12423,7 @@ class ContiguousCampaignRunner:
                 "WIP evidence paths do not form one canonical generation"
             )
 
-        publication, _publication_metadata = (
-            _read_stable_digest_bound_json(
-                publication_path,
-                wip.wip_publication_receipt_sha256,
-                label="WIP publication receipt",
-            )
-        )
+        publication = _read_json_file(publication_path)
         publication_base = {
             "schema": 1,
             "kind": "contiguous_wip_publication",
@@ -14680,7 +12448,9 @@ class ContiguousCampaignRunner:
                 proposer_attempt_binding_sha256(bound_spec),
         }
         if (
-            any(
+            _sha256_file(publication_path)
+            != wip.wip_publication_receipt_sha256
+            or any(
                 publication.get(key) != value
                 for key, value in publication_base.items()
             )
@@ -14711,13 +12481,10 @@ class ContiguousCampaignRunner:
             digest: str,
             kind: str,
         ) -> dict[str, Any]:
-            value, _metadata = _read_stable_digest_bound_json(
-                path,
-                digest,
-                label=f"retained WIP {kind} receipt",
-            )
+            value = _read_json_file(path)
             if (
-                value.get("schema") != 1
+                _sha256_file(path) != digest
+                or value.get("schema") != 1
                 or value.get("kind") != kind
                 or any(
                     value.get(key) != expected
@@ -15009,12 +12776,8 @@ class ContiguousCampaignRunner:
                 raise ContiguousRunnerError(
                     "attempt restores ineligible or wrong WIP"
                 )
-            publication, _publication_metadata = (
-                _read_stable_digest_bound_json(
-                    Path(spec.wip.wip_publication_receipt_path),
-                    spec.wip.wip_publication_receipt_sha256,
-                    label="selected WIP publication receipt",
-                )
+            publication = _read_json_file(
+                Path(spec.wip.wip_publication_receipt_path)
             )
             origin = attempts.get(str(publication.get("attempt_id")))
             origin_spec = (
@@ -15151,35 +12914,46 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "attempt input bundle is not a regular tree"
             ) from exc
-        receipt, _receipt_metadata = _read_stable_digest_bound_json(
-            receipt_path,
-            spec.input_bundle_receipt_sha256,
-            label="input-bundle receipt",
-        )
-        brief, _brief_metadata = _read_stable_digest_bound_json(
-            Path(spec.frontier_brief_path),
-            spec.frontier_brief_sha256,
-            label="frontier brief",
-        )
-        policy, _policy_metadata = _read_stable_digest_bound_json(
-            Path(spec.bridge_policy_path),
-            spec.bridge_policy_sha256,
-            label="bridge policy",
-        )
         if (
             Contract._tree_hash(input_root) != spec.input_tree_sha256
             or Contract._tree_hash(Path(spec.parent_source_path))
             != spec.parent_source_tree_sha256
             or Contract._tree_hash(input_root / "parent_source")
             != spec.parent_source_tree_sha256
+            or _sha256_file(receipt_path)
+            != spec.input_bundle_receipt_sha256
             or _sha256_file(Path(spec.parent_checkpoint_path))
             != spec.parent_checkpoint_sha256
             or _sha256_file(input_root / "checkpoint.json")
             != spec.parent_checkpoint_sha256
+            or _sha256_file(Path(spec.frontier_brief_path))
+            != spec.frontier_brief_sha256
+            or (
+                spec.supervisory_handoff is not None
+                and (
+                    _sha256_file(
+                        Path(str(spec.supervisory_handoff_path))
+                    )
+                    != spec.supervisory_handoff_sha256
+                    or _sha256_file(
+                        Path(
+                            str(
+                                spec
+                                .supervisory_handoff_binding_receipt_path
+                            )
+                        )
+                    )
+                    != spec
+                    .supervisory_handoff_binding_receipt_sha256
+                )
+            )
+            or _sha256_file(Path(spec.bridge_policy_path))
+            != spec.bridge_policy_sha256
         ):
             raise ContiguousRunnerError(
                 "attempt input bundle or receipt changed"
             )
+        receipt = _read_json_file(receipt_path)
         required = {
             "schema",
             "campaign_id",
@@ -15291,6 +13065,7 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "source/workspace seed changed after construction"
             )
+        brief = _read_json_file(Path(spec.frontier_brief_path))
         expected_brief = {
             "schema": 1,
             "kind": "arc_agi3_contiguous_frontier_brief",
@@ -15325,6 +13100,7 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "frontier brief is nonminimal, stale, or malformed"
             )
+        policy = _read_json_file(Path(spec.bridge_policy_path))
         expected_policy = {
             "schema": 1,
             "kind": "arc_agi3_contiguous_bridge_policy",
@@ -15372,26 +13148,15 @@ class ContiguousCampaignRunner:
             )
         if spec.supervisory_handoff is not None:
             binding = spec.supervisory_handoff
-            handoff_document, _handoff_metadata = (
-                _read_stable_digest_bound_json(
-                    Path(str(spec.supervisory_handoff_path)),
-                    str(spec.supervisory_handoff_sha256),
-                    label="supervisory handoff",
-                )
+            handoff_document = _read_json_file(
+                Path(str(spec.supervisory_handoff_path))
             )
-            binding_receipt, _binding_metadata = (
-                _read_stable_digest_bound_json(
-                    Path(
-                        str(
-                            spec
-                            .supervisory_handoff_binding_receipt_path
-                        )
-                    ),
+            binding_receipt = _read_json_file(
+                Path(
                     str(
                         spec
-                        .supervisory_handoff_binding_receipt_sha256
-                    ),
-                    label="supervisory handoff binding receipt",
+                        .supervisory_handoff_binding_receipt_path
+                    )
                 )
             )
             expected_handoff = (
@@ -15882,35 +13647,22 @@ class ContiguousCampaignRunner:
             collection.native_public_observation_receipt_sha256s
         ):
             source = source_root / f"{digest}.json"
-            raw, observed_digest, _ = (
-                _read_stable_bounded_regular_bytes(
+            raw = _bounded_regular_bytes(
                 source, maximum=MAX_HOST_TRANSCRIPT_BYTES
-                )
             )
-            if observed_digest != digest:
+            if hashlib.sha256(raw).hexdigest() != digest:
                 raise ContiguousRunnerError(
                     "validated public receipt changed before registration"
                 )
             target = self.public_observation_registry / (
                 f"{digest}.json"
             )
-            # Registry publication is an authority-bearing storage effect,
-            # not part of collection's pure validation.  Reopen the complete
-            # prefix at the exact install and permission-change boundaries.
-            self._exact_cycle_attempt(spec.attempt_id, "EXITED")
             _install_regular_bytes(target, raw)
-            self._exact_cycle_attempt(spec.attempt_id, "EXITED")
             os.chmod(target, 0o400, follow_symlinks=False)
-            _target_raw, target_digest, _ = (
-                _read_stable_bounded_regular_bytes(
-                    target, maximum=MAX_HOST_TRANSCRIPT_BYTES
-                )
-            )
-            if target_digest != digest:
+            if _sha256_file(target) != digest:
                 raise ContiguousRunnerError(
                     "host public-observation registry changed content"
                 )
-        self._exact_cycle_attempt(spec.attempt_id, "EXITED")
         _fsync_directory(self.public_observation_registry)
 
     def _validate_public_observation_registry(
@@ -16070,398 +13822,7 @@ class ContiguousCampaignRunner:
             }
         )
 
-    @staticmethod
-    def _collection_evidence_roots(
-        spec: AttemptSpec,
-    ) -> tuple[tuple[str, Path], ...]:
-        return (
-            ("host_evidence", Path(spec.host_transcript_path).parent),
-            ("proposer_output", Path(spec.output_dir)),
-            ("controller_state", Path(spec.app_server_state_dir)),
-        )
-
-    @classmethod
-    def _snapshot_quiescent_collection_evidence(
-        cls,
-        spec: AttemptSpec,
-    ) -> str:
-        """Return a fixed read-only digest of quiescent collection evidence.
-
-        File count follows the authoritative inventory's file-only bound;
-        directories have a separate bound and do not consume file slots.
-        Exact names, types, identity, ownership, size, nanosecond times, and
-        every file's content hash are streamed into one digest; nothing
-        proportional to the tree is retained.  This is called only after typed
-        teardown proves there is no live writer, and it never mutates evidence.
-        """
-
-        aggregate = hashlib.sha256()
-        root_identities: set[tuple[int, int]] = set()
-
-        def metadata_fields(metadata: os.stat_result) -> tuple[int, ...]:
-            return (
-                metadata.st_dev,
-                metadata.st_ino,
-                metadata.st_mode,
-                metadata.st_nlink,
-                metadata.st_uid,
-                metadata.st_gid,
-                metadata.st_size,
-                metadata.st_mtime_ns,
-                metadata.st_ctime_ns,
-            )
-
-        for label, root in cls._collection_evidence_roots(spec):
-            if not root.is_absolute():
-                raise ContiguousRunnerError(
-                    f"quiescent {label} root is not absolute"
-                )
-            try:
-                root_descriptor = os.open(
-                    root,
-                    os.O_RDONLY
-                    | getattr(os, "O_DIRECTORY", 0)
-                    | getattr(os, "O_NOFOLLOW", 0),
-                )
-            except OSError as exc:
-                raise ContiguousRunnerError(
-                    f"quiescent {label} root cannot be opened"
-                ) from exc
-            root_metadata = os.fstat(root_descriptor)
-            root_identity = (
-                root_metadata.st_dev,
-                root_metadata.st_ino,
-            )
-            if root_identity in root_identities:
-                os.close(root_descriptor)
-                raise ContiguousRunnerError(
-                    "quiescent collection evidence roots overlap"
-                )
-            root_identities.add(root_identity)
-            file_count = 0
-            directory_count = 0
-            total_bytes = 0
-
-            def emit(
-                kind: str,
-                relative: str,
-                metadata: os.stat_result,
-                content_sha256: str | None = None,
-            ) -> None:
-                aggregate.update(_canonical_json({
-                    "label": label,
-                    "kind": kind,
-                    "path": relative,
-                    "metadata": metadata_fields(metadata),
-                    "content_sha256": content_sha256,
-                }))
-                aggregate.update(b"\n")
-
-            def visit(
-                directory_descriptor: int,
-                relative_parent: PurePosixPath,
-                depth: int,
-            ) -> os.stat_result:
-                nonlocal file_count, directory_count, total_bytes
-                if depth > Transport.MAX_APP_SERVER_STATE_DEPTH:
-                    raise ContiguousRunnerError(
-                        f"quiescent {label} tree exceeds its depth bound"
-                    )
-                before = os.fstat(directory_descriptor)
-                relative_text = (
-                    "."
-                    if relative_parent == PurePosixPath(".")
-                    else relative_parent.as_posix()
-                )
-                if (
-                    not stat.S_ISDIR(before.st_mode)
-                    or before.st_uid != os.getuid()
-                    or stat.S_IMODE(before.st_mode) & 0o022
-                ):
-                    raise ContiguousRunnerError(
-                        f"quiescent {label} directory is unsafe"
-                    )
-                names = sorted(os.listdir(directory_descriptor))
-                for name in names:
-                    if (
-                        not isinstance(name, str)
-                        or not name
-                        or name in {".", ".."}
-                        or "/" in name
-                        or "\x00" in name
-                    ):
-                        raise ContiguousRunnerError(
-                            f"quiescent {label} entry name is unsafe"
-                        )
-                    relative = relative_parent / name
-                    relative_text = relative.as_posix()
-                    linked_before = os.stat(
-                        name,
-                        dir_fd=directory_descriptor,
-                        follow_symlinks=False,
-                    )
-                    if stat.S_ISDIR(linked_before.st_mode):
-                        directory_count += 1
-                        if (
-                            directory_count
-                            > MAX_QUIESCENT_COLLECTION_DIRECTORIES
-                        ):
-                            raise ContiguousRunnerError(
-                                f"quiescent {label} tree exceeds its directory "
-                                "bound"
-                            )
-                        child_descriptor = os.open(
-                            name,
-                            os.O_RDONLY
-                            | getattr(os, "O_DIRECTORY", 0)
-                            | getattr(os, "O_NOFOLLOW", 0),
-                            dir_fd=directory_descriptor,
-                        )
-                        try:
-                            opened = os.fstat(child_descriptor)
-                            if metadata_fields(opened) != metadata_fields(
-                                linked_before
-                            ):
-                                raise ContiguousRunnerError(
-                                    f"quiescent {label} directory changed"
-                                )
-                            child_after = visit(
-                                child_descriptor, relative, depth + 1
-                            )
-                            linked_after = os.stat(
-                                name,
-                                dir_fd=directory_descriptor,
-                                follow_symlinks=False,
-                            )
-                            if metadata_fields(
-                                child_after
-                            ) != metadata_fields(linked_after):
-                                raise ContiguousRunnerError(
-                                    f"quiescent {label} directory changed"
-                                )
-                        finally:
-                            os.close(child_descriptor)
-                        continue
-                    if (
-                        not stat.S_ISREG(linked_before.st_mode)
-                        or linked_before.st_nlink != 1
-                        or linked_before.st_size < 0
-                        or linked_before.st_size
-                        > Transport.MAX_APP_SERVER_STATE_FILE_BYTES
-                        or linked_before.st_uid != os.getuid()
-                        or stat.S_IMODE(linked_before.st_mode) & 0o022
-                    ):
-                        raise ContiguousRunnerError(
-                            f"quiescent {label} file inventory is unsafe"
-                        )
-                    file_count += 1
-                    total_bytes += linked_before.st_size
-                    if (
-                        file_count > Transport.MAX_APP_SERVER_STATE_FILES
-                        or total_bytes
-                        > Transport.MAX_APP_SERVER_STATE_TOTAL_BYTES
-                    ):
-                        raise ContiguousRunnerError(
-                            f"quiescent {label} file inventory is unsafe"
-                        )
-                    descriptor = os.open(
-                        name,
-                        os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
-                        dir_fd=directory_descriptor,
-                    )
-                    try:
-                        opened = os.fstat(descriptor)
-                        content = hashlib.sha256()
-                        observed = 0
-                        while True:
-                            block = os.read(descriptor, 1024 * 1024)
-                            if not block:
-                                break
-                            observed += len(block)
-                            if observed > linked_before.st_size:
-                                raise ContiguousRunnerError(
-                                    f"quiescent {label} file grew"
-                                )
-                            content.update(block)
-                        linked_after = os.stat(
-                            name,
-                            dir_fd=directory_descriptor,
-                            follow_symlinks=False,
-                        )
-                        after = os.fstat(descriptor)
-                        if not (
-                            metadata_fields(linked_before)
-                            == metadata_fields(opened)
-                            == metadata_fields(after)
-                            == metadata_fields(linked_after)
-                            and observed == after.st_size
-                        ):
-                            raise ContiguousRunnerError(
-                                f"quiescent {label} file changed"
-                            )
-                        emit(
-                            "file",
-                            relative_text,
-                            after,
-                            content.hexdigest(),
-                        )
-                    finally:
-                        os.close(descriptor)
-                names_after = sorted(os.listdir(directory_descriptor))
-                after = os.fstat(directory_descriptor)
-                if (
-                    names_after != names
-                    or metadata_fields(after) != metadata_fields(before)
-                ):
-                    raise ContiguousRunnerError(
-                        f"quiescent {label} directory changed during digest"
-                    )
-                emit(
-                    "directory",
-                    relative_text,
-                    after,
-                )
-                return after
-
-            try:
-                root_after = visit(
-                    root_descriptor, PurePosixPath("."), 0
-                )
-                linked_root = root.stat(follow_symlinks=False)
-                if metadata_fields(root_after) != metadata_fields(
-                    linked_root
-                ):
-                    raise ContiguousRunnerError(
-                        f"quiescent {label} root changed"
-                    )
-            except ContiguousRunnerError:
-                raise
-            except OSError as exc:
-                raise ContiguousRunnerError(
-                    f"quiescent {label} tree changed during digest"
-                ) from exc
-            finally:
-                os.close(root_descriptor)
-        return aggregate.hexdigest()
-
-    @staticmethod
-    def _collection_validation_binding(
-        spec: AttemptSpec,
-        prepared: BackendPreparation,
-        launched: BackendLaunch,
-        collection: BackendCollection,
-        *,
-        teardown: BackendTeardownProof,
-        secret_sentinels: tuple[str, ...],
-        controller_state_canaries: tuple[Taint.LiveCanary, ...],
-    ) -> str:
-        return hashlib.sha256(_canonical_json({
-            "schema": 1,
-            "kind": "contiguous_collection_validation_binding",
-            "spec": asdict(spec),
-            "prepared": asdict(prepared),
-            "launched": asdict(launched),
-            "collection": asdict(collection),
-            "teardown": asdict(teardown),
-            "secret_sentinels": sorted(set(secret_sentinels)),
-            "controller_state_canaries": [
-                asdict(item) for item in controller_state_canaries
-            ],
-        })).hexdigest()
-
     def _validate_collection(
-        self,
-        spec: AttemptSpec,
-        prepared: BackendPreparation,
-        launched: BackendLaunch,
-        collection: BackendCollection,
-        *,
-        allow_arena_teardown_receipt: bool = False,
-        teardown: BackendTeardownProof | None = None,
-    ) -> None:
-        """Cache only fully scanned evidence after authenticated quiescence.
-
-        Pre-teardown calls always reopen every byte.  Once the journal has
-        replay-validated container, controller, relay, endpoint, and descendant
-        absence, one further full validation and a read-only byte snapshot are
-        performed.  Only that quiescent exact attempt/teardown binding may be
-        reused.  This deliberately relies on the trusted-host/process-absence
-        boundary rather than pretending a tree walk is an atomic snapshot of
-        live mutable evidence.  Reducer replay never chmods or writes evidence.
-        """
-
-        if not allow_arena_teardown_receipt:
-            if teardown is not None:
-                raise ContiguousRunnerError(
-                    "pre-teardown collection received teardown authority"
-                )
-            self._validate_collection_uncached(
-                spec,
-                prepared,
-                launched,
-                collection,
-                allow_arena_teardown_receipt=False,
-            )
-            return
-        if not isinstance(teardown, BackendTeardownProof):
-            raise ContiguousRunnerError(
-                "post-teardown collection lacks quiescence proof"
-            )
-        validated_teardown = _backend_teardown_from_dict(
-            asdict(teardown)
-        )
-        if validated_teardown != teardown:
-            raise ContiguousRunnerError(
-                "post-teardown collection changed quiescence proof"
-            )
-        binding = self._collection_validation_binding(
-            spec,
-            prepared,
-            launched,
-            collection,
-            teardown=validated_teardown,
-            secret_sentinels=self._secret_sentinels,
-            controller_state_canaries=self._controller_state_canaries,
-        )
-        cache = getattr(
-            self, "_verified_quiescent_collections", None
-        )
-        if cache is None:
-            cache = {}
-            self._verified_quiescent_collections = cache
-        cached = cache.get(spec.attempt_id)
-        if cached is not None:
-            evidence_digest = self._snapshot_quiescent_collection_evidence(
-                spec
-            )
-            observed = hashlib.sha256(_canonical_json({
-                "binding": binding,
-                "quiescent_evidence_digest": evidence_digest,
-            })).hexdigest()
-            if cached != observed:
-                raise ContiguousRunnerError(
-                    "quiescent collection binding or evidence changed"
-                )
-            return
-        self._validate_collection_uncached(
-            spec,
-            prepared,
-            launched,
-            collection,
-            allow_arena_teardown_receipt=True,
-        )
-        evidence_digest = self._snapshot_quiescent_collection_evidence(
-            spec
-        )
-        cache_value = hashlib.sha256(_canonical_json({
-            "binding": binding,
-            "quiescent_evidence_digest": evidence_digest,
-        })).hexdigest()
-        if len(cache) >= MAX_VERIFIED_QUIESCENT_COLLECTIONS:
-            cache.pop(next(iter(cache)))
-        cache[spec.attempt_id] = cache_value
-
-    def _validate_collection_uncached(
         self,
         spec: AttemptSpec,
         prepared: BackendPreparation,
@@ -17162,9 +14523,9 @@ class ContiguousCampaignRunner:
                 "per-lane Codex state changed after final binding"
             )
         if collection.structured_provider_outcome != "completed":
-            if collection.result.kind not in {"infrastructure", "tainted"}:
+            if collection.result.kind != "infrastructure":
                 raise ContiguousRunnerError(
-                    "structured provider failure is neither infrastructure nor taint-dominated"
+                    "structured provider failure is not infrastructure"
                 )
         elif collection.structured_turn_status != "completed":
             raise ContiguousRunnerError(
@@ -17219,12 +14580,8 @@ class ContiguousCampaignRunner:
                 + Transport.canonical_json(frontier_brief).decode("ascii")
             )
             scan_policy = Taint.AppServerScanPolicy(
-                # The immutable transcript records the controller's pinned
-                # in-container paths.  Host staging paths are authenticated
-                # separately by the config/state receipts and must never be
-                # substituted into protocol replay.
-                state_root=EXPECTED_CONTROLLER_STATE_ROOT,
-                neutral_cwd=EXPECTED_CONTROLLER_NEUTRAL_CWD,
+                state_root=spec.app_server_state_dir,
+                neutral_cwd=spec.neutral_host_cwd_path,
                 model=spec.proposer_transport.model,
                 model_provider=spec.proposer_transport.model_provider,
                 reasoning_effort=spec.effort,
@@ -18229,7 +15586,7 @@ class ContiguousCampaignRunner:
         decision = self._append_scheduler_decision(state)
         if decision is None:
             return None
-        pending_state = self._cycle_state()
+        pending_state = self.state()
         return self._consume_scheduler_decision(
             decision, pending_state
         )
@@ -18619,7 +15976,7 @@ class ContiguousCampaignRunner:
         if decision is None:
             return None
         return self._consume_auxiliary_decision(
-            decision, self._cycle_state()
+            decision, self.state()
         )
 
     @staticmethod
@@ -18930,10 +16287,6 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "cannot prepare auxiliary input without a backend"
             )
-        assignment_id = assignment["decision"].assignment_id
-        assignment = self._exact_cycle_auxiliary(
-            assignment_id, "RESERVED"
-        )
         decision = assignment["decision"]
         try:
             prepared_value = self._call_auxiliary_backend(
@@ -18979,10 +16332,6 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "cannot launch auxiliary without a backend"
             )
-        assignment_id = assignment["decision"].assignment_id
-        assignment = self._exact_cycle_auxiliary(
-            assignment_id, "INPUT_PREPARED"
-        )
         decision = assignment["decision"]
         prepared = assignment["prepared"]
         if not isinstance(prepared, AuxiliaryPreparedInput):
@@ -19050,10 +16399,6 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "auxiliary abort targets a terminal assignment"
             )
-        assignment = self._exact_cycle_auxiliary(
-            state.assignment_id, prior_phase
-        )
-        state = assignment["state"]
         decision = assignment["decision"]
         prepared = assignment["prepared"]
         launched = assignment["launched"]
@@ -19162,10 +16507,6 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "cannot poll auxiliary without a backend"
             )
-        assignment_id = assignment["decision"].assignment_id
-        assignment = self._exact_cycle_auxiliary(
-            assignment_id, "RUNNING"
-        )
         decision = assignment["decision"]
         prepared = assignment["prepared"]
         launched = assignment["launched"]
@@ -19216,12 +16557,7 @@ class ContiguousCampaignRunner:
                 reason=terminal.reason or "containment_fault",
             )
             return True
-        assignment = self._exact_cycle_auxiliary(
-            assignment_id, "RUNNING"
-        )
-        decision = assignment["decision"]
-        prepared = assignment["prepared"]
-        launched = assignment["launched"]
+        self._rebind_auxiliary_prerequisites(assignment)
         try:
             collection = self._validate_auxiliary_value(
                 self._call_auxiliary_backend(
@@ -19267,12 +16603,7 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "auxiliary collection is not quarantine-only evidence"
             ) from exc
-        assignment = self._exact_cycle_auxiliary(
-            assignment_id, "RUNNING"
-        )
-        decision = assignment["decision"]
-        prepared = assignment["prepared"]
-        launched = assignment["launched"]
+        self._rebind_auxiliary_prerequisites(assignment)
         try:
             teardown = self._validate_auxiliary_value(
                 self._call_auxiliary_backend(
@@ -19332,12 +16663,6 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "cannot admit auxiliary output without a backend"
             )
-        assignment_id = assignment["decision"].assignment_id
-        assignment = self._exact_cycle_auxiliary(
-            assignment_id,
-            "QUARANTINED",
-            include_teardown=True,
-        )
         decision = assignment["decision"]
         output = assignment["state"].output
         if output is None:
@@ -19367,7 +16692,7 @@ class ContiguousCampaignRunner:
                         item["state"].output
                     )
                     == semantic_identity
-                    for item in self._cycle_state()[
+                    for item in self.state()[
                         "auxiliary_assignments"
                     ].values()
                     if item["state"].assignment_id
@@ -19622,12 +16947,6 @@ class ContiguousCampaignRunner:
         *,
         reason: str,
     ) -> None:
-        assignment_id = assignment["decision"].assignment_id
-        assignment = self._exact_cycle_auxiliary(
-            assignment_id,
-            "QUARANTINED",
-            include_teardown=True,
-        )
         decision = assignment["decision"]
         output = assignment["state"].output
         if output is None:
@@ -19754,7 +17073,7 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "failure circuit identity is malformed"
             )
-        state = self._cycle_state()
+        state = self.state()
         operation_key = f"{operation}:{fault_domain}"
         operation_state = state["failure_operation_circuits"].get(
             operation_key,
@@ -19857,7 +17176,7 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "failure circuit success identity is malformed"
             )
-        state = self._cycle_state()
+        state = self.state()
         prefix = operation + ":"
         for operation_key, operation_state in sorted(
             state["failure_operation_circuits"].items()
@@ -19904,7 +17223,7 @@ class ContiguousCampaignRunner:
     def _record_retry(
         self, attempt_id: str, operation: str, exc: Exception
     ) -> None:
-        attempt = self._cycle_state()["attempts"].get(attempt_id)
+        attempt = self.state()["attempts"].get(attempt_id)
         if attempt is None:
             raise ContiguousRunnerError(
                 "cannot record retry for unknown attempt"
@@ -20012,14 +17331,6 @@ class ContiguousCampaignRunner:
     def _materialize_reserved(
         self, reservation: AttemptReservation
     ) -> AttemptSpec:
-        exact = self._exact_cycle_attempt(
-            reservation.attempt_id, "RESERVED"
-        )["reservation"]
-        if exact != reservation:
-            raise ContiguousRunnerError(
-                "input construction received a stale reservation"
-            )
-        reservation = exact
         generation = Path(reservation.generation_dir)
         if generation.is_symlink() or (
             generation.exists() and not generation.is_dir()
@@ -20155,13 +17466,6 @@ class ContiguousCampaignRunner:
             wip=reservation.wip,
             supervisory_handoff=reservation.supervisory_handoff,
         )
-        exact = self._exact_cycle_attempt(
-            reservation.attempt_id, "RESERVED"
-        )["reservation"]
-        if exact != reservation:
-            raise ContiguousRunnerError(
-                "reservation changed before input construction"
-            )
         try:
             receipt = self.input_builder.prepare(layout)
         except BaseException as exc:
@@ -20381,14 +17685,6 @@ class ContiguousCampaignRunner:
     def _prepare_backend(
         self, attempt_id: str, spec: AttemptSpec
     ) -> None:
-        exact = self._exact_cycle_attempt(
-            attempt_id, "PREPARED"
-        )
-        if exact["spec"] != spec:
-            raise ContiguousRunnerError(
-                "backend preparation received a stale attempt"
-            )
-        spec = exact["spec"]
         try:
             prepared = self.backend.prepare(spec)
         except BaseException as exc:
@@ -20396,11 +17692,6 @@ class ContiguousCampaignRunner:
                 raise
             if not isinstance(exc, Exception):
                 raise
-            if isinstance(exc, BackendPreparationQuarantinedError):
-                self._record_preparation_quarantine(
-                    attempt_id, spec, exc
-                )
-                return
             self._record_retry(
                 attempt_id, "backend_prepare", exc
             )
@@ -20471,7 +17762,7 @@ class ContiguousCampaignRunner:
                 )
                 != []
                 or config_receipt.get("runtime_workspace_roots")
-                != [EXPECTED_CONTROLLER_NEUTRAL_CWD]
+                != ["/controller-neutral"]
                 or config_receipt.get("dynamic_tool_namespace")
                 != spec.proposer_transport.dynamic_tool_namespace
                 or config_receipt.get("dynamic_tool_names")
@@ -20503,7 +17794,7 @@ class ContiguousCampaignRunner:
                     "networkAccess": False,
                 }
                 or config_receipt.get("state_root")
-                != EXPECTED_CONTROLLER_STATE_ROOT
+                != "/controller-state"
                 or config_receipt.get("state_host_staging_root")
                 != spec.app_server_state_dir
                 or config_receipt.get("state_mode")
@@ -20630,70 +17921,12 @@ class ContiguousCampaignRunner:
             evidence_kind="backend_prepared",
         )
 
-    def _record_preparation_quarantine(
-        self,
-        attempt_id: str,
-        spec: AttemptSpec,
-        exc: BackendPreparationQuarantinedError,
-    ) -> None:
-        attempt = self._cycle_state()["attempts"].get(attempt_id)
-        if (
-            attempt is None
-            or attempt["phase"] != "PREPARED"
-            or attempt["spec"] != spec
-        ):
-            raise ContiguousRunnerError(
-                "preparation quarantine targets the wrong attempt phase"
-            )
-        _validate_preparation_quarantine_receipt(
-            spec,
-            exc.quarantine_receipt_path,
-            exc.quarantine_receipt_sha256,
-        )
-        self._record_circuit_failure(
-            attempt_id=attempt_id,
-            operation="backend_prepare",
-            fault_domain="containment_infrastructure",
-        )
-        # Reopen state after the circuit event (and possible threshold
-        # incident) before binding the terminal budget coordinates below.
-        attempt = self._cycle_state()["attempts"][attempt_id]
-        result = AttemptResult(
-            kind="infrastructure",
-            cost_used=0.0,
-            reason="compatibility_preparation_quarantined",
-        )
-        result_payload = self._result_payload(attempt_id, result)
-        result_payload.pop("attempt_id")
-        self.journal.append(
-            event_id=f"{attempt_id}:preparation-quarantined",
-            kind="ATTEMPT_PREPARATION_QUARANTINED",
-            payload={
-                "attempt_id": attempt_id,
-                "quarantine_receipt_path": (
-                    exc.quarantine_receipt_path
-                ),
-                "quarantine_receipt_sha256": (
-                    exc.quarantine_receipt_sha256
-                ),
-                "result": result_payload,
-                "authenticated_cost_units": 0,
-                "budget_reservation_id": (
-                    attempt["budget_reservation_id"]
-                ),
-                "scheduler_decision_id": (
-                    attempt["scheduler_decision_id"]
-                ),
-            },
-            recorded_at=self.clock(),
-        )
-
     def _record_substrate_infrastructure(
         self,
         attempt_id: str,
         exc: BackendSubstratePreflightError,
     ) -> None:
-        attempt = self._cycle_state()["attempts"].get(attempt_id)
+        attempt = self.state()["attempts"].get(attempt_id)
         if (
             attempt is None
             or attempt["phase"] != "BACKEND_PREPARED"
@@ -20735,18 +17968,6 @@ class ContiguousCampaignRunner:
         spec: AttemptSpec,
         prepared: BackendPreparation,
     ) -> bool:
-        exact = self._exact_cycle_attempt(
-            attempt_id, "BACKEND_PREPARED"
-        )
-        if (
-            exact["spec"] != spec
-            or exact["prepared"] != prepared
-        ):
-            raise ContiguousRunnerError(
-                "backend launch received stale preparation authority"
-            )
-        spec = exact["spec"]
-        prepared = exact["prepared"]
         try:
             launched = self.backend.launch(spec, prepared)
         except BaseException as exc:
@@ -20876,7 +18097,7 @@ class ContiguousCampaignRunner:
                 or app_runtime.get("state_root")
                 != spec.app_server_state_dir
                 or app_runtime.get("neutral_cwd")
-                != EXPECTED_CONTROLLER_NEUTRAL_CWD
+                != "/controller-neutral"
                 or app_runtime.get("neutral_host_staging_cwd")
                 != spec.neutral_host_cwd_path
                 or app_runtime.get("thread_id")
@@ -21097,11 +18318,6 @@ class ContiguousCampaignRunner:
         *,
         now: float,
     ) -> None:
-        exact = self._exact_cycle_attempt(
-            attempt_id, {"RUNNING", "DRAINING"}
-        )
-        if exact != attempt:
-            attempt = exact
         try:
             observation = self.backend.poll(
                 spec=attempt["spec"],
@@ -21197,9 +18413,6 @@ class ContiguousCampaignRunner:
     def _collect_exited(
         self, attempt_id: str, attempt: dict[str, Any], *, now: float
     ) -> None:
-        exact = self._exact_cycle_attempt(attempt_id, "EXITED")
-        if exact != attempt:
-            attempt = exact
         try:
             collection = self.backend.collect(
                 spec=attempt["spec"],
@@ -21409,8 +18622,6 @@ class ContiguousCampaignRunner:
                 self._register_native_public_observation_receipts(
                     attempt["spec"], collection
                 )
-            except ExactAuthorityGateError:
-                raise
             except ContiguousRunnerError as exc:
                 self._record_retry(
                     attempt_id,
@@ -21443,11 +18654,6 @@ class ContiguousCampaignRunner:
     def _teardown_collected(
         self, attempt_id: str, attempt: dict[str, Any], *, now: float
     ) -> None:
-        exact = self._exact_cycle_attempt(
-            attempt_id, {"COLLECTED", "COLLECTION_REJECTED"}
-        )
-        if exact != attempt:
-            attempt = exact
         cause: Literal["normal_exit", "containment_fault"] = (
             "containment_fault"
             if attempt["terminal"].status == "containment_fault"
@@ -21571,9 +18777,6 @@ class ContiguousCampaignRunner:
     def _record_torn_down_result(
         self, attempt_id: str, attempt: dict[str, Any], *, now: float
     ) -> None:
-        exact = self._exact_cycle_attempt(attempt_id, "TORN_DOWN")
-        if exact != attempt:
-            attempt = exact
         collected_result = self._sanitize_result(
             attempt["spec"], attempt["outcome"]
         )
@@ -21621,16 +18824,6 @@ class ContiguousCampaignRunner:
                 recorded_at=now,
             )
             return
-        # The explicit result transition below legitimately changes state/WIP
-        # custody metadata.  Discard the pre-transition, in-memory snapshot
-        # before any chmod so a failure cannot leave stale authority.  The
-        # next ordinary reducer pass must perform a full validation and take
-        # a fresh read-only snapshot of the post-transition evidence.
-        quiescent_cache = getattr(
-            self, "_verified_quiescent_collections", None
-        )
-        if isinstance(quiescent_cache, dict):
-            quiescent_cache.pop(attempt_id, None)
         state_root = Path(attempt["spec"].app_server_state_dir)
         expected_state_sha = (
             attempt["collection"].app_server_state_tree_sha256
@@ -21673,9 +18866,6 @@ class ContiguousCampaignRunner:
     def _commit_pending(
         self, attempt_id: str, attempt: dict[str, Any], *, now: float
     ) -> None:
-        exact = self._exact_cycle_attempt(attempt_id, "PROMOTING")
-        if exact != attempt:
-            attempt = exact
         spec = attempt["spec"]
         candidate = attempt["candidate"]
         assert isinstance(candidate, PromotionCandidate)
@@ -21729,11 +18919,6 @@ class ContiguousCampaignRunner:
                     "durable reconciliation is unavailable"
                 ) from exc
             try:
-                exact = self._exact_cycle_attempt(
-                    attempt_id, "PROMOTING"
-                )
-                spec = exact["spec"]
-                candidate = exact["candidate"]
                 commit = recover(spec=spec, candidate=candidate)
                 if commit is None:
                     self._record_retry(
@@ -21742,8 +18927,6 @@ class ContiguousCampaignRunner:
                     raise ContiguousRunnerError(
                         "promotion outcome remains ambiguous and recoverable"
                     )
-            except ExactAuthorityGateError:
-                raise
             except PromotionRejected as recovery_exc:
                 del recovery_exc
                 reject_integrity("promotion_gate_rejected")
@@ -21767,7 +18950,7 @@ class ContiguousCampaignRunner:
             self._validate_commit(
                 spec,
                 commit,
-                self._cycle_state()["lanes"],
+                self.state()["lanes"],
                 candidate,
             )
         except ContiguousRunnerError as exc:
@@ -21949,33 +19132,24 @@ class ContiguousCampaignRunner:
     ) -> dict[str, Any]:
         """Trusted operator early override; no caller supplies an epoch."""
 
-        handle, lock_token = self._acquire_campaign_cycle_lock()
-        self._cycle_lock_held = True
-        self._cycle_execution_owner = self._current_execution_owner()
-        completed = False
+        lock_path = self.root / ".cycle.lock"
+        descriptor = _open_unaliased(
+            lock_path, os.O_RDWR | os.O_CREAT
+        )
+        handle = os.fdopen(descriptor, "r+", encoding="utf-8")
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         try:
-            state = self._start_locked_validation_pass()
-            result = self._authorize_substrate_health_reprobe_locked(
-                state,
+            return self._authorize_substrate_health_reprobe_locked(
+                self.state(),
                 issued_at=float(self.clock()),
                 authorization_mode=(
                     "trusted_operator_early_override"
                 ),
                 reason_code=reason_code,
             )
-            self._finish_locked_validation_pass()
-            completed = True
-            return result
         finally:
-            self._cycle_validation_context = None
-            if isinstance(self.journal, DurableAttemptJournal):
-                self.journal._cycle_trusted_thread_id = None
-            self._discard_validation_caches(
-                retain_reducer=completed
-            )
-            self._cycle_execution_owner = None
-            self._cycle_lock_held = False
-            self._release_campaign_cycle_lock(handle, lock_token)
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            handle.close()
 
     def _authorize_meta_substrate_recovery_locked(
         self,
@@ -22127,11 +19301,10 @@ class ContiguousCampaignRunner:
         if not isinstance(meta, dict):
             return dict(state)
         if meta["phase"] == "AUTHORIZED":
-            attempt = self._exact_substrate_attempt(
-                incident["attempt_id"]
-            )
+            attempt = state["attempts"].get(incident["attempt_id"])
             if (
-                attempt["phase"] != "CLOSED"
+                attempt is None
+                or attempt["phase"] != "CLOSED"
                 or attempt["substrate_failure"] is None
             ):
                 raise ContiguousRunnerError(
@@ -22267,7 +19440,7 @@ class ContiguousCampaignRunner:
                 },
                 recorded_at=self.clock(),
             )
-            state = self._cycle_state()
+            state = self.state()
             incident = state["substrate_incident"]
             if incident is None:
                 raise ContiguousRunnerError(
@@ -22395,7 +19568,7 @@ class ContiguousCampaignRunner:
                 },
                 recorded_at=self.clock(),
             )
-            state = self._cycle_state()
+            state = self.state()
         return dict(state)
 
     def apply_meta_substrate_recovery(
@@ -22408,12 +19581,14 @@ class ContiguousCampaignRunner:
     ) -> dict[str, Any]:
         """Apply the sole allowlisted meta recommendation exactly once."""
 
-        handle, lock_token = self._acquire_campaign_cycle_lock()
-        self._cycle_lock_held = True
-        self._cycle_execution_owner = self._current_execution_owner()
-        completed = False
+        lock_path = self.root / ".cycle.lock"
+        descriptor = _open_unaliased(
+            lock_path, os.O_RDWR | os.O_CREAT
+        )
+        handle = os.fdopen(descriptor, "r+", encoding="utf-8")
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         try:
-            state = self._start_locked_validation_pass()
+            state = self.state()
             incident = state["substrate_incident"]
             meta = (
                 None
@@ -22429,7 +19604,7 @@ class ContiguousCampaignRunner:
                     recommendation=recommendation,
                     issued_at=float(self.clock()),
                 )
-                state = self._cycle_state()
+                state = self.state()
             elif any(
                 meta.get(name) != value
                 for name, value in (
@@ -22442,22 +19617,12 @@ class ContiguousCampaignRunner:
                 raise ContiguousRunnerError(
                     "meta recovery replay changed its recommendation"
                 )
-            self._advance_meta_substrate_recovery_locked(
+            return self._advance_meta_substrate_recovery_locked(
                 state
             )
-            result = self._finish_locked_validation_pass()
-            completed = True
-            return result
         finally:
-            self._cycle_validation_context = None
-            if isinstance(self.journal, DurableAttemptJournal):
-                self.journal._cycle_trusted_thread_id = None
-            self._discard_validation_caches(
-                retain_reducer=completed
-            )
-            self._cycle_execution_owner = None
-            self._cycle_lock_held = False
-            self._release_campaign_cycle_lock(handle, lock_token)
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            handle.close()
 
     def _execute_pending_substrate_reprobe(
         self, state: dict[str, Any]
@@ -22468,11 +19633,10 @@ class ContiguousCampaignRunner:
         pending = incident["pending_reprobe"]
         if pending is None:
             return
-        attempt = self._exact_substrate_attempt(
-            incident["attempt_id"]
-        )
+        attempt = state["attempts"].get(incident["attempt_id"])
         if (
-            attempt["phase"] != "CLOSED"
+            attempt is None
+            or attempt["phase"] != "CLOSED"
             or attempt["substrate_failure"] is None
         ):
             raise ContiguousRunnerError(
@@ -22662,7 +19826,7 @@ class ContiguousCampaignRunner:
                 operation="substrate_health_reprobe",
                 fault_domain="controller_substrate",
             )
-            state = self._cycle_state()
+            state = self.state()
             incident = state["substrate_incident"]
             if (
                 incident is None
@@ -22690,7 +19854,7 @@ class ContiguousCampaignRunner:
                 authorization_mode="sealed_autonomous_circuit",
                 reason_code="substrate_circuit_deadline_reached",
             )
-            state = self._cycle_state()
+            state = self.state()
         if (
             state["operator_incident"] is None
             and state["substrate_incident"] is not None
@@ -22701,68 +19865,26 @@ class ContiguousCampaignRunner:
 
     def cycle(self, *, now: float | None = None) -> dict[str, Any]:
         """Serialize one recovery/poll/dispatch pass across host processes."""
-        handle, lock_token = self._acquire_campaign_cycle_lock()
-        self._cycle_lock_held = True
-        self._cycle_execution_owner = self._current_execution_owner()
-        completed = False
-
-        def run_one_locked_pass() -> dict[str, Any]:
-            snapshot_token = (
-                Scheduler.begin_snapshot_validation_scope()
-            )
-            try:
-                entry = self._start_locked_validation_pass()
-                try:
-                    report = self._cycle_locked(
-                        now=now, initial_state=entry
-                    )
-                except BaseException:
-                    self._cycle_validation_context = None
-                    raise
-                final = self._finish_locked_validation_pass()
-                if (
-                    report.get("solved_levels")
-                    != final["solved_levels"]
-                    or report.get("total_levels")
-                    != final["total_levels"]
-                    or report.get("complete") is not final["complete"]
-                ):
-                    raise ContiguousRunnerError(
-                        "cycle report disagrees with its full return audit"
-                    )
-                return report
-            finally:
-                Scheduler.end_snapshot_validation_scope(
-                    snapshot_token
-                )
-
+        lock_path = self.root / ".cycle.lock"
+        descriptor = _open_unaliased(
+            lock_path, os.O_RDWR | os.O_CREAT
+        )
+        handle = os.fdopen(descriptor, "r+", encoding="utf-8")
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         try:
             try:
-                result = run_one_locked_pass()
+                return self._cycle_locked(now=now)
             except JournalStorageExhausted as exc:
-                self._cycle_validation_context = None
-                if isinstance(self.journal, DurableAttemptJournal):
-                    self.journal._cycle_trusted_thread_id = None
-                self._discard_validation_caches(retain_reducer=True)
                 recorded_at = float(
                     self.clock() if now is None else now
                 )
                 self.journal.commit_storage_incident(
                     exc, recorded_at=recorded_at
                 )
-                result = run_one_locked_pass()
-            completed = True
-            return result
+                return self._cycle_locked(now=now)
         finally:
-            self._cycle_validation_context = None
-            if isinstance(self.journal, DurableAttemptJournal):
-                self.journal._cycle_trusted_thread_id = None
-            self._discard_validation_caches(
-                retain_reducer=completed
-            )
-            self._cycle_execution_owner = None
-            self._cycle_lock_held = False
-            self._release_campaign_cycle_lock(handle, lock_token)
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            handle.close()
 
     @staticmethod
     def _storage_emergency_report(
@@ -22912,9 +20034,6 @@ class ContiguousCampaignRunner:
             return self._storage_emergency_report(
                 state, newly_quiesced=False
             )
-        # Releasing the emergency reserve is an external filesystem effect.
-        # Reauthenticate the complete prefix immediately before it.
-        self._cycle_state_with_full_journal_prefix()
         self.journal.release_quiescence_reserve()
 
         primary_containments: list[dict[str, Any]] = []
@@ -22933,9 +20052,6 @@ class ContiguousCampaignRunner:
             prior_phase = attempt["phase"]
             if prior_phase not in contained_phases:
                 continue
-            attempt = self._exact_cycle_attempt(
-                attempt_id, prior_phase
-            )
             prepared = attempt.get("prepared")
             launched = attempt.get("launched")
             if not isinstance(prepared, BackendPreparation):
@@ -22982,9 +20098,7 @@ class ContiguousCampaignRunner:
                     "storage emergency found auxiliary work without its "
                     "backend"
                 )
-            assignment = self._exact_cycle_auxiliary(
-                assignment_id, prior_phase
-            )
+            self._rebind_auxiliary_prerequisites(assignment)
             try:
                 aborted = self._validate_auxiliary_value(
                     backend.abort(
@@ -23058,9 +20172,6 @@ class ContiguousCampaignRunner:
         ):
             if attempt["phase"] != "PROMOTING":
                 continue
-            attempt = self._exact_cycle_attempt(
-                attempt_id, "PROMOTING"
-            )
             recover = getattr(self.promotion_gate, "recover", None)
             if not callable(recover):
                 raise ContiguousRunnerError(
@@ -23123,7 +20234,7 @@ class ContiguousCampaignRunner:
             payload=payload,
             recorded_at=now,
         )
-        quiesced = self._cycle_state()
+        quiesced = self.state()
         if quiesced["storage_quiescence"] != payload:
             raise ContiguousRunnerError(
                 "storage emergency event did not reduce to exact "
@@ -23134,18 +20245,11 @@ class ContiguousCampaignRunner:
         )
 
     def _cycle_locked(
-        self,
-        *,
-        now: float | None = None,
-        initial_state: dict[str, Any] | None = None,
+        self, *, now: float | None = None
     ) -> dict[str, Any]:
         """Advance recovery/polling once, then fill eligible independent lanes."""
         selected_now = float(self.clock() if now is None else now)
-        state = (
-            initial_state
-            if initial_state is not None
-            else self._cycle_state()
-        )
+        state = self.state()
         if state["storage_incident"] is not None:
             return self._emergency_quiesce_storage(
                 state, now=selected_now
@@ -23174,13 +20278,13 @@ class ContiguousCampaignRunner:
             and state["pending_auxiliary_decision"] is not None
         ):
             self._reserve_auxiliary(state)
-            state = self._cycle_state()
+            state = self.state()
         if (
             state["storage_incident"] is None
             and state["pending_scheduler_decision"] is not None
         ):
             self._reserve_attempt(state)
-            state = self._cycle_state()
+            state = self.state()
         if state["substrate_incident"] is not None:
             meta_recovery = state["substrate_incident"].get(
                 "meta_recovery"
@@ -23197,7 +20301,7 @@ class ContiguousCampaignRunner:
                 self._advance_substrate_health_circuit(
                     state, now=selected_now
                 )
-            state = self._cycle_state()
+            state = self.state()
 
         # Poll durable live containers before admitting any unlaunched turn.  A
         # process restart may occur after a soft deadline, and polling first must
@@ -23221,14 +20325,12 @@ class ContiguousCampaignRunner:
                     )
                 except JournalStorageExhausted:
                     raise
-                except ExactAuthorityGateError:
-                    raise
                 except ContiguousRunnerError as exc:
                     recoverable_errors.append(
                         f"{attempt_id}: poll: {exc}"
                     )
 
-        state = self._cycle_state()
+        state = self.state()
         enter_stage("collect_terminal_evidence")
         for attempt_id, attempt in sorted(state["attempts"].items()):
             if (
@@ -23248,14 +20350,12 @@ class ContiguousCampaignRunner:
                     )
                 except JournalStorageExhausted:
                     raise
-                except ExactAuthorityGateError:
-                    raise
                 except ContiguousRunnerError as exc:
                     recoverable_errors.append(
                         f"{attempt_id}: collect: {exc}"
                     )
 
-        state = self._cycle_state()
+        state = self.state()
         enter_stage("prove_teardown")
         for attempt_id, attempt in sorted(state["attempts"].items()):
             if attempt["phase"] in {
@@ -23274,14 +20374,12 @@ class ContiguousCampaignRunner:
                     )
                 except JournalStorageExhausted:
                     raise
-                except ExactAuthorityGateError:
-                    raise
                 except ContiguousRunnerError as exc:
                     recoverable_errors.append(
                         f"{attempt_id}: teardown: {exc}"
                     )
 
-        state = self._cycle_state()
+        state = self.state()
         enter_stage("classify_and_settle")
         for attempt_id, attempt in sorted(state["attempts"].items()):
             if attempt["phase"] == "TORN_DOWN":
@@ -23292,26 +20390,22 @@ class ContiguousCampaignRunner:
                     )
                 except JournalStorageExhausted:
                     raise
-                except ExactAuthorityGateError:
-                    raise
                 except ContiguousRunnerError as exc:
                     recoverable_errors.append(
                         f"{attempt_id}: result: {exc}"
                     )
         try:
             self._admit_pending_native_sidecar_requests(
-                self._cycle_state()
+                self.state()
             )
         except JournalStorageExhausted:
-            raise
-        except ExactAuthorityGateError:
             raise
         except ContiguousRunnerError as exc:
             recoverable_errors.append(
                 f"native sidecar request admission: {exc}"
             )
 
-        state = self._cycle_state()
+        state = self.state()
         enter_stage("commit_exact_promotions")
         for attempt_id, attempt in sorted(state["attempts"].items()):
             if (
@@ -23338,8 +20432,6 @@ class ContiguousCampaignRunner:
                     )
                 except JournalStorageExhausted:
                     raise
-                except ExactAuthorityGateError:
-                    raise
                 except ContiguousRunnerError as exc:
                     recoverable_errors.append(
                         f"{attempt_id}: promotion: {exc}"
@@ -23349,7 +20441,7 @@ class ContiguousCampaignRunner:
         # Promotion never waits for a sidecar.  Its journal transition marks
         # old-frontier assignments invalid, after which containment/teardown and
         # authenticated usage settlement run before any capacity is reused.
-        state = self._cycle_state()
+        state = self.state()
         enter_stage("invalidate_or_admit_auxiliary_outputs")
         for assignment_id, assignment in sorted(
             state["auxiliary_assignments"].items()
@@ -23397,19 +20489,15 @@ class ContiguousCampaignRunner:
                     self._admit_auxiliary(assignment)
             except JournalStorageExhausted:
                 raise
-            except ExactAuthorityGateError:
-                raise
             except ContiguousRunnerError as exc:
                 recoverable_errors.append(
                     f"{assignment_id}: auxiliary {phase.lower()}: {exc}"
                 )
         try:
             self._admit_pending_supervisory_sidecar_requests(
-                self._cycle_state()
+                self.state()
             )
         except JournalStorageExhausted:
-            raise
-        except ExactAuthorityGateError:
             raise
         except ContiguousRunnerError as exc:
             recoverable_errors.append(
@@ -23420,7 +20508,7 @@ class ContiguousCampaignRunner:
         # reservation-before-side-effect discipline as proposer attempts.
         enter_stage("recover_reserved_auxiliary_work")
         for phase in ("RESERVED", "INPUT_PREPARED"):
-            current = self._cycle_state()
+            current = self.state()
             if (
                 current["operator_incident"] is not None
                 or current["substrate_incident"] is not None
@@ -23430,7 +20518,7 @@ class ContiguousCampaignRunner:
             for assignment_id, assignment in sorted(
                 current["auxiliary_assignments"].items()
             ):
-                live_state = self._cycle_state()
+                live_state = self.state()
                 if (
                     live_state["operator_incident"] is not None
                     or live_state["substrate_incident"] is not None
@@ -23460,7 +20548,7 @@ class ContiguousCampaignRunner:
                     else:
                         self._launch_auxiliary(assignment)
                         if (
-                            self._cycle_state()["auxiliary_assignments"][
+                            self.state()["auxiliary_assignments"][
                                 assignment_id
                             ]["state"].phase
                             == "RUNNING"
@@ -23468,19 +20556,17 @@ class ContiguousCampaignRunner:
                             started_auxiliary.append(assignment_id)
                 except JournalStorageExhausted:
                     raise
-                except ExactAuthorityGateError:
-                    raise
                 except ContiguousRunnerError as exc:
                     recoverable_errors.append(
                         f"{assignment_id}: auxiliary "
                         f"{phase.lower()}: {exc}"
                     )
         # A just-prepared sidecar can be launched in this pass.
-        current = self._cycle_state()
+        current = self.state()
         for assignment_id, assignment in sorted(
             current["auxiliary_assignments"].items()
         ):
-            live_state = self._cycle_state()
+            live_state = self.state()
             if (
                 live_state["operator_incident"] is not None
                 or live_state["substrate_incident"] is not None
@@ -23503,7 +20589,7 @@ class ContiguousCampaignRunner:
                 else:
                     self._launch_auxiliary(assignment)
                     if (
-                        self._cycle_state()["auxiliary_assignments"][
+                        self.state()["auxiliary_assignments"][
                             assignment_id
                         ]["state"].phase
                         == "RUNNING"
@@ -23511,14 +20597,12 @@ class ContiguousCampaignRunner:
                         started_auxiliary.append(assignment_id)
             except JournalStorageExhausted:
                 raise
-            except ExactAuthorityGateError:
-                raise
             except ContiguousRunnerError as exc:
                 recoverable_errors.append(
                     f"{assignment_id}: auxiliary launch: {exc}"
                 )
 
-        state = self._cycle_state()
+        state = self.state()
         started: list[str] = []
         enter_stage("recover_or_dispatch_distinct_primary_frontiers")
         # DRAINING is lane-local: that game's active identity prevents overlap,
@@ -23537,7 +20621,7 @@ class ContiguousCampaignRunner:
             # already admitted before the cutoff must finish materialization
             # and launch; abandoning it would make recovery non-idempotent.
             if not state["complete"]:
-                current = self._cycle_state()
+                current = self.state()
                 for attempt_id, attempt in sorted(
                     current["attempts"].items()
                 ):
@@ -23559,8 +20643,6 @@ class ContiguousCampaignRunner:
                         )
                     except JournalStorageExhausted:
                         raise
-                    except ExactAuthorityGateError:
-                        raise
                     except ContiguousRunnerError as exc:
                         recoverable_errors.append(
                             f"{attempt_id}: materialize: {exc}"
@@ -23570,11 +20652,11 @@ class ContiguousCampaignRunner:
                 # to be idempotent because a crash can occur after the external
                 # transition and before its journal acknowledgement.
                 for phase in ("PREPARED", "BACKEND_PREPARED"):
-                    current = self._cycle_state()
+                    current = self.state()
                     for attempt_id, attempt in sorted(
                         current["attempts"].items()
                     ):
-                        live_state = self._cycle_state()
+                        live_state = self.state()
                         if (
                             live_state["operator_incident"] is not None
                             or live_state["substrate_incident"]
@@ -23613,19 +20695,17 @@ class ContiguousCampaignRunner:
                                     started.append(attempt_id)
                         except JournalStorageExhausted:
                             raise
-                        except ExactAuthorityGateError:
-                            raise
                         except ContiguousRunnerError as exc:
                             recoverable_errors.append(
                                 f"{attempt_id}: {phase.lower()}: {exc}"
                             )
 
-                current = self._cycle_state()
+                current = self.state()
                 # PREPARED just acknowledged above becomes BACKEND_PREPARED.
                 for attempt_id, attempt in sorted(
                     current["attempts"].items()
                 ):
-                    live_state = self._cycle_state()
+                    live_state = self.state()
                     if (
                         live_state["operator_incident"] is not None
                         or live_state["substrate_incident"] is not None
@@ -23653,15 +20733,13 @@ class ContiguousCampaignRunner:
                             started.append(attempt_id)
                     except JournalStorageExhausted:
                         raise
-                    except ExactAuthorityGateError:
-                        raise
                     except ContiguousRunnerError as exc:
                         recoverable_errors.append(
                             f"{attempt_id}: launch: {exc}"
                         )
 
                 while True:
-                    current = self._cycle_state()
+                    current = self.state()
                     active_count = sum(
                         lane["active"] is not None
                         for lane in current["lanes"].values()
@@ -23692,29 +20770,15 @@ class ContiguousCampaignRunner:
                     try:
                         spec = self._materialize_reserved(reservation)
                         self._prepare_backend(spec.attempt_id, spec)
-                        prepared_attempt = self._cycle_state()["attempts"][
+                        prepared = self.state()["attempts"][
                             spec.attempt_id
-                        ]
-                        if prepared_attempt["phase"] == "CLOSED":
-                            # A preserved crash root is never retried or
-                            # reused.  Stop this dispatch pass so a systematic
-                            # host fault cannot spin through fresh identities;
-                            # the next cycle may allocate one new generation.
-                            break
-                        if prepared_attempt["phase"] != "BACKEND_PREPARED":
-                            raise ContiguousRunnerError(
-                                "backend preparation did not reach one "
-                                "terminal or launchable phase"
-                            )
-                        prepared = prepared_attempt["prepared"]
+                        ]["prepared"]
                         launched_now = self._launch_backend(
                             spec.attempt_id, spec, prepared
                         )
                         if launched_now:
                             started.append(spec.attempt_id)
                     except JournalStorageExhausted:
-                        raise
-                    except ExactAuthorityGateError:
                         raise
                     except ContiguousRunnerError as exc:
                         recoverable_errors.append(
@@ -23724,7 +20788,7 @@ class ContiguousCampaignRunner:
                 # may otherwise-idle capacity become an independent sidecar.
                 enter_stage("dispatch_eligible_auxiliary_analysis")
                 while True:
-                    current = self._cycle_state()
+                    current = self.state()
                     active_total = sum(
                         lane["active"] is not None
                         for lane in current["lanes"].values()
@@ -23752,11 +20816,11 @@ class ContiguousCampaignRunner:
                     if assignment_id is None:
                         break
                     try:
-                        assignment = self._cycle_state()[
+                        assignment = self.state()[
                             "auxiliary_assignments"
                         ][assignment_id]
                         self._prepare_auxiliary(assignment)
-                        assignment = self._cycle_state()[
+                        assignment = self.state()[
                             "auxiliary_assignments"
                         ][assignment_id]
                         if (
@@ -23765,7 +20829,7 @@ class ContiguousCampaignRunner:
                         ):
                             self._launch_auxiliary(assignment)
                             if (
-                                self._cycle_state()[
+                                self.state()[
                                     "auxiliary_assignments"
                                 ][assignment_id]["state"].phase
                                 == "RUNNING"
@@ -23774,8 +20838,6 @@ class ContiguousCampaignRunner:
                                     assignment_id
                                 )
                     except JournalStorageExhausted:
-                        raise
-                    except ExactAuthorityGateError:
                         raise
                     except ContiguousRunnerError as exc:
                         recoverable_errors.append(
@@ -23790,7 +20852,7 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "supervision cycle did not execute the complete policy"
             )
-        final = self._cycle_state()
+        final = self.state()
         return {
             "supervision_stage_trace": stage_trace,
             "started_attempts": started,
@@ -23896,7 +20958,6 @@ def _terminal_retention_state(
 
     root = Path(campaign_root)
     reducer = object.__new__(ContiguousCampaignRunner)
-    reducer._initialize_validation_state()
     reducer.root = root
     reducer.journal = ReadOnlyAttemptJournal(
         root / "attempt_journal"
@@ -25544,25 +22605,6 @@ def audit_runner_state_read_only(
         "generation_ids": generation_ids,
         "lane_boundaries": lane_boundaries,
     }
-    if state.get("campaign_mode") == "selective_continuation":
-        body.update({
-            "campaign_mode": "selective_continuation",
-            "selective_continuation_game":
-                state["selective_continuation_game"],
-            "selective_frontier_import":
-                state["selective_frontier_import"],
-            "selective_frontier_import_sha256":
-                state["selective_frontier_import"]["import_sha256"],
-            "operator_authorized_selective_frontier_import_sha256":
-                state[
-                    "operator_authorized_selective_frontier_import_sha256"
-                ],
-            "selective_scope_solved_levels":
-                state["selective_scope_solved_levels"],
-            "selective_scope_total_levels":
-                state["selective_scope_total_levels"],
-            "selective_complete": state["selective_complete"],
-        })
     return {
         **body,
         "receipt_sha256": hashlib.sha256(
@@ -25604,7 +22646,6 @@ __all__ = [
     "BackendLaunch",
     "BackendPoll",
     "BackendPreparation",
-    "BackendPreparationQuarantinedError",
     "BackendTeardownProof",
     "AuxiliaryAbort",
     "AuxiliaryAdmission",
@@ -25616,18 +22657,15 @@ __all__ = [
     "AuxiliaryPreparedInput",
     "AuxiliaryTeardown",
     "ContiguousCampaignRunner",
-    "ContiguousRunnerError",
     "CONTIGUOUS_AUXILIARY_LAUNCH_READY",
+    "CONTIGUOUS_RUNNER_LAUNCH_READY",
+    "ContiguousRunnerError",
     "DurableAttemptJournal",
     "InputBundleBuilder",
     "InputBundleReceipt",
     "PromotionCandidate",
     "PromotionCommit",
     "PromotionGate",
-    "SelectiveFrontierImport",
-    "SELECTIVE_FRONTIER_IMPORT_AUTHORITY",
-    "SELECTIVE_FRONTIER_IMPORT_SCHEMA",
-    "SELECTIVE_SCOPE_BLOCKED_REASON",
     "ReadOnlyAttemptJournal",
     "ResourceLimitsProjection",
     "SimulatedCrash",
@@ -25643,10 +22681,6 @@ __all__ = [
     "escalation",
     "finalize_terminal_attempt_retention",
     "frontier_sha256",
-    "build_selective_frontier_import",
-    "selective_frontier_import_from_dict",
-    "selective_frontier_import_sha256",
-    "selective_frontier_import_to_dict",
     "should_restore_wip",
     "verify_runner_state_audit",
 ]
