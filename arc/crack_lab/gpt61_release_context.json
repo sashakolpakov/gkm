@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "kind": "post_acquisition_release_verification_context",
+  "discovery_producer_revision": "1492eeb7817950e2e943b05880907f5edcc6f445",
+  "publication_only_change": "Extend the default frozen control contract to bind the GPT-6.1 policy, scheduler, shared integrity recognizer and protocol. This makes ordinary CLI receipt verification reproduce the same dependency closure used when issuing the receipt. No discovery, solver, action-budget or admission code changes.",
+  "historical_manifest_scope": "gpt61_campaign_source.json records the original discovery snapshot at discovery_producer_revision, not this later verification-context tuple.",
+  "added_controls": [
+    "arc/crack_lab/proposer_integrity.py",
+    "arc/crack_lab/test_proposer_integrity.py",
+    "arc/crack_lab/codex_campaign_policy.py",
+    "arc/crack_lab/codex_campaign_runner.py",
+    "arc/crack_lab/GPT61_CAMPAIGN_PROTOCOL.md",
+    "arc/crack_lab/gpt61_campaign_source.json",
+    "arc/crack_lab/gpt61_release_context.json",
+    "arc/crack_lab/test_gpt61_release_context.py"
+  ]
+}

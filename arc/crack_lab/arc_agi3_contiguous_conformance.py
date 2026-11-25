@@ -863,6 +863,14 @@ AUTHORITATIVE_INVENTORY_METADATA_KEYS = {
     "title",
 }
 CONTROL_CONTRACT_FILES = (
+    'arc/crack_lab/proposer_integrity.py',
+    'arc/crack_lab/test_proposer_integrity.py',
+    'arc/crack_lab/codex_campaign_policy.py',
+    'arc/crack_lab/codex_campaign_runner.py',
+    'arc/crack_lab/GPT61_CAMPAIGN_PROTOCOL.md',
+    'arc/crack_lab/gpt61_campaign_source.json',
+    'arc/crack_lab/gpt61_release_context.json',
+    'arc/crack_lab/test_gpt61_release_context.py',
     "arc/crack_lab/ARC_AGI3_CAMPAIGN_PLAN.md",
     LAUNCH_REQUIREMENTS_CONTROL_PATH,
     "arc/crack_lab/arc_agi3_contiguous_conformance.py",
