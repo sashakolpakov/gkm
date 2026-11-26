@@ -863,7 +863,7 @@ environment-agnostic. Importing the module never touches the network; a
 request happens only when `reset()/step()` is called on an `ArcEnv`, which
 requires `ARC_API_KEY`.
 
-**Verified live with a real key (2026-06-14; report `arc/arc_live_report.md`).**
+**Verified live with a real key (2026-06-14; report [historical live report](https://github.com/sashakolpakov/gkm/blob/58d6038bdf8d57475a714bcbe81485c805197d3b/arc/arc_live_report.md)).**
 Auth header is `X-API-Key`; `GET /api/games` lists 25 games;
 `POST /api/scorecard/open` returns a `card_id`; `POST /api/cmd/RESET` (game_id =
 lowercase SHORT code, e.g. `ls20`, not the full listing id) returns a real
@@ -1206,7 +1206,7 @@ SPECIFIC (connector):
   (colour, relation) pairs are live.
 - **R17 (Engineer -> Architect, real ARC connected; synthetic relabelled):**
   with a real key, the live API was exercised (Section 12, report
-  `arc/arc_live_report.md`): X-API-Key auth, GET /api/games (25),
+  [historical live report](https://github.com/sashakolpakov/gkm/blob/58d6038bdf8d57475a714bcbe81485c805197d3b/arc/arc_live_report.md)): X-API-Key auth, GET /api/games (25),
   scorecard open/close, RESET (short game_id, ~5-retry provisioning window)
   returning real 64x64 frames, and the scene functor extracting colours/objects
   from real `ls20`/`wa30` frames. Real-ARC PERCEPTION is verified. The action

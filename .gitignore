@@ -64,6 +64,7 @@ Thumbs.db
 .env
 .env.*
 *.env.local
+env.local
 !.env.example
 
 # ARC-AGI-3 local play: downloaded game sources + recordings (not vendored)
@@ -98,3 +99,16 @@ runs/
 # Live campaign coordination state is host-local and must never enter evidence commits.
 arc/crack_lab/agent_solutions/.campaign_locks/
 arc/crack_lab/agent_solutions/.campaign_quarantine/
+
+# Disposable campaign workspaces; frozen evidence is retained under releases/.
+arc/crack_lab/agent_solutions/*/wip_context/
+arc/crack_lab/candidate_solutions/
+arc/crack_lab/ARC_AGI3_CAMPAIGN_QUEUE.json
+arc/crack_lab/*.sock
+.retrodict-isolation-test/
+
+# Intermediate outputs of the separate theoretical manuscript.
+arc/manuscript/arxiv/*.aux
+arc/manuscript/arxiv/*.log
+arc/manuscript/arxiv/*.out
+arc/manuscript/arxiv/*.synctex.gz

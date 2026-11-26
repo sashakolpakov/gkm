@@ -3,7 +3,7 @@
 This subject contains the ARC-AGI-3 program-growth harness, promoted solver
 artifacts, experiment logs, and manuscript for the Gödel–Kolmogorov Machine. The
 Gödel–Kolmogorov Machine couples verifier-gated self-revision to
-description-length selection and retained solver structure. The name
+description length accounting, reuse pressure, and retained solver structure. The name
 Gödel–Kolmogorov Machine is used in full here before the abbreviation **GKM** is
 adopted below. The scientific object is the retained sequence of code states and
 validated replays; the official replay score is reported separately.
@@ -24,15 +24,16 @@ Its promoted solver programs are learned separately for each game and level.
 The frozen release contains one checkpoint record for every promoted level. The supporting source-charge table is `arc/manuscript/generated/marginal_complexity_by_level.md`. The `wa30` and `ls20` rows additionally have one uniform, audited history sidecar per level. `marginal_C` means positive net retained-description growth per source file. Additions and deletions within the same file are netted before the positive part, so same-size replacement can receive zero. Its baseline is the source in the working workspace before that harness cycle; resumed WIP can already be present, so it is not necessarily growth from the preceding promoted source. The conditional marginal-complexity proxy is published separately in `arc/manuscript/generated/conditional_marginal_profiles.md`; the source-growth counter is not a conditional-complexity measurement.
 <!-- END GENERATED: ARC_ARTIFACT_STATUS -->
 
-The generated table above is the frozen published-manuscript scope, not the live
-campaign frontier. Live coverage, milestones, budget semantics, artifact-uniformity
-work, scorecard release gates, and the automated straight-line rerun are defined in
-the single [campaign master plan](crack_lab/ARC_AGI3_CAMPAIGN_PLAN.md). Machine-readable
-checkpoint and comparison outputs live under [`audit_results/`](audit_results/).
-The replaceable runtime scheduler snapshot is
-[`crack_lab/ARC_AGI3_CAMPAIGN_QUEUE.json`](crack_lab/ARC_AGI3_CAMPAIGN_QUEUE.json);
-it is generated from the master policy and is not a second source of truth.
-Mutable counts are not duplicated here.
+The generated table above is the frozen GPT-5.6 manuscript dataset. The separate
+[GPT-6.1 release](crack_lab/releases/arc_agi3_gkm_v3_182/README.md) reaches 182/183
+levels and includes its own source, protocol, receipts and scorecards. See its
+[reproduction instructions](crack_lab/releases/arc_agi3_gkm_v3_182/REPRODUCE.md).
+
+The [campaign master plan](crack_lab/ARC_AGI3_CAMPAIGN_PLAN.md) retains the historical
+policy and prospective framework design; it is not an active campaign queue.
+Machine-readable frozen analyses live under [`audit_results/`](audit_results/).
+New scheduler queues are generated host-local state and are not committed.
+Failed WIP and scratch notes are excluded from the published artifact tree.
 
 The contiguous scheduler uses exact-frontier clean retry count as one
 game-independent operational complexity coordinate. It drives both the

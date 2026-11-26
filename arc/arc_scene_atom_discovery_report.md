@@ -4,7 +4,7 @@
 > frames, not real ARC frames. This validates the discovery *machinery*
 > (avatar/colour/atom discovery, variance pruning) deterministically and
 > offline. The real-ARC counterpart — the scene functor run on genuine live
-> frames — is in `arc/arc_live_report.md`, where the connected-component
+> frames — is in [historical live report](https://github.com/sashakolpakov/gkm/blob/58d6038bdf8d57475a714bcbe81485c805197d3b/arc/arc_live_report.md), where the connected-component
 > object decomposition is confirmed to run on real ls20/wa30 frames. The avatar
 > discovery primitive's transfer to real frames awaits the live action loop.
 

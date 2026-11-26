@@ -4,7 +4,7 @@
 > reproducible coloured-grid fixture that mimics the ARC interface shape — it is
 > NOT real ARC data. It validates the goal-induction *machinery* deterministically
 > and offline. For the real ARC API (live frames + scene functor on genuine
-> games), see `arc/arc_live_report.md`. The two are complementary: this
+> games), see [historical live report](https://github.com/sashakolpakov/gkm/blob/58d6038bdf8d57475a714bcbe81485c805197d3b/arc/arc_live_report.md). The two are complementary: this
 > fixture proves the algorithm; the live probe proves the perception runs on
 > real frames.
 

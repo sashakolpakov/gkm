@@ -223,9 +223,10 @@ and partial work uses `arc/crack_lab/agent_solutions/<game>_legs/`. Each endpoin
 reported separately by the audit suite. The manuscript's frozen `wa30` and `ls20`
 sidecar histories remain under `arc/manuscript/artifact_history/`.
 
-Each folder holds the promoted `checkpoint.json` (the replay-validated flat
-action path, `reached` level count, and `total_marginal_C`), the shared leg
-library, per-level players, and WIP snapshots.
+The frozen folders hold the promoted `checkpoint.json` (the replay-validated
+action path, reached level count and source-accounting records), shared library,
+per-level players and sealed promotion evidence. Mutable WIP snapshots are not
+publication inputs and have been pruned from the current checkout.
 
 The manuscript's compact clean-history index is under
 `arc/manuscript/artifact_history/`. It contains complete published ledgers and
@@ -238,12 +239,9 @@ bound to the frozen receipt. Verify the index without changing an artifact:
 python arc/manuscript/build_artifact_history.py --check
 ```
 
-Dirty WIP is intentionally not solver evidence. In particular,
-`ft09_legs/wip_context/level_01/interrupted_a9a30e6e4da1/files/proposer_last.log`
-records two separate Sonnet commands accessing `env._game`. These are retained as
-operational cheating evidence, not promoted or used to support a result. Promotion
-requires a separately clean
-workspace to pass the current taint check and fresh replay.
+Dirty WIP is intentionally not solver evidence. Promotion requires a separately
+clean workspace to pass the taint check and fresh replay. Failed continuation
+workspaces are not retained as publication artifacts.
 
 Markdown inline-code quotations of rejected commands in a debrief transcript are
 not execution evidence. The scanner still checks executable workspace files and

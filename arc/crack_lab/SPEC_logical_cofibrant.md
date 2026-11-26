@@ -1,7 +1,7 @@
 # Pre-registration: logical-cell tracking + cofibrant object identity + LLM-supplied, data-verified move-rule
 
 **Architect step (pre-registered before implementation).** Reconcile log entry to
-follow in FINDINGS.md. Substrates are new SIBLINGS in `crack_lab/`, not rewrites.
+follow in [historical lab notes](https://github.com/sashakolpakov/gkm/blob/58d6038bdf8d57475a714bcbe81485c805197d3b/arc/crack_lab/FINDINGS.md). Substrates are new SIBLINGS in `crack_lab/`, not rewrites.
 
 ## Problem (from reconnaissance, verified 2026-06-19)
 
@@ -74,4 +74,4 @@ rule is then a model on the cofibrant (logical) objects, where dynamics is clean
   verified by the gate.
 - `run_logical_dynamics.py` — runner: fidelity table, ASCII logical grid + avatar
   trajectory, controls; honest report.
-- FINDINGS.md reconcile entry + `experiments/` report; memory update.
+- [historical lab notes](https://github.com/sashakolpakov/gkm/blob/58d6038bdf8d57475a714bcbe81485c805197d3b/arc/crack_lab/FINDINGS.md) reconcile entry + `experiments/` report; memory update.
